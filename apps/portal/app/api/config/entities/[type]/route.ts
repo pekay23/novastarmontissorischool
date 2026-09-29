@@ -26,7 +26,8 @@ export async function GET(
 
     const tenantId = TENANT_ID
     if (!tenantId) {
-      return NextResponse.json({ error: 'Server misconfigured: TENANT_ID not set' }, { status: 500 })
+      console.error('Server config error: TENANT_ID environment variable is not set')
+      return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
     }
 
     // Fetch from DB (ConfigEntity stores full EntityDefinition as JSON)
@@ -43,8 +44,15 @@ export async function GET(
 
     return NextResponse.json({ ...defaultDef, _isOverridden: false })
   } catch (error) {
+    if (error instanceof Error && error.name === 'UnauthorizedError') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
     if (error instanceof Error && error.name === 'ForbiddenError') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+    if (error instanceof Error && error.name === 'ServerConfigError') {
+      console.error('Server config error:', error.message)
+      return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
     }
     console.error('Config entity fetch error:', error)
     return NextResponse.json({ error: 'Failed to fetch entity definition' }, { status: 500 })
@@ -81,7 +89,8 @@ export async function PATCH(
     // Tenant guard — TENANT_ID must be set (no hardcoded fallback)
     const tenantId = TENANT_ID
     if (!tenantId) {
-      return NextResponse.json({ error: 'Server misconfigured: TENANT_ID not set' }, { status: 500 })
+      console.error('Server config error: TENANT_ID environment variable is not set')
+      return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
     }
 
     // Upsert into ConfigEntity table
@@ -110,10 +119,17 @@ export async function PATCH(
       },
     })
 
-    return NextResponse.json({ success: true, id: upserted.id })
+     return NextResponse.json({ success: true, id: upserted.id })
   } catch (error) {
+    if (error instanceof Error && error.name === 'UnauthorizedError') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
     if (error instanceof Error && error.name === 'ForbiddenError') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+    if (error instanceof Error && error.name === 'ServerConfigError') {
+      console.error('Server config error:', error.message)
+      return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
     }
     console.error('Config entity update error:', error)
     return NextResponse.json({ error: 'Failed to update entity definition' }, { status: 500 })
@@ -137,7 +153,8 @@ export async function DELETE(
 
     const tenantId = TENANT_ID
     if (!tenantId) {
-      return NextResponse.json({ error: 'Server misconfigured: TENANT_ID not set' }, { status: 500 })
+      console.error('Server config error: TENANT_ID environment variable is not set')
+      return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
     }
 
     const existing = await prisma.configEntity.findUnique({
@@ -156,8 +173,15 @@ export async function DELETE(
 
     return NextResponse.json({ success: true, restored: true })
   } catch (error) {
+    if (error instanceof Error && error.name === 'UnauthorizedError') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
     if (error instanceof Error && error.name === 'ForbiddenError') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+    if (error instanceof Error && error.name === 'ServerConfigError') {
+      console.error('Server config error:', error.message)
+      return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
     }
     console.error('Config entity delete error:', error)
     return NextResponse.json({ error: 'Failed to delete entity definition' }, { status: 500 })

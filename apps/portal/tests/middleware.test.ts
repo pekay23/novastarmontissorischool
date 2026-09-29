@@ -62,6 +62,21 @@ describe('Middleware - Config Endpoint Protection', () => {
       const handler = extractHandler(configRoute, 'GET')
       expect(handler).toContain("requirePermission('config:read')")
     })
+
+    it('should handle ForbiddenError in GET catch block', () => {
+      const handler = extractHandler(configRoute, 'GET')
+      expect(handler).toContain("'ForbiddenError'")
+    })
+
+    it('should handle UnauthorizedError in GET catch block', () => {
+      const handler = extractHandler(configRoute, 'GET')
+      expect(handler).toContain("'UnauthorizedError'")
+    })
+
+    it('should not leak ServerConfigError messages to client', () => {
+      const handler = extractHandler(configRoute, 'GET')
+      expect(handler).toContain('Internal server error')
+    })
   })
 
   describe('config/[entityType]/route.ts', () => {
