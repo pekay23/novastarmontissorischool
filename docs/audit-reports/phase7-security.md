@@ -40,7 +40,7 @@ Three findings are rated **Critical**, six are **High**, and the remainder span 
 | SEC-12 | JWT sessions use role embedded at sign-in (stale on role change) | Medium | Open |
 | SEC-13 | `TENANT_ID` is a process-level environment variable, not per-request | Medium | ⚠️ Documented limitation |
 | SEC-14 | Unauthenticated `/api/health` leaks service metadata | Medium | ✅ Resolved (2026-09-29) |
-| SEC-15 | Missing CSP, HSTS, and Permissions-Policy headers | Medium | Open |
+| SEC-15 | Missing CSP, HSTS, and Permissions-Policy headers | Medium | ✅ Resolved (2026-09-29) |
 | SEC-16 | Role entity is mutable via config API (privilege escalation vector) | Medium | ✅ Resolved (2026-09-29) |
 | SEC-17 | Deprecated `X-XSS-Protection` header used | Low | ✅ Resolved (2026-09-29) |
 | SEC-18 | Inconsistent password hashing libraries in dependency tree | Low | Open |
@@ -773,11 +773,11 @@ Currently low — the `entityModelMap` is a closed, hardcoded set. But the patte
 
 | OWASP Category | Findings | Summary |
 |---|---|---|
-| A01: Broken Access Control | SEC-01, SEC-02, SEC-04, SEC-05, SEC-06, SEC-07, SEC-16, SEC-19 | 8 findings — the most severe risk class. Missing middleware, missing RBAC on config/finance/assessment routes, IDOR in update/delete, mutable roles. |
+| A01: Broken Access Control | SEC-01, SEC-02, SEC-04, SEC-05, SEC-06, SEC-07, SEC-16, SEC-19 | `SEC-01` ❌ (false positive), `SEC-02` ✅, `SEC-04` ✅, `SEC-05` ✅, `SEC-06` ✅, `SEC-07` ✅, `SEC-16` ✅ resolved. `SEC-19` (tenant resolution inconsistency) remains. |
 | A02: Cryptographic Failures | SEC-03, SEC-18 | 2 findings — leaked secrets in .env files and inconsistent crypto library usage. |
 | A03: Injection | SEC-23 | 1 finding — `as any` dynamic Prisma access with eslint-disable. |
 | A04: Insecure Design | SEC-08, SEC-10, SEC-11 | 3 findings — payments marked completed without verification, mock Prisma masks build errors, sync engine defaults tenantId. |
-| A05: Security Misconfiguration | SEC-03, SEC-14, SEC-15, SEC-17, SEC-20, SEC-21 | 6 findings — committed secrets, unauthenticated health endpoint, missing security headers, deprecated XSS header, error logging, no CORS. |
+| A05: Security Misconfiguration | SEC-03, SEC-14, SEC-15, SEC-17, SEC-20, SEC-21 | `SEC-14` ✅, `SEC-15` ✅, `SEC-17` ✅ resolved. Remaining: `SEC-20` (error logging), `SEC-21` (CORS). |
 | A06: Vulnerable & Outdated Components | SEC-18 | Covered under crypto failures. |
 | A07: Identification and Auth Failures | SEC-01, SEC-09, SEC-12, SEC-22 | 4 findings — inactive middleware, no brute force protection, stale JWT roles, session endpoint doesn't check `isActive`. |
 | A08: Data Integrity Failures | SEC-11 | 1 finding — sync engine defaults tenantId to `'default'`. |
