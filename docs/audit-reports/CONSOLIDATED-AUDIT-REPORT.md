@@ -580,6 +580,13 @@ migrated (see 3.1 blocker 3).
 - **SEC-15:** `apps/portal/next.config.ts` now sets `Content-Security-Policy`, `Strict-Transport-Security`, and `Permissions-Policy` headers.
 - **SEC-16:** Role update/create schemas at `config/[entityType]/[id]/route.ts` now explicitly exclude `permissions`, `inheritsFrom`, and `isSystem` — these privilege-management fields cannot be modified via the generic config API endpoints.
 - **SEC-17:** Removed the deprecated `X-XSS-Protection` header, relying on CSP as the primary XSS defense.
+- **SEC-09:** Rate limiting implemented on auth credentials callback (5 attempts/15 min per IP, 429 + Retry-After).
+- **SEC-11:** Sync engine `write()` now throws if `tenantId` is missing — no longer defaults to `'default'`.
+- **SEC-12:** `checkPermission` and `getTenantContext` now do live DB lookups for role — not from stale JWT/session.
+- **SEC-13:** `getTenantContext` now resolves `tenantId` from the user's DB record, not from `process.env.TENANT_ID`.
+- **SEC-19:** Mitigated — config route's `getSessionTenantSchool` already has DB fallback; `checkPermission` now does live DB lookup for role.
+- **SEC-22:** Session endpoint now checks `user.isActive` — deactivated users get 401.
+- **SEC-23:** Replaced `as any` dynamic Prisma access with a typed `PrismaDelegate` interface.
 
 **Verification:** Build passes, typecheck passes, 109 tests pass, lint passes.
 
