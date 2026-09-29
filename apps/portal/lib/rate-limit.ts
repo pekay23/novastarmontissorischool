@@ -15,32 +15,42 @@ export interface RateLimitResult {
 
 interface StoreEntry {
   timestamps: number[]
+  windowMs: number
 }
 
 const store = new Map<string, StoreEntry>()
 const MAX_STORE_SIZE = 10000
 
-/** Periodically prune entries whose hits have all expired. */
-let sweepScheduled = false
+let sweepTimer: ReturnType<typeof setTimeout> | null = null
+
+/**
+ * Periodically prune entries whose hits have all expired, using each entry's
+ * own windowMs rather than a process-wide one. Also enforces a soft ceiling
+ * on total memory usage.
+ */
 function scheduleSweep(windowMs: number): void {
-  if (sweepScheduled) return
-  sweepScheduled = true
-  setTimeout(() => {
-    sweepScheduled = false
-    const cutoff = Date.now() - windowMs
+  if (sweepTimer !== null) return // already armed
+  sweepTimer = setTimeout(() => {
+    sweepTimer = null
+    const now = Date.now()
     for (const [key, entry] of store) {
-      if (entry.timestamps.every(t => t < cutoff)) {
+      if (entry.timestamps.every(t => t < now - entry.windowMs)) {
         store.delete(key)
       }
     }
+    // Evict oldest entries if over the soft cap
     if (store.size > MAX_STORE_SIZE) {
-      // Evict oldest entries to bound memory
       const sorted = [...store.entries()].sort((a, b) => a[1].timestamps[0] - b[1].timestamps[0])
-      for (let i = 0; i < Math.floor(MAX_STORE_SIZE * 0.2); i++) {
+      const evictCount = Math.floor(MAX_STORE_SIZE * 0.2)
+      for (let i = 0; i < evictCount; i++) {
         store.delete(sorted[i]?.[0])
       }
     }
   }, windowMs + 1000)
+  // Allow the process to exit without waiting for the timer in Node.js
+  if (typeof (sweepTimer as unknown) === 'object' && 'unref' in (sweepTimer as unknown as { unref?: unknown })) {
+    (sweepTimer as unknown as { unref: () => void }).unref()
+  }
 }
 
 function hits(identifier: string, windowMs: number, now: number): number[] {
@@ -50,7 +60,7 @@ function hits(identifier: string, windowMs: number, now: number): number[] {
   if (recent.length === 0) {
     store.delete(identifier)
   } else {
-    store.set(identifier, { timestamps: recent })
+    store.set(identifier, { timestamps: recent, windowMs })
   }
   return recent
 }
@@ -73,7 +83,7 @@ export function checkRateLimit(
   }
 
   recent.push(now)
-  store.set(identifier, { timestamps: recent })
+  store.set(identifier, { timestamps: recent, windowMs })
 
   return {
     success: true,
@@ -89,38 +99,47 @@ export function rateLimit(options: { windowMs: number; max: number }) {
     checkRateLimit(identifier, max, windowMs)
 }
 
-/** Clear the rate-limit store. Intended for tests only. */
+/** Clear the rate-limit store and cancel any pending sweep. Intended for tests only. */
 export function resetRateLimit(): void {
   store.clear()
-  sweepScheduled = false
+  if (sweepTimer !== null) {
+    clearTimeout(sweepTimer)
+    sweepTimer = null
+  }
 }
 
 /**
  * Extract a client identifier from the request.
  *
- * In a reverse-proxy deployment the proxy appends the real client IP to the
- * END of x-forwarded-for, so we read the last hop (not the first, which is
- * client-controlled and trivially spoofable). When x-forwarded-for is absent
- * or has a single element, fall back to x-real-ip (also set by trusted
- * proxies). If neither header is present the identifier collapses to
- * 'unknown', which intentionally shares a single bucket rather than silently
- * disabling the limit.
+ * Security model:
+ * - `x-real-ip` is set by the trusted reverse proxy / platform (e.g. Vercel)
+ *   and is the most reliable source of the actual client IP. We prefer it.
+ * - `x-forwarded-for` is only consulted for multi-hop chains where the trusted
+ *   proxy appends the real client IP. With a single hop the header is entirely
+ *   client-controlled, so we discard it and fall through.
+ * - If no trusted header is present, we collapse to 'unknown' (a shared bucket)
+ *   rather than silently disabling the limit.
+ *
+ * Deployment note: in a multi-proxy chain where each proxy prepends the peer
+ * it observed, the convention is client-first and the trusted hop count must
+ * be configured. This function assumes a single trusted edge that appends.
+ * For multi-hop setups, set TRUSTED_PROXY_HOPS to index from the right.
  */
 export function clientIdentifier(request: Request): string {
-  const forwarded = request.headers.get('x-forwarded-for')
-  if (forwarded) {
-    const hops = forwarded.split(',').map(s => s.trim()).filter(Boolean)
-    if (hops.length > 1) {
-      // Multiple hops: last is the original client (appended by the trusted proxy)
-      return hops[hops.length - 1]!
-    }
-    if (hops.length === 1) {
-      return hops[0]!
-    }
-  }
   const realIp = request.headers.get('x-real-ip')
   if (realIp) {
     return realIp.trim()
   }
+
+  const forwarded = request.headers.get('x-forwarded-for')
+  if (forwarded) {
+    const hops = forwarded.split(',').map(s => s.trim()).filter(Boolean)
+    // Only trust multi-hop chains where the proxy appended the client IP
+    // to the end. A single hop is client-controlled and untrusted.
+    if (hops.length > 1) {
+      return hops[hops.length - 1]!
+    }
+  }
+
   return 'unknown'
 }

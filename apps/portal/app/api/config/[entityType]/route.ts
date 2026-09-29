@@ -69,7 +69,10 @@ const entityModelMap: Record<string, {
   role: {
     model: 'role',
     fields: ['id', 'name', 'description', 'isSystem', 'permissions', 'inheritsFrom', 'createdAt', 'updatedAt'],
-    createSchema: RoleSchema.omit({ id: true, tenantId: true, schoolId: true, createdAt: true, updatedAt: true }),
+    createSchema: z.object({
+      name: z.string().min(1),
+      description: z.string().nullable().optional(),
+    }),
     allowedSortFields: ['name', 'isSystem', 'createdAt'],
   },
   assessment_type: {

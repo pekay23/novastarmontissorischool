@@ -92,22 +92,32 @@ describe('Rate Limiter', () => {
   })
 
   describe('clientIdentifier', () => {
-    it('should extract last hop from multi-hop x-forwarded-for header', () => {
+    it('should prefer x-real-ip when present', () => {
+      const request = new Request('http://localhost', {
+        headers: {
+          'x-forwarded-for': '203.0.113.5, 70.41.3.18, 150.172.238.178',
+          'x-real-ip': '198.51.100.42',
+        },
+      })
+      expect(clientIdentifier(request)).toBe('198.51.100.42')
+    })
+
+    it('should extract last hop from multi-hop x-forwarded-for when x-real-ip absent', () => {
       const request = new Request('http://localhost', {
         headers: { 'x-forwarded-for': '203.0.113.5, 70.41.3.18, 150.172.238.178' },
       })
-      // Multi-hop: last entry is the original client (trusted proxy appends it)
+      // Multi-hop: last entry is the client (trusted proxy appends it)
       expect(clientIdentifier(request)).toBe('150.172.238.178')
     })
 
-    it('should extract single hop from single-element x-forwarded-for', () => {
+    it('should ignore single-hop x-forwarded-for as untrusted', () => {
       const request = new Request('http://localhost', {
         headers: { 'x-forwarded-for': '203.0.113.5' },
       })
-      expect(clientIdentifier(request)).toBe('203.0.113.5')
+      expect(clientIdentifier(request)).toBe('unknown')
     })
 
-    it('should fall back to x-real-ip', () => {
+    it('should fall back to x-real-ip when x-forwarded-for absent', () => {
       const request = new Request('http://localhost', {
         headers: { 'x-real-ip': '198.51.100.42' },
       })
@@ -119,7 +129,7 @@ describe('Rate Limiter', () => {
       expect(clientIdentifier(request)).toBe('unknown')
     })
 
-    it('should trim whitespace and ignore empty hops in x-forwarded-for', () => {
+    it('should trim whitespace and ignore empty hops in multi-hop x-forwarded-for', () => {
       const request = new Request('http://localhost', {
         headers: { 'x-forwarded-for': '  203.0.113.5  ,  , 70.41.3.18' },
       })

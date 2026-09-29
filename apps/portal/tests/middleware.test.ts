@@ -76,6 +76,8 @@ describe('Middleware - Config Endpoint Protection', () => {
     it('should not leak ServerConfigError messages to client', () => {
       const handler = extractHandler(configRoute, 'GET')
       expect(handler).toContain('Internal server error')
+      expect(handler).not.toContain('TENANT_ID not set')
+      expect(handler).not.toContain('misconfigured')
     })
   })
 
@@ -135,15 +137,18 @@ describe('Middleware - Config Endpoint Protection', () => {
 
   describe('config/entities/[type]/route.ts', () => {
     it('should require config:read for GET', () => {
-      expect(entitiesTypeRoute).toContain("requirePermission('config:read')")
+      const handler = extractHandler(entitiesTypeRoute, 'GET')
+      expect(handler).toContain("requirePermission('config:read')")
     })
 
     it('should require config:write for PATCH', () => {
-      expect(entitiesTypeRoute).toContain("requirePermission('config:write')")
+      const handler = extractHandler(entitiesTypeRoute, 'PATCH')
+      expect(handler).toContain("requirePermission('config:write')")
     })
 
     it('should require config:write for DELETE', () => {
-      expect(entitiesTypeRoute).toContain("requirePermission('config:write')")
+      const handler = extractHandler(entitiesTypeRoute, 'DELETE')
+      expect(handler).toContain("requirePermission('config:write')")
     })
 
     it('should handle ForbiddenError in GET catch block', () => {
