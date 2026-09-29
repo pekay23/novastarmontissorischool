@@ -18,6 +18,13 @@ next-env.d.ts
 .env.test.local
 .env.production.local
 !.env.example
+# Ad-hoc copies of the above (hand-made backups, `cp .env .env.bak`, etc.).
+# These are not matched by the literal rules above and were briefly untracked
+# but committable, which is how real credentials almost get pushed.
+.env.bak-*
+.env.*.bak
+.env.*.bak-*
+*.env.bak
 
 # OS files
 .DS_Store

@@ -1,24 +1,11 @@
+import { loadEnv } from "./env";
 /**
  * Read-only inspection of the primary Neon database: table naming, row
  * counts, and whether the mirror prerequisites (psql in compute) are real.
  * Makes no writes.
  */
 import { Client } from "pg";
-import { readFileSync, existsSync } from "node:fs";
-import { resolve } from "node:path";
 
-function loadEnv() {
-  for (const file of [".env.local", ".env"]) {
-    const p = resolve(process.cwd(), file);
-    if (!existsSync(p)) continue;
-    for (const line of readFileSync(p, "utf-8").split(/\r?\n/)) {
-      const m = line.match(/^([A-Z_]+)=(.*)$/);
-      if (m && !process.env[m[1]]) {
-        process.env[m[1]] = m[2].replace(/^["']|["']$/g, "");
-      }
-    }
-  }
-}
 
 loadEnv();
 

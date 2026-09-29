@@ -1,53 +1,77 @@
+import { loadEnv, requireEnv } from "./env";
 /**
- * Creates the full Prisma schema on the Supabase failsafe database.
+ * Applies a reviewed DDL file to a chosen database.
  *
- * The DDL is generated with `prisma migrate diff --from-empty`, reviewed
- * (it is all CREATE/ALTER, no DROP/TRUNCATE/DELETE), then sent to Postgres as
- * a single simple-query batch. Postgres wraps a multi-statement simple query
- * in an implicit transaction, so it applies atomically: either the whole
- * schema lands or none of it does.
+ * The DDL is generated with `prisma migrate diff`, reviewed, then sent to
+ * Postgres as a single simple-query batch. Postgres wraps a multi-statement
+ * simple query in an implicit transaction, so it applies atomically: either
+ * the whole thing lands or none of it does.
  *
- * This only ever writes to SUPABASE_DATABASE_URL. The Neon primary is only
- * ever read.
+ * Usage:
+ *   bun run tools/db-mirror/apply-schema.ts <ddl-file> supabase
+ *   bun run tools/db-mirror/apply-schema.ts <ddl-file> neon
  *
- * Usage: bun run tools/db-mirror/apply-schema.ts
+ * Flags:
+ *   --allow-nonempty   permit a target that already has tables (required for
+ *                      additive migrations against a populated database)
+ *   --dry-run          report what would run, then exit without writing
  */
 import { Client } from "pg";
 import { readFileSync, existsSync } from "node:fs";
-import { resolve } from "node:path";
 
-function loadEnv() {
-  for (const file of [".env.local", ".env"]) {
-    const p = resolve(process.cwd(), file);
-    if (!existsSync(p)) continue;
-    for (const line of readFileSync(p, "utf-8").split(/\r?\n/)) {
-      const m = line.match(/^([A-Z_]+)=(.*)$/);
-      if (m && !process.env[m[1]]) {
-        process.env[m[1]] = m[2].replace(/^["']|["']$/g, "");
-      }
-    }
-  }
-}
 
 loadEnv();
 
-const ddlPath = process.argv[2] ?? resolve(process.env.TEMP!, "schema-ddl.sql");
+const raw = process.argv.slice(2);
+const flags = new Set(raw.filter((a) => a.startsWith("--")));
+const args = raw.filter((a) => !a.startsWith("--"));
+
+const ddlPath = args[0];
+const target = (args[1] ?? "supabase").toLowerCase();
+
+if (!ddlPath) {
+  console.error(
+    "Usage: bun run tools/db-mirror/apply-schema.ts <ddl-file> [supabase|neon]"
+  );
+  process.exit(1);
+}
+if (!existsSync(ddlPath)) {
+  console.error(`DDL file not found: ${ddlPath}`);
+  process.exit(1);
+}
+
+const envVar =
+  target === "neon"
+    ? "DATABASE_URL"
+    : target === "supabase"
+      ? "SUPABASE_DIRECT_URL"
+      : null;
+if (!envVar) {
+  console.error(`Unknown target '${target}'. Use 'neon' or 'supabase'.`);
+  process.exit(1);
+}
+
+const url = requireEnv(envVar);
+
+const ddl = readFileSync(ddlPath, "utf-8");
+
+/** Statements that would destroy existing data. */
+const destructive = ddl.match(
+  /^\s*(DROP\s+(TABLE|SCHEMA|DATABASE)|TRUNCATE|DELETE\s+FROM)/gim
+);
 
 async function main() {
-  if (!existsSync(ddlPath)) {
-    console.error(`DDL file not found: ${ddlPath}`);
-    process.exit(1);
-  }
-  const ddl = readFileSync(ddlPath, "utf-8");
-
-  const supabaseUrl = process.env.SUPABASE_DATABASE_URL;
-  if (!supabaseUrl) {
-    console.error("SUPABASE_DATABASE_URL is not set");
-    process.exit(1);
-  }
-
   // Session pooler (5432) is required for DDL; 6543 is transaction-pooled.
-  const direct = supabaseUrl.replace(":6543/", ":5432/");
+  const direct = url.replace(":6543/", ":5432/");
+  const host = new URL(direct).hostname;
+
+  const expected = target === "neon" ? /neon/i : /supabase/i;
+  if (!expected.test(host)) {
+    console.error(
+      `Refusing to run: '${target}' was requested but the host is ${host}`
+    );
+    process.exit(1);
+  }
 
   const client = new Client({
     connectionString: direct,
@@ -56,35 +80,40 @@ async function main() {
   });
   await client.connect();
 
-  const host = new URL(direct).hostname;
-  console.log(`Target: ${host}`);
-  if (!/supabase/i.test(host)) {
-    console.error(
-      `Refusing to run: target host does not look like Supabase (${host})`,
-    );
-    await client.end();
-    process.exit(1);
-  }
-
-  // Never write to a database that already has tables without saying so.
+  const { rows: who } = await client.query("SELECT current_user AS u");
   const { rows: before } = await client.query(`
     SELECT count(*)::int AS n FROM information_schema.tables
     WHERE table_schema = 'public'
   `);
-  console.log(`Tables before: ${before[0].n}`);
-  if (before[0].n > 0 && !process.argv.includes("--allow-nonempty")) {
+  const { rows: rowsBefore } = await client.query(`
+    SELECT coalesce(sum(n_live_tup),0)::bigint AS n FROM pg_stat_user_tables
+  `);
+
+  console.log(`Target:      ${host}  (${target})`);
+  console.log(`Admin role:  ${who[0].u}`);
+  console.log(`Tables:      ${before[0].n}`);
+  console.log(`Live rows:   ${rowsBefore[0].n}`);
+  console.log(`DDL:         ${ddlPath} (${ddl.split("\n").length} lines)`);
+  console.log(`Destructive: ${destructive ? destructive.length + " statement(s)!" : "none"}`);
+
+  if (flags.has("--dry-run")) {
+    await client.end();
+    console.log("\n--dry-run: nothing written.");
+    return;
+  }
+
+  if (before[0].n > 0 && !flags.has("--allow-nonempty")) {
     console.error(
-      "Refusing to run: public schema is not empty. Pass --allow-nonempty to override.",
+      "\nRefusing: public schema is not empty. Pass --allow-nonempty if this is an additive migration."
     );
     await client.end();
     process.exit(1);
   }
 
-  console.log(`Applying ${ddl.split("\n").length} lines of DDL...\n`);
   try {
     await client.query(ddl);
   } catch (err) {
-    console.error("Schema apply FAILED:", (err as Error).message);
+    console.error("\nFAILED:", (err as Error).message);
     console.error("The implicit transaction rolled back; nothing applied.");
     await client.end();
     process.exit(1);
@@ -94,10 +123,16 @@ async function main() {
     SELECT count(*)::int AS n FROM information_schema.tables
     WHERE table_schema = 'public'
   `);
-  console.log(`Tables after: ${after[0].n}`);
+  const { rows: pol } = await client.query(`
+    SELECT count(*)::int AS n FROM pg_policies
+    WHERE schemaname = 'public' AND policyname = 'tenant_isolation'
+  `);
+
+  console.log(`\nTables after: ${after[0].n}  (+${after[0].n - before[0].n})`);
+  console.log(`tenant_isolation policies: ${pol[0].n}`);
 
   await client.end();
-  console.log("\nSchema created on the Supabase failsafe.");
+  console.log(`Applied to ${target}.`);
 }
 
 main().catch((e) => {

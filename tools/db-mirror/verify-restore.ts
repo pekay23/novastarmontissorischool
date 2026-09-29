@@ -1,3 +1,4 @@
+import { loadEnv, supabaseUrl } from "./env";
 /**
  * Restore-readiness check for the Supabase failsafe.
  *
@@ -12,21 +13,7 @@
  * nothing. A check that cannot fail is worse than no check.
  */
 import { Client } from "pg";
-import { readFileSync, existsSync } from "node:fs";
-import { resolve } from "node:path";
 
-function loadEnv() {
-  for (const file of [".env.local", ".env"]) {
-    const p = resolve(process.cwd(), file);
-    if (!existsSync(p)) continue;
-    for (const line of readFileSync(p, "utf-8").split(/\r?\n/)) {
-      const m = line.match(/^([A-Z_]+)=(.*)$/);
-      if (m && !process.env[m[1]]) {
-        process.env[m[1]] = m[2].replace(/^["']|["']$/g, "");
-      }
-    }
-  }
-}
 
 loadEnv();
 const qi = (n: string) => `"${n.replace(/"/g, '""')}"`;
@@ -44,8 +31,12 @@ async function main() {
     connectionTimeoutMillis: 20000,
   });
   const supa = new Client({
-    connectionString: process.env
-      .SUPABASE_DIRECT_URL!.replace(":6543/", ":5432/"),
+    // supabaseUrl() rather than SUPABASE_DIRECT_URL: the workflow only
+    // supplies DATABASE_URL, SUPABASE_DATABASE_URL and DATABASE_URL_RLS, and
+    // this check holds a connection open long enough that the transaction
+    // pooler would recycle it. The .replace promotes the pooled port to
+    // session mode, so one secret covers both cases.
+    connectionString: supabaseUrl().replace(":6543/", ":5432/"),
     ssl: { rejectUnauthorized: false },
     connectionTimeoutMillis: 20000,
   });

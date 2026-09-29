@@ -1,4 +1,4 @@
-﻿-- Tenant isolation via PostgreSQL Row Level Security.
+-- Tenant isolation via PostgreSQL Row Level Security.
 -- Tenant id is a cuid() string, not a uuid: compare as text.
 --
 -- ---------------------------------------------------------------------------

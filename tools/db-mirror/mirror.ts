@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { loadEnv, supabaseUrl as supabaseConn } from "./env";
 /**
  * Neon → Supabase failsafe mirror.
  *
@@ -25,21 +26,7 @@
  *   bun run tools/db-mirror/mirror.ts --verify-only
  */
 import { Client } from "pg";
-import { readFileSync, existsSync } from "node:fs";
-import { resolve } from "node:path";
 
-function loadEnv() {
-  for (const file of [".env.local", ".env"]) {
-    const p = resolve(process.cwd(), file);
-    if (!existsSync(p)) continue;
-    for (const line of readFileSync(p, "utf-8").split(/\r?\n/)) {
-      const m = line.match(/^([A-Z_]+)=(.*)$/);
-      if (m && !process.env[m[1]]) {
-        process.env[m[1]] = m[2].replace(/^["']|["']$/g, "");
-      }
-    }
-  }
-}
 
 loadEnv();
 
@@ -136,7 +123,7 @@ async function topoSort(c: Client, tables: string[]): Promise<string[]> {
 
 async function main() {
   const neonUrl = process.env.DATABASE_URL;
-  const supabaseUrl = process.env.SUPABASE_DATABASE_URL;
+  const supabaseUrl = supabaseConn();
   if (!neonUrl || !supabaseUrl) {
     console.error("DATABASE_URL and SUPABASE_DATABASE_URL must both be set");
     process.exit(1);

@@ -1,0 +1,73 @@
+name: DB Mirror
+
+# Keeps the Supabase failsafe in step with the Neon primary.
+#
+# Split out of ci.yml rather than sitting inside it: a scheduled run should not
+# also burn minutes on lint, typecheck, build and E2E. This workflow does one
+# job and fails loudly if the failsafe drifts.
+
+on:
+  schedule:
+    # Every 6 hours. GitHub schedules on the hour and can be delayed under
+    # load, so treat this as a floor on freshness, not a guarantee.
+    - cron: '17 */6 * * *'
+  workflow_dispatch:
+    inputs:
+      verify_only:
+        description: 'Check the failsafe without rewriting it'
+        type: boolean
+        default: false
+
+concurrency:
+  # Never let two mirrors run at once; they truncate the target.
+  group: db-mirror
+  cancel-in-progress: false
+
+jobs:
+  mirror:
+    name: Neon to Supabase
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: 1.4.0
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # The tool reads DATABASE_URL for Neon and SUPABASE_DATABASE_URL for
+      # Supabase. The direct db.*.supabase.co host does not resolve from CI
+      # and PgBouncer rejects non-default roles, so the transaction pooler is
+      # the endpoint that works. See tools/db-mirror/env.ts.
+      - name: Mirror primary to failsafe
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SUPABASE_DATABASE_URL: ${{ secrets.SUPABASE_DATABASE_URL }}
+        run: |
+          if [ "${{ inputs.verify_only }}" = "true" ]; then
+            bun run tools/db-mirror/mirror.ts --verify-only
+          else
+            bun run tools/db-mirror/mirror.ts
+          fi
+
+      # Counts alone do not prove the copy is usable: a truncated array or a
+      # JSON column loaded as text would still match row counts.
+      - name: Verify restore readiness
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SUPABASE_DATABASE_URL: ${{ secrets.SUPABASE_DATABASE_URL }}
+        run: bun run tools/db-mirror/verify-restore.ts
+
+      - name: Verify RLS still enforces on the primary
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_URL_RLS: ${{ secrets.DATABASE_URL_RLS }}
+        run: bun run tools/db-mirror/verify-rls-enforced.ts neon

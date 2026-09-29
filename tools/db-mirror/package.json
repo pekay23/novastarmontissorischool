@@ -13,18 +13,24 @@
     "check-schema-drift": "bun check-schema-drift.ts",
     "check-rls-bypass": "bun check-rls-bypass.ts",
     "validate-rls": "bun validate-rls.ts",
+    "setup-rls-role": "bun setup-rls-role.ts",
+    "verify-rls-enforced": "bun verify-rls-enforced.ts",
+    "check-app-unaffected": "bun check-app-unaffected.ts",
+    "check-env-duplicates": "bun check-env-duplicates.ts",
+    "consolidate-env-local": "bun consolidate-env-local.ts",
     "lint": "eslint . --ext .ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "dotenv": "^17.2.3",
     "pg": "8.18.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.18.0",
     "@types/pg": "^8.18.0",
-    "@typescript-eslint/eslint-plugin": "8.68.0",
-    "@typescript-eslint/parser": "8.68.0",
-    "eslint": "^9.18.0",
+    "@typescript-eslint/eslint-plugin": "^8.71.0",
+    "@typescript-eslint/parser": "^8.71.0",
+    "eslint": "^9.39.5",
     "typescript": "npm:@typescript/typescript6@^6.0.2"
   }
 }
