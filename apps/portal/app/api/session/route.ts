@@ -14,7 +14,7 @@ export async function GET(req: NextRequest) {
       include: { role: true },
     })
 
-    if (!user) {
+    if (!user || !user.isActive) {
       return NextResponse.json({ authenticated: false }, { status: 401 })
     }
 

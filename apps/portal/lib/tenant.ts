@@ -22,16 +22,22 @@ export async function getTenantContext(): Promise<TenantContext> {
     throw new UnauthorizedError()
   }
 
-  const tenantId = process.env.TENANT_ID
-  if (!tenantId) {
-    throw new ServerConfigError('TENANT_ID environment variable is not set')
+  // Resolve tenantId from the user record (DB lookup), not from process.env.
+  // This ensures per-request tenant isolation instead of a single process-level TENANT_ID.
+  const dbUser = await prisma.user.findUnique({
+    where: { id: user.id },
+    select: { tenantId: true, role: { select: { name: true } } },
+  })
+
+  if (!dbUser) {
+    throw new UnauthorizedError()
   }
 
   return {
-    tenantId,
+    tenantId: dbUser.tenantId,
     schoolId: user.schoolId ?? null,
     userId: user.id,
-    role: user.role ?? null,
+    role: dbUser.role?.name ?? null,
     user,
   }
 }
@@ -70,15 +76,16 @@ export class ServerConfigError extends Error {
  */
 export async function checkPermission(permissionKey: string): Promise<boolean> {
   const ctx = await getTenantContext()
-  if (!ctx.role) return false
 
-  // Fetch the user's role permissions from DB (live, not cached)
+  // Live DB lookup — role is resolved from the database, not from the stale JWT session
   const user = await prisma.user.findUnique({
-    where: { id: ctx.userId },
-    select: { role: { select: { permissions: true } } },
+    where: { id: ctx.userId, tenantId: ctx.tenantId },
+    select: { role: { select: { permissions: true } }, school: { select: { tenantId: true } } },
   })
 
-  const rolePermissions = user?.role?.permissions ?? []
+  if (!user) return false
+
+  const rolePermissions = user.role?.permissions ?? []
   return rolePermissions.includes(permissionKey)
 }
 

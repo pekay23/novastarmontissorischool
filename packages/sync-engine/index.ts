@@ -36,9 +36,14 @@ export class SyncEngine {
 
   async write(table: string, record: Record<string, unknown>): Promise<SyncRecord> {
     // Write to local DB and mark as pending sync
+    const tenantId = record.tenantId as string | undefined
+    if (!tenantId) {
+      throw new Error('tenantId is required for sync records — defaulting to a hardcoded value would break tenant isolation')
+    }
+
     const syncRecord: SyncRecord = {
       id: crypto.randomUUID(),
-      tenantId: (record.tenantId as string) || 'default',
+      tenantId,
       entityType: table,
       entityId: record.id as string,
       table,

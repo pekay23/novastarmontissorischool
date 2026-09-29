@@ -5,7 +5,8 @@ import { z } from 'zod'
 import { authOptions } from '@/lib/auth'
 import { requirePermission } from '@/lib/tenant'
 
-// Prisma model delegates are camelCase - use string keys to avoid union type issues
+// Prisma model delegates are camelCase. entityModelMap maps URL segment to model name.
+// Dynamic access uses a typed delegate interface instead of `as any`.
 const entityModelMap: Record<string, string> = {
   academic_year: 'academicYear',
   term: 'term',
@@ -237,8 +238,18 @@ async function getSessionTenantSchool() {
   return { tenantId, schoolId, role: user.role ?? null }
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any -- dynamic Prisma model access
-const getModel = (modelName: string) => (prisma as any)[modelName]
+// Dynamic Prisma model access — entityModelMap is a closed, hardcoded set of
+// valid Prisma model names. We use a typed delegate interface instead of `as any`
+// to retain TypeScript safety on method signatures.
+interface PrismaDelegate {
+  findUnique: (args: { where: Record<string, unknown>; select?: Record<string, unknown>; include?: Record<string, unknown> }) => Promise<unknown | null>
+  findFirst: (args: { where?: Record<string, unknown>; select?: Record<string, unknown>; include?: Record<string, unknown>; skip?: number; take?: number; orderBy?: Record<string, unknown> }) => Promise<unknown | null>
+  findMany: (args: { where?: Record<string, unknown>; select?: Record<string, unknown>; include?: Record<string, unknown>; skip?: number; take?: number; orderBy?: Record<string, unknown> }) => Promise<unknown[]>
+  update: (args: { where: Record<string, unknown>; data: Record<string, unknown> }) => Promise<unknown>
+  delete: (args: { where: Record<string, unknown> }) => Promise<unknown>
+  create: (args: { data: Record<string, unknown> }) => Promise<unknown>
+}
+const getModel = (modelName: string): PrismaDelegate => (prisma as unknown as Record<string, PrismaDelegate>)[modelName]
 
 export async function GET(
   req: NextRequest,
@@ -328,7 +339,7 @@ export async function PATCH(
 
     const updated = await model.update({
       where: { id, tenantId, schoolId },
-      data: validated.data,
+      data: validated.data as Record<string, unknown>,
     })
 
     return NextResponse.json(updated)
@@ -375,7 +386,8 @@ export async function DELETE(
     }
 
     // Check if system entity (protected)
-    const isSystem = 'isSystem' in entity && entity.isSystem === true
+    const entityRecord = entity as Record<string, unknown>
+    const isSystem = 'isSystem' in entityRecord && entityRecord.isSystem === true
     if (isSystem) {
       return NextResponse.json({ error: 'System entities cannot be deleted' }, { status: 403 })
     }

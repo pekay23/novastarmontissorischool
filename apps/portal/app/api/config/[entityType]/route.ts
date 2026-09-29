@@ -409,8 +409,8 @@ export async function POST(
       return NextResponse.json({ error: 'Validation failed', issues: validated.error.format() }, { status: 400 })
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- dynamic Prisma model access
-    const model = prisma[entityConfig.model] as any
+    // entityConfig.model is keyof typeof prisma; use typed delegate to avoid `as any`
+    const model = (prisma as unknown as Record<string, { create: (args: { data: Record<string, unknown> }) => Promise<unknown> }>)[entityConfig.model as string]
     const validatedData = validated.data as Record<string, unknown>
     const created = await model.create({
       data: {
