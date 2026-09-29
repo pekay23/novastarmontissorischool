@@ -11,7 +11,7 @@ import {
   Calendar, Clock, FileText, Settings, LogOut, Menu,
   Bell, Search, Shield, School, LibraryBig, Package,
 } from 'lucide-react'
-import { Button, cn, ToastProvider, ConfirmProvider } from '@novastar/shared-ui'
+import { Button, cn, ToastProvider, ConfirmProvider, useToast } from '@novastar/shared-ui'
 import { useState } from 'react'
 
 const navigation = [
@@ -144,7 +144,7 @@ export default function PortalLayout({
       {/* Main content */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Header */}
-        <header className="flex h-14 items-center justify-between border-b bg-card px-4">
+        <header className="relative flex h-14 items-center justify-between border-b bg-card px-4">
           <div className="flex items-center gap-2">
             <Button
               variant="ghost"
@@ -159,18 +159,7 @@ export default function PortalLayout({
             </h1>
           </div>
 
-          <div className="flex items-center gap-2">
-            <Button variant="ghost" size="icon">
-              <Bell className="h-4 w-4" />
-            </Button>
-            <Button variant="ghost" size="icon">
-              <Search className="h-4 w-4" />
-            </Button>
-            <div className="flex items-center gap-2 rounded-md bg-muted px-3 py-1 text-sm">
-              <span className="hidden sm:inline">{session?.user?.name}</span>
-              <span className="text-xs uppercase text-muted-foreground">({userRole})</span>
-            </div>
-          </div>
+          <HeaderActions userName={session?.user?.name} userRole={userRole} />
         </header>
 
         {/* Page content */}
@@ -182,6 +171,102 @@ export default function PortalLayout({
       </div>
       </ConfirmProvider>
       </ToastProvider>
+    </div>
+  )
+}
+
+function HeaderActions({
+  userName,
+  userRole,
+}: {
+  userName?: string | null
+  userRole: string
+}) {
+  const { toast } = useToast()
+  const router = useRouter()
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [query, setQuery] = useState('')
+
+  const matches = query.trim()
+    ? navigation.filter((item) =>
+        item.name.toLowerCase().includes(query.trim().toLowerCase())
+      )
+    : []
+
+  function goTo(href: string) {
+    setSearchOpen(false)
+    setQuery('')
+    router.push(href)
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      {searchOpen && (
+        <input
+          autoFocus
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              setSearchOpen(false)
+              setQuery('')
+            } else if (e.key === 'Enter' && matches[0]) {
+              goTo(matches[0].href)
+            }
+          }}
+          placeholder="Search pages..."
+          aria-label="Search pages"
+          className="h-9 w-40 rounded-md border bg-background px-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring sm:w-56"
+        />
+      )}
+
+      <Button
+        variant="ghost"
+        size="icon"
+        aria-label="Notifications"
+        onClick={() =>
+          toast.info({
+            title: 'Notifications',
+            description: 'No new notifications',
+          })
+        }
+      >
+        <Bell className="h-4 w-4" />
+      </Button>
+
+      <Button
+        variant="ghost"
+        size="icon"
+        aria-label="Search"
+        aria-expanded={searchOpen}
+        onClick={() => {
+          setSearchOpen((open) => !open)
+          setQuery('')
+        }}
+      >
+        <Search className="h-4 w-4" />
+      </Button>
+
+      {searchOpen && matches.length > 0 && (
+        <ul className="absolute right-4 top-14 z-50 w-56 overflow-hidden rounded-md border bg-card shadow-lg">
+          {matches.map((item) => (
+            <li key={item.name}>
+              <button
+                onClick={() => goTo(item.href)}
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground"
+              >
+                <item.icon className="h-4 w-4" />
+                {item.name}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <div className="flex items-center gap-2 rounded-md bg-muted px-3 py-1 text-sm">
+        <span className="hidden sm:inline">{userName}</span>
+        <span className="text-xs uppercase text-muted-foreground">({userRole})</span>
+      </div>
     </div>
   )
 }

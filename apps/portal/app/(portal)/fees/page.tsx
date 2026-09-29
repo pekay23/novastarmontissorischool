@@ -64,15 +64,10 @@ export default function FeesPage() {
 
   const fetchPaymentMethods = useCallback(async () => {
     try {
-      const res = await fetch('/api/config')
+      const res = await fetch('/api/finance/payment-methods')
       if (res.ok) {
         const data = await res.json()
-        const methods = (data.entityTypes || []).filter((e: { type: string }) => e.type === 'payment_method')
-        setPaymentMethods(methods.map((m: { code: string; name: string; instructions?: string }) => ({
-          code: m.code,
-          name: m.name,
-          instructions: m.instructions,
-        })))
+        setPaymentMethods(data.data || [])
       }
     } catch {
       // silently fail
@@ -347,7 +342,7 @@ export default function FeesPage() {
                 onChange={(e) => setPaymentForm({ ...paymentForm, reference: e.target.value })}
               />
             </div>
-            {paymentForm.methodCode === 'MTN_MOMO' && (
+            {paymentForm.methodCode === 'MOMO' && (
               <div className="space-y-2">
                 <Label>MoMo Phone</Label>
                 <Input

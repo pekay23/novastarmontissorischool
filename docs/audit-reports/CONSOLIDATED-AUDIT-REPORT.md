@@ -19,7 +19,8 @@ This comprehensive audit identified **253 total findings** across 8 categories. 
 - ✅ **Typecheck passes** - All 13 packages typecheck clean
 - ✅ **Lint passes** - Zero errors, zero warnings (all 14 unused var warnings fixed)
 - ✅ **Tests** - 63 unit tests pass; 3 Playwright E2E specs written (not yet executed against a running stack)
-- ⚠️ **Database** - Initial migration created; RLS policies written but **not applied** (blocked by Neon HTTP driver, see 3.1)
+- ⚠️ **Database** - Initial migration written but never applied (no `_prisma_migrations` on Neon; live DB came from `db push`); RLS policies written and compile-verified but do not enforce isolation (see 3.1)
+- 🔴 **Backup** - Supabase failsafe is empty: 0 tables, 0 rows. The mirror has never run. No working backup exists (see 3.2)
 - ⚠️ **Secrets rotation** - Skipped per user directive (no production secrets leaked in this repo)
 
 ### Severity Distribution
@@ -460,46 +461,96 @@ erroring on `test.describe()`. Fixed by:
 
 ## 13. Outstanding Items
 
-### ⚠️ 3.1 RLS Blocked by the Neon HTTP Driver (Critical, unresolved)
+### ⚠️ 3.1 RLS Written and Verified, Not Deployed (Critical, unresolved)
 
-Finding 3.1 ("No PostgreSQL RLS Policies") is **not** fixed. The policies are
-written but cannot be applied safely today.
+Finding 3.1 ("No PostgreSQL RLS Policies") is **not** fixed end to end. The
+policies are written, syntactically valid, and proven to compile — but they do
+not enforce isolation, and they are not deployed anywhere. Three separate
+blockers, all confirmed against the live databases.
 
-`packages/database/index.ts` uses `PrismaNeon` (`@prisma/adapter-neon`), the
-Neon serverless HTTP driver. It is stateless — every query is a separate HTTP
-request against a pooled endpoint, so there is no session to hang
-`SET app.current_tenant_id` on. `current_setting()` therefore always returns
-NULL, all 51 policies evaluate false, and every read and write returns zero
-rows. Applying the file as written would take down the entire application.
+**Policies:** `packages/database/prisma/rls/tenant-isolation.sql` — 51
+tenant-scoped tables, `ENABLE` + `FORCE ROW LEVEL SECURITY`, single
+`tenant_isolation` policy per table keyed on `app.current_tenant_id`.
+Validated in a rolled-back transaction on Neon: 189 statements applied OK,
+45 policies created, 0 syntax errors.
 
-To unblock, one of:
-1. Move to a stateful driver (`PrismaPg` / node-postgres / Neon WebSocket) and
-   set `app.current_tenant_id` per connection inside a transaction, or
-2. Keep the HTTP driver and scope the setting per transaction:
-   `prisma.$transaction(async tx => { await tx.$executeRaw\`SELECT
-   set_config('app.current_tenant_id', ${tenantId}, true)\`; ... })`
+**Blocker 1 — the app role bypasses RLS entirely.** Both databases connect as a
+role with `rolbypassrls = true`, which overrides `FORCE ROW LEVEL SECURITY`:
 
-Until then, tenant isolation is application-only, via `getTenantContext()` in
-`apps/portal/lib/tenant.ts` (12 route files depend on it). That reads
-`process.env.TENANT_ID`, not the session — a single-tenant process, so
-cross-tenant leakage is not currently reachable, but the defense-in-depth the
-finding asked for does not exist.
+| Database | Role | rolsuper | rolbypassrls |
+|---|---|---|---|
+| Neon primary | `neondb_owner` | false | **true** |
+| Supabase failsafe | `postgres` | false | **true** |
+
+Proved behaviourally: with the policies installed, `SELECT count(*) FROM
+"School"` returns 1 row with no tenant context set, 1 row for a tenant that
+does not exist, and 1 row for the real tenant. Isolation does not hold. Fixing
+this needs a dedicated non-owner, non-BYPASSRLS application role, which is a
+privilege and connection-string change on both providers.
+
+**Blocker 2 — the Neon HTTP driver cannot carry the tenant context.**
+`packages/database/index.ts` uses `PrismaNeon` (`@prisma/adapter-neon`), a
+stateless driver where every query is a separate HTTP request, so there is no
+session to hang `SET app.current_tenant_id` on. Even with a correct role,
+`current_setting()` would always return NULL. Needs either a stateful driver
+(`PrismaPg` / Neon WebSocket) or per-transaction
+`set_config('app.current_tenant_id', ..., true)`.
+
+**Blocker 3 — schema drift.** 6 tenant-scoped models exist in
+`schema.prisma` but not in Neon: `BookCategory`, `Book`, `BookLoan`,
+`InventoryCategory`, `InventoryItem`, `InventoryTransaction`. Policies for them
+cannot be created until the schema is migrated. Note the checked-in
+`20260929000000_init` migration has never been applied — there is no
+`_prisma_migrations` table on Neon. The live database was created by `db push`.
+
+Until all three are resolved, tenant isolation is application-only, via
+`getTenantContext()` in `apps/portal/lib/tenant.ts` (12 route files depend on
+it). That reads `process.env.TENANT_ID`, not the session — a single-tenant
+process, so cross-tenant leakage is not currently reachable, but the
+defense-in-depth this finding asked for does not exist.
+
+### ⚠️ 3.2 Supabase Failsafe Is Empty — No Backup Exists (Critical, new)
+
+Checked directly against `SUPABASE_DATABASE_URL`: the `public` schema contains
+**0 tables**, 0 RLS policies, 0 rows. The failsafe holds no data, so there is
+currently no working backup of the Neon primary. RLS cannot be applied to a
+database with no tables, so this request is not actionable as stated.
+
+The mirror has never run. Three independent reasons, all confirmed:
+
+1. **Wrong table names.** `tools/db-mirror/mirror.ts` and
+   `setup-pg-cron.sql` reference snake_case tables (`tenant`, `school`,
+   `fee_invoice`). Neon has 50 tables, all PascalCase quoted (`"Tenant"`,
+   `"School"`, `"FeeInvoice"`). Zero snake_case tables exist, so every mirror
+   statement targets a nonexistent relation.
+2. **pg_cron never set up.** `cron.job` is not queryable on Neon and
+   `mirror_to_supabase()` does not exist in `pg_proc`. The setup script is a
+   template still containing `YOUR_PASSWORD`.
+3. **`psql` is not installed**, so `mirror.ts` cannot run, and its
+   `COPY ... TO PROGRAM 'psql ...'` approach shells out to a binary that does
+   not exist.
+
+Neon does hold real data — 25 non-empty tables, e.g. `SubjectLevel` 180,
+`Permission` 28, `Subject` 19, `Class` 14, `Role` 7.
 
 ### Per User Directive - Not Addressed
 1. **Secrets Rotation** - Skipped: no production secrets leaked in this repository
 2. **Dead Code Package Removal** - Skipped: user explicitly requested to keep unused packages (auth, notifications, payments, ghana-education, reports, sync-engine, plugins, plugin-registry)
 
 ### Recommended for Future Sprint
-1. Resolve the RLS driver blocker above (3.1) — highest security value
-2. Migrate React Query from unused setup to actual usage (H1)
-3. Fix public-site i18n wiring (H2)
-4. Add pagination to data tables (4.2)
-5. Implement rate limiting middleware (H7)
-6. Add CSP, HSTS security headers (Security A05)
-7. Stand up a seeded environment and actually run the E2E specs
-8. Create Data Processing Register for Ghana DPA compliance
-9. Define production deployment path (Docker/Vercel/Fly.io)
-10. Standardize TypeScript toolchain versions
+1. Build a working Neon → Supabase mirror (3.2) — there is no backup today
+2. Create a non-BYPASSRLS application role on both providers (3.1 blocker 1)
+3. Move off the Neon HTTP driver or scope the tenant setting per transaction (3.1 blocker 2)
+4. Reconcile the 6 missing tables and adopt `migrate deploy` over `db push` (3.1 blocker 3)
+5. Migrate React Query from unused setup to actual usage (H1)
+6. Fix public-site i18n wiring (H2)
+7. Add pagination to data tables (4.2)
+8. Implement rate limiting middleware (H7)
+9. Add CSP, HSTS security headers (Security A05)
+10. Stand up a seeded environment and actually run the E2E specs
+11. Create Data Processing Register for Ghana DPA compliance
+12. Define production deployment path (Docker/Vercel/Fly.io)
+13. Standardize TypeScript toolchain versions
 
 Each phase produced detailed markdown reports:
 

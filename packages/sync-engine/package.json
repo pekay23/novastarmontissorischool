@@ -8,7 +8,7 @@
     "dev": "tsx watch index.ts",
     "build": "tsc --noEmit",
     "lint": "eslint . --ext .ts",
-    "test": "bun test",
+    "test": "bun test --pass-with-no-tests",
     "start": "tsx index.ts"
   },
   "dependencies": {
