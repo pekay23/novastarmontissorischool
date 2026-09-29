@@ -16,6 +16,8 @@ This comprehensive audit identified **253 total findings** across 8 categories. 
 - ✅ **8/8 Critical findings resolved** (C1-C8)
 - ✅ **10/10 High findings resolved** (H1-H10), plus 3 additional authorization gaps on GET endpoints found by LLM Council Pass 1 (assessments GET, invoices GET, payments GET — all now have `requirePermission` checks)
 - ✅ **Additional security fixes** found by LLM Council Pass 1 and Pass 2:
+  - **SEC-07 IDOR (portal routes):** All 13 route files in `apps/portal/app/api/*/[id]/route.ts` now include `tenantId` and/or `schoolId` in every `update()` and `delete()` where clause, eliminating the TOCTOU window. Six additional IDOR instances found and fixed in transaction blocks (`finance/payments/route.ts:151`, `finance/invoices/[id]/payments/route.ts:131`, `enrollments/[id]/route.ts:20`, `attendance/[id]/route.ts:69+98`, `library/loans/[id]/route.ts:61`).
+  - **AU-4/AU-5 IDOR (auth package):** `packages/auth/index.ts` now includes `tenantId` in all 7 `where: { id: ... }` predicates — `approveDelegation`, `revokeDelegation`, `getEffectivePermissions`, `resolveRolePermissions`, `createDelegation`, and `getUserSession`.
   - Hardcoded seed passwords replaced with env-var-based approach (`SEED_HEADMASTER_PASSWORD`, `SEED_PORTAL_ADMIN_PASSWORD`)
   - Added `assessment:read` permission to seed catalog
   - Added `requirePermission` to 6 previously-ungated GET endpoints (assessments list/detail/scores, invoices list/payments list/invoice-payments)

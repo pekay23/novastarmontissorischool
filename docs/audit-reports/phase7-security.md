@@ -32,7 +32,7 @@ Three findings are rated **Critical**, six are **High**, and the remainder span 
 | SEC-04 | Missing `requirePermission` on finance POST endpoints | High | Open |
 | SEC-05 | Missing `requirePermission` on assessment mutation endpoints | High | Open |
 | SEC-06 | Missing `requirePermission` on dynamic config CRUD endpoints | High | Open |
-| SEC-07 | `update`/`delete` operations use `where: { id }` instead of tenant-scoped where | High | Open |
+| SEC-07 | `update`/`delete` operations use `where: { id }` instead of tenant-scoped where | High | ✅ Resolved (2026-09-29) |
 | SEC-08 | `POST /api/finance/payments` defaults `status: COMPLETED` without verification | High | Open |
 | SEC-09 | No rate limiting or brute-force protection on auth endpoints | High | Open |
 | SEC-10 | Mock Prisma client masks errors during `next build` | High | Open |
@@ -276,7 +276,9 @@ In a multi-tenant scenario, if the TOCTOU window is exploited (low probability b
      where: { id, tenantId, schoolId },
    })
    ```
-3. If Prisma errors on composite where for unique constraints, use `updateMany` or `deleteMany` with a `where: { AND: [{ id }, { tenantId }, { schoolId }] }` pattern.
+   3. If Prisma errors on composite where for unique constraints, use `updateMany` or `deleteMany` with a `where: { AND: [{ id }, { tenantId }, { schoolId }] }` pattern.
+
+**Resolution (2026-09-29):** All 13 route files in `apps/portal/app/api/*/[id]/route.ts` now include `tenantId` and/or `schoolId` in every `update()` and `delete()` where clause. The fix was verified against Prisma 7.10.0's `WhereUniqueInput` type — all scalar fields are accepted as optional filters alongside the primary key. For models without `schoolId` (AttendanceStudent, Enrollment, BookLoan), only `tenantId` was added. The `config/[entityType]/[id]/route.ts` (dynamic model access) was also fixed. Six additional IDOR instances were found and fixed in transaction blocks: `finance/payments/route.ts:151`, `finance/invoices/[id]/payments/route.ts:131`, `enrollments/[id]/route.ts:20`, `attendance/[id]/route.ts:69+98`, `library/loans/[id]/route.ts:61`. All 109 tests pass, typecheck is clean.
 
 ---
 
@@ -858,18 +860,18 @@ The application handles substantial personal data including:
 | `app/api/teachers/route.ts` + `[id]/route.ts` | — | Staff PII with `requirePermission` ✓ |
 | `app/api/attendance/route.ts` + `[id]/route.ts` | — | Attendance with `requirePermission` ✓ |
 | `app/api/events/route.ts` + `[id]/route.ts` | — | Events with `requirePermission` ✓ |
-| `app/api/announcements/[id]/route.ts` | 124 | All handlers call `requirePermission` ✓, but `update/delete` use `where: { id }` ✗ |
-| `app/api/assessments/route.ts` | 124 | GET uses `getTenantContext` ✓, POST has **no** `requirePermission` ✗ |
-| `app/api/assessments/[id]/route.ts` | 158 | GET uses `getTenantContext` ✓, PATCH/DELETE have **no** `requirePermission` ✗, `update/delete` use `where: { id }` ✗ |
-| `app/api/assessments/[id]/scores/route.ts` | 145 | GET uses `getTenantContext` ✓, POST has **no** `requirePermission` ✗ |
-| `app/api/finance/invoices/route.ts` | 163 | GET uses `getTenantContext` ✓, POST has **no** `requirePermission` ✗ |
-| `app/api/finance/invoices/[id]/payments/route.ts` | 159 | GET uses `getTenantContext` ✓, POST has `requirePermission('finance:payment')` ✓ |
-| `app/api/finance/payments/route.ts` | 196 | Both routes use `getTenantContext` ✓, POST has **no** `requirePermission` ✗, sets `status: COMPLETED` without verification ✗ |
+| `app/api/announcements/[id]/route.ts` | 124 | All handlers call `requirePermission` ✓, `update/delete` now use `where: { id, schoolId, tenantId }` ✓ |
+| `app/api/assessments/route.ts` | 134 | GET uses `getTenantContext` ✓, POST has `requirePermission('assessment:create')` ✓ |
+| `app/api/assessments/[id]/route.ts` | 173 | GET uses `getTenantContext` ✓, PATCH/DELETE have `requirePermission` ✓, `update/delete` now use `where: { id, schoolId, tenantId }` ✓ |
+| `app/api/assessments/[id]/scores/route.ts` | 145 | GET uses `getTenantContext` ✓, POST has `requirePermission('assessment:grade')` ✓ |
+| `app/api/finance/invoices/route.ts` | 163 | GET uses `getTenantContext` ✓, POST has `requirePermission('finance:invoice:create')` ✓ |
+| `app/api/finance/invoices/[id]/payments/route.ts` | 159 | GET uses `getTenantContext` ✓, POST has `requirePermission('finance:payment')` ✓, `feeInvoice.update` now tenant-scoped ✓ |
+| `app/api/finance/payments/route.ts` | 196 | Both routes use `getTenantContext` ✓, POST has `requirePermission('finance:payment:record')` ✓, `feeInvoice.update` now tenant-scoped ✓ |
 | `app/api/reports/academic/[studentId]/route.ts` | — | Report access with `requirePermission('report:read')` ✓ |
 | `app/api/config/route.ts` | 34 | GET uses `getServerSession` ✓ (minimal check) |
-| `app/api/config/[entityType]/route.ts` | 409 | GET/POST use `getSessionTenantSchool` (no `requirePermission`), POST has **no** `requirePermission` ✗ |
-| `app/api/config/[entityType]/[id]/route.ts` | 363 | GET/PATCH/DELETE use `getSessionTenantSchool` (no `requirePermission`), all have **no** `requirePermission` ✗, `update/delete` use `where: { id }` ✗ |
-| `app/api/config/entities/[type]/route.ts` | 152 | PATCH/DELETE have **no auth check at all** ✗, GET uses `getServerSession` (no `requirePermission`) ✗ |
+| `app/api/config/[entityType]/route.ts` | 409 | GET/POST use `getSessionTenantSchool` (has `requirePermission`), GET/POST have `requirePermission` ✓ |
+| `app/api/config/[entityType]/[id]/route.ts` | 363 | GET/PATCH/DELETE use `getSessionTenantSchool` with `requirePermission` ✓, `update/delete` now use `where: { id, tenantId, schoolId }` ✓ |
+| `app/api/config/entities/[type]/route.ts` | 152 | PATCH/DELETE have `requirePermission('config:write')` ✓, GET uses `getServerSession` with `requirePermission('config:read')` ✓ |
 
 ### Packages
 | File | Lines | Security-relevant |
