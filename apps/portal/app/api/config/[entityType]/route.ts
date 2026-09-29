@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import { authOptions } from '@/lib/auth'
+import { requirePermission } from '@/lib/tenant'
 import {
   AcademicYearSchema,
   TermSchema,
@@ -312,6 +313,8 @@ export async function GET(
       return NextResponse.json({ error: 'Unknown entity type' }, { status: 404 })
     }
 
+    await requirePermission('config:read')
+
     const { tenantId, schoolId } = await getSessionTenantSchool()
     if (!tenantId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -360,6 +363,15 @@ export async function GET(
       },
     })
   } catch (error) {
+    if (error instanceof Error && error.name === 'UnauthorizedError') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+    if (error instanceof Error && error.name === 'ForbiddenError') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+    if (error instanceof Error && error.name === 'ServerConfigError') {
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
     console.error(`Config entity fetch error:`, error)
     return NextResponse.json({ error: 'Failed to fetch entities' }, { status: 500 })
   }
@@ -376,6 +388,8 @@ export async function POST(
     if (!entityConfig) {
       return NextResponse.json({ error: 'Unknown entity type' }, { status: 404 })
     }
+
+    await requirePermission('config:write')
 
     const { tenantId, schoolId } = await getSessionTenantSchool()
     if (!tenantId) {
@@ -403,6 +417,15 @@ export async function POST(
 
     return NextResponse.json(created, { status: 201 })
   } catch (error) {
+    if (error instanceof Error && error.name === 'UnauthorizedError') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+    if (error instanceof Error && error.name === 'ForbiddenError') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+    if (error instanceof Error && error.name === 'ServerConfigError') {
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
     console.error(`Config entity create error:`, error)
     return NextResponse.json({ error: 'Failed to create entity' }, { status: 500 })
   }

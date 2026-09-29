@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import { authOptions } from '@/lib/auth'
+import { requirePermission } from '@/lib/tenant'
 
 // Prisma model delegates are camelCase - use string keys to avoid union type issues
 const entityModelMap: Record<string, string> = {
@@ -251,6 +252,8 @@ export async function GET(
       return NextResponse.json({ error: 'Unknown entity type' }, { status: 404 })
     }
 
+    await requirePermission('config:read')
+
     const { tenantId, schoolId } = await getSessionTenantSchool()
     if (!tenantId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -267,6 +270,15 @@ export async function GET(
 
     return NextResponse.json(entity)
   } catch (error) {
+    if (error instanceof Error && error.name === 'UnauthorizedError') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+    if (error instanceof Error && error.name === 'ForbiddenError') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+    if (error instanceof Error && error.name === 'ServerConfigError') {
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
     console.error(`Config entity fetch error:`, error)
     return NextResponse.json({ error: 'Failed to fetch entity' }, { status: 500 })
   }
@@ -288,6 +300,8 @@ export async function PATCH(
     if (!updateSchema) {
       return NextResponse.json({ error: 'No update schema for this entity type' }, { status: 500 })
     }
+
+    await requirePermission('config:write')
 
     const { tenantId, schoolId } = await getSessionTenantSchool()
     if (!tenantId) {
@@ -318,6 +332,15 @@ export async function PATCH(
 
     return NextResponse.json(updated)
   } catch (error) {
+    if (error instanceof Error && error.name === 'UnauthorizedError') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+    if (error instanceof Error && error.name === 'ForbiddenError') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+    if (error instanceof Error && error.name === 'ServerConfigError') {
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
     console.error(`Config entity update error:`, error)
     return NextResponse.json({ error: 'Failed to update entity' }, { status: 500 })
   }
@@ -340,6 +363,8 @@ export async function DELETE(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    await requirePermission('config:write')
+
     // Check if entity exists and belongs to tenant/school
     const model = getModel(modelName)
     const entity = await model.findFirst({ where: { id, tenantId, schoolId } })
@@ -357,6 +382,15 @@ export async function DELETE(
 
     return NextResponse.json({ success: true })
   } catch (error) {
+    if (error instanceof Error && error.name === 'UnauthorizedError') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+    if (error instanceof Error && error.name === 'ForbiddenError') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+    if (error instanceof Error && error.name === 'ServerConfigError') {
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
     console.error(`Config entity delete error:`, error)
     return NextResponse.json({ error: 'Failed to delete entity' }, { status: 500 })
   }

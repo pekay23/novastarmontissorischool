@@ -5,7 +5,14 @@
   "main": "mirror.ts",
   "scripts": {
     "mirror": "bun mirror.ts",
-    "setup-pg-cron": "bun setup-pg-cron.ts"
+    "verify": "bun mirror.ts --verify-only",
+    "verify-restore": "bun verify-restore.ts",
+    "apply-schema": "bun apply-schema.ts",
+    "inspect-neon": "bun inspect-neon.ts",
+    "inspect-supabase": "bun inspect-supabase.ts",
+    "check-schema-drift": "bun check-schema-drift.ts",
+    "check-rls-bypass": "bun check-rls-bypass.ts",
+    "validate-rls": "bun validate-rls.ts"
   },
   "dependencies": {
     "pg": "8.18.0"
