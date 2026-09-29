@@ -12,6 +12,9 @@ env:
   DATABASE_URL: ${{ secrets.DATABASE_URL }}
   NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET }}
   NEXTAUTH_URL: http://localhost:3000
+  # Migration deploy stays off until the Prisma migration history is baselined.
+  # See the gated step in the build job.
+  MIGRATE_ON_PUSH: ${{ vars.MIGRATE_ON_PUSH }}
 
 jobs:
   lint-and-typecheck:
@@ -103,8 +106,24 @@ jobs:
       - name: Build all apps
         run: bun run build
 
+      # The package is @novastar/database, not "database", so --filter=database
+      # matched nothing and turbo exited 1 with "No package found with name
+      # 'database' in workspace". Fixed, but the step is now GATED OFF.
+      #
+      # It must stay off until the migration history is baselined. Neon has no
+      # _prisma_migrations table, because the live schema was built with
+      # `prisma db push` rather than `migrate deploy`, and the checked-in init
+      # migration is 56 bare CREATE TABLE / CREATE TYPE statements with no
+      # IF NOT EXISTS. Against a database that already has all of them it will
+      # fail partway through, leaving a partially applied migration recorded
+      # against production on every push to main.
+      #
+      # To enable: baseline the live databases (mark the init migration as
+      # applied with `prisma migrate resolve --applied`, or diff and reconcile
+      # first), then set MIGRATE_ON_PUSH=true in the repository settings.
       - name: Deploy database migrations
-        run: bunx turbo run db:migrate:deploy --filter=database
+        if: env.MIGRATE_ON_PUSH == 'true'
+        run: bunx turbo run db:migrate:deploy --filter=@novastar/database
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
