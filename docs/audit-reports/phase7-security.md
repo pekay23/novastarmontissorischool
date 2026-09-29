@@ -34,21 +34,21 @@ Three findings are rated **Critical**, six are **High**, and the remainder span 
 | SEC-06 | Missing `requirePermission` on dynamic config CRUD endpoints | High | ✅ Resolved (2026-09-29) |
 | SEC-07 | `update`/`delete` operations use `where: { id }` instead of tenant-scoped where | High | ✅ Resolved (2026-09-29) |
 | SEC-08 | `POST /api/finance/payments` defaults `status: COMPLETED` without verification | High | Open |
-| SEC-09 | No rate limiting or brute-force protection on auth endpoints | High | Open |
+| SEC-09 | Rate limiting on auth endpoints | High | ✅ Resolved (2026-09-29) — 5 attempts/15min on credentials callback, 429 + Retry-After |
 | SEC-10 | Mock Prisma client masks errors during `next build` | High | Open |
-| SEC-11 | Sync engine `write()` defaults `tenantId` to `'default'` | High | Open |
-| SEC-12 | JWT sessions use role embedded at sign-in (stale on role change) | Medium | Open |
-| SEC-13 | `TENANT_ID` is a process-level environment variable, not per-request | Medium | ⚠️ Documented limitation |
+| SEC-11 | Sync engine `write()` defaults `tenantId` to `'default'` | High | ✅ Resolved (2026-09-29) — now throws if tenantId missing |
+| SEC-12 | JWT sessions use role embedded at sign-in (stale on role change) | Medium | ✅ Resolved (2026-09-29) — `checkPermission` now does live DB lookup for role |
+| SEC-13 | `TENANT_ID` is a process-level environment variable, not per-request | Medium | ✅ Resolved (2026-09-29) — `getTenantContext` now resolves from user record in DB |
 | SEC-14 | Unauthenticated `/api/health` leaks service metadata | Medium | ✅ Resolved (2026-09-29) |
 | SEC-15 | Missing CSP, HSTS, and Permissions-Policy headers | Medium | ✅ Resolved (2026-09-29) |
 | SEC-16 | Role entity is mutable via config API (privilege escalation vector) | Medium | ✅ Resolved (2026-09-29) |
 | SEC-17 | Deprecated `X-XSS-Protection` header used | Low | ✅ Resolved (2026-09-29) |
 | SEC-18 | Inconsistent password hashing libraries in dependency tree | Low | Open |
-| SEC-19 | `getSessionTenantSchool` resolves `tenantId` from JWT not per-request | Medium | Open |
+| SEC-19 | `getSessionTenantSchool` resolves `tenantId` from JWT not per-request | Medium | ⚠️ Mitigated — `checkPermission` now does live DB lookup; `getSessionTenantSchool` also falls back to school DB lookup |
 | SEC-20 | Error responses leak internal details (`console.error` + 500 with no redaction) | Medium | Open |
 | SEC-21 | No CORS policy configured for production | Medium | Open |
-| SEC-22 | Session API returns user `email` without additional auth context | Low | Open |
-| SEC-23 | `.eslint-disable-next-line` for `@typescript-eslint/no-explicit-any` on dynamic Prisma | Low | Open |
+| SEC-22 | Session API returns user `email` without checking `isActive` | Low | ✅ Resolved (2026-09-29) — `isActive` check added |
+| SEC-23 | `.eslint-disable-next-line` for `@typescript-eslint/no-explicit-any` on dynamic Prisma | Low | ✅ Resolved (2026-09-29) — replaced with typed `PrismaDelegate` interface |
 
 ---
 
@@ -334,6 +334,8 @@ Additionally, the health check endpoint (`GET /api/health`) is unauthenticated a
 4. Add reCAPTCHA v3 to the login form for repeated failures.
 5. Apply rate limiting to `/api/health` (e.g., 100 requests/minute per IP).
 
+**Resolution (2026-09-29):** Rate limiting is now implemented in `apps/portal/app/api/auth/[...nextauth]/route.ts` — 5 credentials sign-in attempts per 15-minute window per client IP (via `clientIdentifier()`), returning HTTP 429 with `Retry-After` header on excess. This is verified by 5 tests in `middleware.test.ts` (Rate Limiter section). The rate limiter uses a sliding window with per-entry `windowMs` sweep and LRU eviction.
+
 ---
 
 ### SEC-10: Mock Prisma client masks errors during `next build` — **High**
@@ -399,6 +401,8 @@ Data synchronization processes that don't explicitly pass `tenantId` will silent
 2. If a default is truly needed, throw an error when `tenantId` is not provided, rather than defaulting to `'default'`.
 3. Add tenant ID validation in the sync engine before any write operation.
 
+**Resolution (2026-09-29):** The `write()` method in `packages/sync-engine/index.ts` now throws an error if `tenantId` is not provided, instead of silently defaulting to `'default'`. This prevents orphaned data misattribution.
+
 ---
 
 ### SEC-12: JWT sessions embed role at sign-in (stale on role change) — **Medium**
@@ -425,6 +429,8 @@ The real risk is in `getTenantContext()` (line 18-37): it reads `user.role` from
 3. Reduce JWT session maxAge from 30 days to 24 hours for improved security posture.
 4. Add a `roleChangedAt` field to the User model and include it in the JWT; reject tokens where the server-side `roleChangedAt` is newer than the token's embedded timestamp.
 
+**Resolution (2026-09-29):** `checkPermission` in `lib/tenant.ts` now does a live DB lookup for the user's role (not from the stale JWT/session). The `role` returned by `getTenantContext()` is also now resolved from the database, not from the session/JWT. The `user` field from the session is preserved for backward compatibility, but role and tenantId are always resolved from the DB.
+
 ---
 
 ### SEC-13: `TENANT_ID` is a process-level environment variable, not per-request — **Medium**
@@ -449,6 +455,8 @@ If this application is ever deployed as a true multi-tenant SaaS (single instanc
 2. Add `tenantId` to the JWT token at sign-in time (from the user's `school.tenantId`).
 3. Update `getTenantContext` to read `tenantId` from the session/JWT instead of `process.env.TENANT_ID`.
 4. For backward compatibility, fall back to `process.env.TENANT_ID` only in single-tenant deployments (with a feature flag).
+
+**Resolution (2026-09-29):** `getTenantContext()` in `lib/tenant.ts` now resolves `tenantId` from the user's database record (`prisma.user.findUnique({ where: { id: user.id } })`), not from `process.env.TENANT_ID`. The User model has a `tenantId` field that is populated at sign-up time, so this is a reliable per-request source. The `TENANT_ID` env var fallback has been removed.
 
 ---
 
@@ -719,6 +727,8 @@ Deactivated users retain API access for up to 30 days after deactivation. The se
 3. Implement session revocation (either JWT blacklist or server-side session table).
 4. Reduce session maxAge to reduce the window of exposure.
 
+**Resolution (2026-09-29):** The session handler at `app/api/session/route.ts` now checks `user.isActive` and returns 401 for deactivated users. This closes the window where a deactivated user can still retrieve their session details via the JWT.
+
 ---
 
 ### SEC-23: `eslint-disable` for `any` on dynamic Prisma access — **Low**
@@ -767,6 +777,8 @@ Currently low — the `entityModelMap` is a closed, hardcoded set. But the patte
 2. At minimum, add a unit test verifying that `entityModelMap` only contains valid Prisma model names.
 3. Remove eslint-disable and use proper type assertions.
 
+**Resolution (2026-09-29):** Replaced `as any` dynamic Prisma access with a typed `PrismaDelegate` interface in both `config/[entityType]/[id]/route.ts` and a typed delegate cast in `config/[entityType]/route.ts`. The `entityModelMap` is a closed, hardcoded set of valid Prisma model names — no injection risk.
+
 ---
 
 ## OWASP Top 10 (2021) Coverage
@@ -775,13 +787,13 @@ Currently low — the `entityModelMap` is a closed, hardcoded set. But the patte
 |---|---|---|
 | A01: Broken Access Control | SEC-01, SEC-02, SEC-04, SEC-05, SEC-06, SEC-07, SEC-16, SEC-19 | `SEC-01` ❌ (false positive), `SEC-02` ✅, `SEC-04` ✅, `SEC-05` ✅, `SEC-06` ✅, `SEC-07` ✅, `SEC-16` ✅ resolved. `SEC-19` (tenant resolution inconsistency) remains. |
 | A02: Cryptographic Failures | SEC-03, SEC-18 | 2 findings — leaked secrets in .env files and inconsistent crypto library usage. |
-| A03: Injection | SEC-23 | 1 finding — `as any` dynamic Prisma access with eslint-disable. |
-| A04: Insecure Design | SEC-08, SEC-10, SEC-11 | 3 findings — payments marked completed without verification, mock Prisma masks build errors, sync engine defaults tenantId. |
+| A03: Injection | SEC-23 | `as any` dynamic Prisma access with eslint-disable → ✅ Resolved (typed PrismaDelegate) |
+| A04: Insecure Design | SEC-08, SEC-10, SEC-11 | `SEC-11` ✅ resolved (throws instead of defaulting). `SEC-08` and `SEC-10` remain. |
 | A05: Security Misconfiguration | SEC-03, SEC-14, SEC-15, SEC-17, SEC-20, SEC-21 | `SEC-14` ✅, `SEC-15` ✅, `SEC-17` ✅ resolved. Remaining: `SEC-20` (error logging), `SEC-21` (CORS). |
-| A06: Vulnerable & Outdated Components | SEC-18 | Covered under crypto failures. |
-| A07: Identification and Auth Failures | SEC-01, SEC-09, SEC-12, SEC-22 | 4 findings — inactive middleware, no brute force protection, stale JWT roles, session endpoint doesn't check `isActive`. |
-| A08: Data Integrity Failures | SEC-11 | 1 finding — sync engine defaults tenantId to `'default'`. |
-| A09: Security Logging & Monitoring Failures | SEC-20 | 1 finding — `console.error` instead of structured logging. |
+| A06: Vulnerable & Outdated Components | SEC-18 | Inconsistent crypto library usage (bcryptjs, @node-rs/argon2 unused). |
+| A07: Identification and Auth Failures | SEC-01, SEC-09, SEC-12, SEC-22 | `SEC-01` ❌ (false positive), `SEC-09` ✅ (rate limiting), `SEC-12` ✅ (live DB lookup), `SEC-22` ✅ (isActive check). |
+| A08: Data Integrity Failures | SEC-11 | ✅ Resolved — sync engine now throws on missing tenantId |
+| A09: Security Logging & Monitoring Failures | SEC-20 | `console.error` instead of structured logging. | |
 | A10: SSRF | None identified | No external URL parsing or server-side request patterns found. |
 
 ---
@@ -917,6 +929,13 @@ This concludes the Phase 7 comprehensive security audit. The codebase has a soli
 - **SEC-15 (Medium):** Resolved — added CSP, HSTS, and Permissions-Policy headers.
 - **SEC-16 (Medium):** Resolved — role update/create schemas now exclude `permissions`, `inheritsFrom`, `isSystem`.
 - **SEC-17 (Low):** Resolved — removed deprecated `X-XSS-Protection` header.
+- **SEC-09 (High):** Resolved — rate limiting now implemented on auth credentials callback (5 attempts/15 min, 429 + Retry-After).
+- **SEC-11 (High):** Resolved — sync engine `write()` now throws if `tenantId` is missing instead of defaulting to `'default'`.
+- **SEC-12 (Medium):** Resolved — `checkPermission` and `getTenantContext` now do live DB lookups for role, not from stale JWT/session.
+- **SEC-13 (Medium):** Resolved — `getTenantContext` now resolves `tenantId` from the user's DB record, not from `process.env.TENANT_ID`.
+- **SEC-19 (Medium):** Mitigated — `getSessionTenantSchool` in config routes already has DB fallback; `checkPermission` now does live DB lookup. Remaining inconsistency is low-impact because both paths resolve tenantId from the database.
+- **SEC-22 (Low):** Resolved — session endpoint now checks `user.isActive` and returns 401 for deactivated users.
+- **SEC-23 (Low):** Resolved — replaced `as any` dynamic Prisma access with a typed `PrismaDelegate` interface.
 - **SEC-03 (Critical):** Skipped per user directive (no production secrets leaked in this repo).
 
-**Remaining open (noted in Recommendations):** SEC-08 (payment verification), SEC-09 (rate limiting on auth), SEC-10 (mock Prisma client), SEC-11 (sync engine tenantId), SEC-12 (stale JWT roles), SEC-13 (process-level TENANT_ID), SEC-19 (tenant resolution inconsistency), SEC-20 (error logging), SEC-21 (CORS), SEC-22 (session email exposure), SEC-23 (eslint-disable any).
+**Remaining open (noted in Recommendations):** SEC-08 (payment verification), SEC-10 (mock Prisma client), SEC-18 (crypto lib cleanup), SEC-20 (error logging), SEC-21 (CORS).
