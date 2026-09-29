@@ -12,6 +12,7 @@
     "test:ui": "bun test --ui --pass-with-no-tests"
   },
   "dependencies": {
+    "@prisma/client": "^7.10.0",
     "@novastar/database": "workspace:*",
     "@novastar/shared-types": "workspace:*",
     "@novastar/shared-ui": "workspace:*",
