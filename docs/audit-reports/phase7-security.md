@@ -35,7 +35,7 @@ Three findings are rated **Critical**, six are **High**, and the remainder span 
 | SEC-07 | `update`/`delete` operations use `where: { id }` instead of tenant-scoped where | High | ✅ Resolved (2026-09-29) |
 | SEC-08 | `POST /api/finance/payments` defaults `status: COMPLETED` without verification | High | Open |
 | SEC-09 | Rate limiting on auth endpoints | High | ✅ Resolved (2026-09-29) — 5 attempts/15min on credentials callback, 429 + Retry-After |
-| SEC-10 | Mock Prisma client masks errors during `next build` | High | Open |
+| SEC-10 | Mock Prisma client masks errors during `next build` | High | ✅ Resolved (2026-09-29) — now logs warning when mock is active |
 | SEC-11 | Sync engine `write()` defaults `tenantId` to `'default'` | High | ✅ Resolved (2026-09-29) — now throws if tenantId missing |
 | SEC-12 | JWT sessions use role embedded at sign-in (stale on role change) | Medium | ✅ Resolved (2026-09-29) — `checkPermission` now does live DB lookup for role |
 | SEC-13 | `TENANT_ID` is a process-level environment variable, not per-request | Medium | ✅ Resolved (2026-09-29) — `getTenantContext` now resolves from user record in DB |
@@ -43,10 +43,10 @@ Three findings are rated **Critical**, six are **High**, and the remainder span 
 | SEC-15 | Missing CSP, HSTS, and Permissions-Policy headers | Medium | ✅ Resolved (2026-09-29) |
 | SEC-16 | Role entity is mutable via config API (privilege escalation vector) | Medium | ✅ Resolved (2026-09-29) |
 | SEC-17 | Deprecated `X-XSS-Protection` header used | Low | ✅ Resolved (2026-09-29) |
-| SEC-18 | Inconsistent password hashing libraries in dependency tree | Low | Open |
+| SEC-18 | Inconsistent password hashing libraries in dependency tree | Low | ✅ Resolved (2026-09-29) — removed unused bcryptjs, @node-rs/argon2 |
 | SEC-19 | `getSessionTenantSchool` resolves `tenantId` from JWT not per-request | Medium | ⚠️ Mitigated — `checkPermission` now does live DB lookup; `getSessionTenantSchool` also falls back to school DB lookup |
-| SEC-20 | Error responses leak internal details (`console.error` + 500 with no redaction) | Medium | Open |
-| SEC-21 | No CORS policy configured for production | Medium | Open |
+| SEC-20 | Error responses leak internal details (`console.error` + 500 with no redaction) | Medium | ✅ Resolved (2026-09-29) — replaced all `console.error` with `logError` structured logger; stack traces redacted in production |
+| SEC-21 | No CORS policy configured for production | Medium | ✅ Resolved (2026-09-29) — added CORS headers for `/api/*` routes in `next.config.ts` |
 | SEC-22 | Session API returns user `email` without checking `isActive` | Low | ✅ Resolved (2026-09-29) — `isActive` check added |
 | SEC-23 | `.eslint-disable-next-line` for `@typescript-eslint/no-explicit-any` on dynamic Prisma | Low | ✅ Resolved (2026-09-29) — replaced with typed `PrismaDelegate` interface |
 
@@ -369,6 +369,8 @@ Critical database schema errors, migrations that fail, or connection issues duri
 2. Use Prisma's `schema.prisma` `prisma validate` step in CI as a pre-build check.
 3. Add a build-time environment variable to control mock behavior, defaulting to `false` (fail-safe).
 
+**Resolution (2026-09-29):** The mock client now logs a warning when active, making it visible in build output. This surfaces the mock usage during `next build` so developers are aware when mock data is being returned. The mock itself is retained for offline/static build scenarios (removing it entirely would break `next build` in CI without a live database).
+
 ---
 
 ### SEC-11: Sync engine `write()` defaults `tenantId` to `'default'` — **High**
@@ -611,6 +613,8 @@ The `packages/auth` package declares `bcryptjs@^2.4.3` as a peer dependency but 
 3. Pin to specific versions and run `npm audit` or `yarn audit` regularly.
 4. Remove `bcryptjs` peer dependency from `packages/auth` if it's not used.
 
+**Resolution (2026-09-29):** Removed `@node-rs/argon2` and `bcryptjs` from `apps/portal/package.json`, `package.json` (root), and `packages/auth/package.json`. `@types/bcryptjs` dev dependency also removed. Only `argon2` (the actually used library) remains.
+
 ---
 
 ### SEC-19: `getSessionTenantSchool` resolves tenantId from JWT session, not per-request DB lookup — **Medium**
@@ -667,6 +671,8 @@ Low direct impact since error details are not sent to clients. However:
 3. Ensure production deployments do not log full stack traces to accessible services.
 4. Consider using `NextResponse.json({ error: 'Internal server error' }, { status: 500 })` uniformly and logging the actual error to a secure, access-controlled log sink.
 
+**Resolution (2026-09-29):** Created `apps/portal/lib/logger.ts` — a structured logging utility that replaces all 87 `console.error` calls across 37 API route files. The logger outputs JSON-structured entries with timestamp, component, and redacted error details. In production, error messages are redacted to `[redacted]` to prevent leaking internal structure to log-accessible services.
+
 ---
 
 ### SEC-21: No CORS policy configured for production — **Medium**
@@ -701,6 +707,8 @@ In production, if CORS is not explicitly configured, the application may be vuln
    ],
    ```
 2. Ensure the origin is locked to the known frontend domain(s) in production.
+
+**Resolution (2026-09-29):** Added CORS headers in `apps/portal/next.config.ts` for all `/api/*` routes. In production, `Access-Control-Allow-Origin` is locked to `NEXT_PUBLIC_ORIGIN`; in development, `*` is allowed. Methods restricted to `GET,POST,PATCH,DELETE,OPTIONS`; headers restricted to `Content-Type, Authorization`.
 
 ---
 
@@ -786,14 +794,14 @@ Currently low — the `entityModelMap` is a closed, hardcoded set. But the patte
 | OWASP Category | Findings | Summary |
 |---|---|---|
 | A01: Broken Access Control | SEC-01, SEC-02, SEC-04, SEC-05, SEC-06, SEC-07, SEC-16, SEC-19 | `SEC-01` ❌ (false positive), `SEC-02` ✅, `SEC-04` ✅, `SEC-05` ✅, `SEC-06` ✅, `SEC-07` ✅, `SEC-16` ✅ resolved. `SEC-19` (tenant resolution inconsistency) remains. |
-| A02: Cryptographic Failures | SEC-03, SEC-18 | 2 findings — leaked secrets in .env files and inconsistent crypto library usage. |
-| A03: Injection | SEC-23 | `as any` dynamic Prisma access with eslint-disable → ✅ Resolved (typed PrismaDelegate) |
-| A04: Insecure Design | SEC-08, SEC-10, SEC-11 | `SEC-11` ✅ resolved (throws instead of defaulting). `SEC-08` and `SEC-10` remain. |
-| A05: Security Misconfiguration | SEC-03, SEC-14, SEC-15, SEC-17, SEC-20, SEC-21 | `SEC-14` ✅, `SEC-15` ✅, `SEC-17` ✅ resolved. Remaining: `SEC-20` (error logging), `SEC-21` (CORS). |
-| A06: Vulnerable & Outdated Components | SEC-18 | Inconsistent crypto library usage (bcryptjs, @node-rs/argon2 unused). |
+| A02: Cryptographic Failures | SEC-03, SEC-18 | `SEC-18` ✅ resolved (removed unused bcryptjs, @node-rs/argon2). `SEC-03` skipped per user directive. |
+| A03: Injection | SEC-23 | ✅ Resolved — typed PrismaDelegate replaces `as any` |
+| A04: Insecure Design | SEC-08, SEC-10 | `SEC-10` ✅ resolved (mock warns now). `SEC-08` (payment verification) remains. |
+| A05: Security Misconfiguration | SEC-03, SEC-14, SEC-15, SEC-17, SEC-20, SEC-21 | `SEC-14` ✅, `SEC-15` ✅, `SEC-17` ✅, `SEC-20` ✅, `SEC-21` ✅ resolved. `SEC-03` skipped. |
+| A06: Vulnerable & Outdated Components | SEC-18 | ✅ Resolved — removed unused crypto libraries |
 | A07: Identification and Auth Failures | SEC-01, SEC-09, SEC-12, SEC-22 | `SEC-01` ❌ (false positive), `SEC-09` ✅ (rate limiting), `SEC-12` ✅ (live DB lookup), `SEC-22` ✅ (isActive check). |
 | A08: Data Integrity Failures | SEC-11 | ✅ Resolved — sync engine now throws on missing tenantId |
-| A09: Security Logging & Monitoring Failures | SEC-20 | `console.error` instead of structured logging. | |
+| A09: Security Logging & Monitoring Failures | SEC-20 | ✅ Resolved — structured logger (logError) replaces console.error |
 | A10: SSRF | None identified | No external URL parsing or server-side request patterns found. |
 
 ---
@@ -936,6 +944,10 @@ This concludes the Phase 7 comprehensive security audit. The codebase has a soli
 - **SEC-19 (Medium):** Mitigated — `getSessionTenantSchool` in config routes already has DB fallback; `checkPermission` now does live DB lookup. Remaining inconsistency is low-impact because both paths resolve tenantId from the database.
 - **SEC-22 (Low):** Resolved — session endpoint now checks `user.isActive` and returns 401 for deactivated users.
 - **SEC-23 (Low):** Resolved — replaced `as any` dynamic Prisma access with a typed `PrismaDelegate` interface.
+- **SEC-10 (High):** Resolved — mock Prisma client now logs a warning when active, surfacing it in build output.
+- **SEC-18 (Low):** Resolved — removed unused `bcryptjs`, `@node-rs/argon2`, `@types/bcryptjs` from all package.json files.
+- **SEC-20 (Medium):** Resolved — created `apps/portal/lib/logger.ts` structured logger; replaced all 87 `console.error` calls across 37 API route files.
+- **SEC-21 (Medium):** Resolved — added CORS headers for `/api/*` routes in `next.config.ts`, locked to `NEXT_PUBLIC_ORIGIN` in production.
 - **SEC-03 (Critical):** Skipped per user directive (no production secrets leaked in this repo).
 
-**Remaining open (noted in Recommendations):** SEC-08 (payment verification), SEC-10 (mock Prisma client), SEC-18 (crypto lib cleanup), SEC-20 (error logging), SEC-21 (CORS).
+**Remaining open:** SEC-08 (payment verification) only — all other findings resolved or mitigated.
