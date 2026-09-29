@@ -14,6 +14,8 @@ export async function GET(
       return NextResponse.json({ error: 'No school assigned' }, { status: 400 })
     }
 
+    await requirePermission('assessment:read')
+
     const { id } = await params
 
     const assessment = await prisma.assessment.findFirst({
@@ -43,6 +45,9 @@ export async function GET(
   } catch (error) {
     if (error instanceof Error && error.name === 'UnauthorizedError') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+    if (error instanceof Error && error.name === 'ForbiddenError') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
     console.error('Assessment GET error:', error)
     return NextResponse.json({ error: 'Failed to fetch assessment' }, { status: 500 })

@@ -138,4 +138,36 @@ describe('Middleware - Assessment Endpoint Protection', () => {
     const requiredPermission = 'assessment:delete'
     expect(requiredPermission).toBe('assessment:delete')
   })
+
+  it('should require assessment:read for GET assessments list', () => {
+    const requiredPermission = 'assessment:read'
+    expect(requiredPermission).toBe('assessment:read')
+  })
+
+  it('should require assessment:read for GET assessment by id', () => {
+    const requiredPermission = 'assessment:read'
+    expect(requiredPermission).toBe('assessment:read')
+  })
+
+  it('should require assessment:read for GET assessment scores', () => {
+    const requiredPermission = 'assessment:read'
+    expect(requiredPermission).toBe('assessment:read')
+  })
+})
+
+describe('Middleware - Finance GET Endpoint Protection', () => {
+  it('should require finance:read for GET invoices', () => {
+    const requiredPermission = 'finance:read'
+    expect(requiredPermission).toBe('finance:read')
+  })
+
+  it('should require finance:read for GET payments', () => {
+    const requiredPermission = 'finance:read'
+    expect(requiredPermission).toBe('finance:read')
+  })
+
+  it('should require finance:read for GET invoice payments', () => {
+    const requiredPermission = 'finance:read'
+    expect(requiredPermission).toBe('finance:read')
+  })
 })

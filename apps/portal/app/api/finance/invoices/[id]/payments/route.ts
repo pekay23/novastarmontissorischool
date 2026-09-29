@@ -14,6 +14,8 @@ export async function GET(
       return NextResponse.json({ error: 'No school assigned' }, { status: 400 })
     }
 
+    await requirePermission('finance:read')
+
     const { id: invoiceId } = await params
 
     // Verify invoice belongs to this school/tenant

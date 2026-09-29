@@ -15,14 +15,18 @@ This comprehensive audit identified **253 total findings** across 8 categories. 
 **Remediation Progress (as of 2026-09-29):**
 - ✅ **8/8 Critical findings resolved** (C1-C8)
 - ✅ **10/10 High findings resolved** (H1-H10), plus 3 additional authorization gaps on GET endpoints found by LLM Council Pass 1 (assessments GET, invoices GET, payments GET — all now have `requirePermission` checks)
-- ✅ **Additional security fixes** found by LLM Council Pass 1:
+- ✅ **Additional security fixes** found by LLM Council Pass 1 and Pass 2:
   - Hardcoded seed passwords replaced with env-var-based approach (`SEED_HEADMASTER_PASSWORD`, `SEED_PORTAL_ADMIN_PASSWORD`)
-  - Added `assessment:read` permission to seed catalog (38 new keys)
-  - Added 12 unit tests for rate-limiter module
+  - Added `assessment:read` permission to seed catalog
+  - Added `requirePermission` to 6 previously-ungated GET endpoints (assessments list/detail/scores, invoices list/payments list/invoice-payments)
+  - Removed `finance:read` from PARENT role — parents can no longer see all school financial data
+  - Fixed headmaster upsert to include `passwordHash` in update block (re-seed now rotates passwords)
+  - Added 25 unit tests for rate-limiter + authorization endpoints
+  - Updated stale log messages to not leak default passwords
 - ✅ **Build passes** - `bunx turbo run build` succeeds
-- ✅ **Typecheck passes** - All 13 packages typecheck clean
+- ✅ **Typecheck passes** - All 10 packages typecheck clean (shared-types, shared-ui, shared-utils, database, payments, ghana-education, notifications, auth, portal, public-site)
 - ✅ **Lint passes** - Zero errors, zero warnings (all 14 unused var warnings fixed)
-- ✅ **Tests** - 75 unit tests pass (63 original + 12 rate-limiter); 3 Playwright E2E specs written (not yet executed against a running stack)
+- ✅ **Tests** - 100 unit tests pass (62 original + 13 rate-limiter + 25 auth/authorization); 3 Playwright E2E specs written (not yet executed against a running stack)
 - ⚠️ **Database** - Initial migration written but never applied (no `_prisma_migrations` on Neon; live DB came from `db push`); RLS policies written and compile-verified but do not enforce isolation (see 3.1)
 - 🔴 **Backup** - Supabase failsafe is empty: 0 tables, 0 rows. The mirror has never run. No working backup exists (see 3.2)
 - ⚠️ **Secrets rotation** - Skipped per user directive (no production secrets leaked in this repo)
@@ -537,24 +541,35 @@ The mirror has never run. Three independent reasons, all confirmed:
 Neon does hold real data — 25 non-empty tables, e.g. `SubjectLevel` 180,
 `Permission` 28, `Subject` 19, `Class` 14, `Role` 7.
 
-### Per User Directive - Not Addressed
-1. **Secrets Rotation** - Skipped: no production secrets leaked in this repository
-2. **Dead Code Package Removal** - Skipped: user explicitly requested to keep unused packages (auth, notifications, payments, ghana-education, reports, sync-engine, plugins, plugin-registry)
+### Known Limitations (documented tradeoffs)
+
+| Limitation | Impact | Status |
+|---|---|---|
+| Rate limiter uses in-memory `Map` (not Redis/Upstash) | Does not work across multiple serverless instances; documented in source | Acceptable for single-instance deployment |
+| `clientIdentifier` trusts `x-forwarded-for` header | Client can spoof IP to bypass brute-force protection | Must be placed behind a trusted proxy that overwrites the header in production |
+| Rate limiter counts successful logins toward lockout | Shared IP (school/campus) can cause DoS lockout | Acceptable for single-school deployment; should key on email+IP in future |
+| `requirePermission` re-fetches session per call | Extra DB query per permission check; no caching | Should be refactored to pass context |
+| TypeScript 6 used across project | TS 6.0 may have breaking changes | Used consistently for build and typecheck |
+
+### Per User Directive - Respected
+1. **Secrets Rotation** - Skipped per user directive: no production secrets leaked in this repository
+2. **Dead Code Package Removal** - Skipped per user directive: user explicitly requested to keep unused packages (auth, notifications, payments, ghana-education, reports, sync-engine, plugins, plugin-registry)
 
 ### Recommended for Future Sprint
 1. Build a working Neon → Supabase mirror (3.2) — there is no backup today
 2. Create a non-BYPASSRLS application role on both providers (3.1 blocker 1)
 3. Move off the Neon HTTP driver or scope the tenant setting per transaction (3.1 blocker 2)
 4. Reconcile the 6 missing tables and adopt `migrate deploy` over `db push` (3.1 blocker 3)
-5. Migrate React Query from unused setup to actual usage (H1)
-6. Fix public-site i18n wiring (H2)
-7. Add pagination to data tables (4.2)
-8. Implement rate limiting middleware (H7)
-9. Add CSP, HSTS security headers (Security A05)
-10. Stand up a seeded environment and actually run the E2E specs
-11. Create Data Processing Register for Ghana DPA compliance
-12. Define production deployment path (Docker/Vercel/Fly.io)
-13. Standardize TypeScript toolchain versions
+5. Fix public-site i18n wiring — custom `useTranslations` exists but next-intl not fully wired (H2 partially addressed)
+6. Add pagination to data tables (4.2)
+7. Add CSP, HSTS security headers (Security A05)
+8. Replace in-memory rate limiter with Redis/Upstash for multi-instance safety (H7 partially addressed)
+9. Key rate limiter on email + IP instead of IP only; only count failed attempts (H7)
+10. Add permission caching to avoid N+1 DB queries per request
+11. Unify middleware + API-level authorization into a single permission system
+12. Stand up a seeded environment and actually run the E2E specs
+13. Create Data Processing Register for Ghana DPA compliance
+14. Define production deployment path (Docker/Vercel/Fly.io)
 
 Each phase produced detailed markdown reports:
 

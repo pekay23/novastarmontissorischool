@@ -636,7 +636,7 @@ async function main() {
     { name: 'CLASSROOM_TEACHER', description: 'Classroom Teacher', isSystem: true, permissions: allPerms.filter(p => p.category === 'academic' && p.action !== 'delete' || p.category === 'student' && p.action === 'read' || p.category === 'communication' && p.action !== 'delete').map(p => p.key), inheritsFrom: [], tenantId: tenant.id, schoolId: school.id },
     { name: 'ACCOUNTANT', description: 'School Accountant/Bursar', isSystem: true, permissions: allPerms.filter(p => p.category === 'finance' || p.category === 'reports').map(p => p.key), inheritsFrom: [], tenantId: tenant.id, schoolId: school.id },
     { name: 'ADMIN_STAFF', description: 'Administrative Staff', isSystem: true, permissions: allPerms.filter(p => p.category === 'student' && (p.action === 'read' || p.action === 'create') || p.category === 'communication' && p.action === 'read').map(p => p.key), inheritsFrom: [], tenantId: tenant.id, schoolId: school.id },
-    { name: 'PARENT', description: 'Parent/Guardian', isSystem: true, permissions: ['student:read', 'finance:read', 'communication:read', 'reports:read'], inheritsFrom: [], tenantId: tenant.id, schoolId: school.id },
+    { name: 'PARENT', description: 'Parent/Guardian', isSystem: true, permissions: ['student:read', 'communication:read', 'reports:read'], inheritsFrom: [], tenantId: tenant.id, schoolId: school.id },
   ]
 
   for (const role of roles) {
@@ -723,7 +723,11 @@ async function main() {
 
   const adminUser = await prisma.user.upsert({
     where: { tenantId_email: { tenantId: tenant.id, email: 'headmaster@novastarmontessori.com' } },
-    update: {},
+    update: {
+      passwordHash,
+      roleId: headmasterRole.id,
+      isActive: true,
+    },
     create: {
       tenantId: tenant.id,
       schoolId: school.id,
@@ -804,7 +808,7 @@ async function main() {
     }
   })
 
-  console.log('✅ Default Headmaster user created (headmaster@novastarmontessori.com / Novastar2026!)')
+  console.log('✅ Default Headmaster user created (headmaster@novastarmontessori.com / set via SEED_HEADMASTER_PASSWORD)')
 
   // ============ SAMPLE CLASSES ============
   const classData = [
