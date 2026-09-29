@@ -11,6 +11,8 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'No school assigned' }, { status: 400 })
     }
 
+    await requirePermission('assessment:read')
+
     const { searchParams } = new URL(req.url)
     const classId = searchParams.get('classId')
     const termId = searchParams.get('termId')
@@ -39,6 +41,9 @@ export async function GET(req: NextRequest) {
   } catch (error) {
     if (error instanceof Error && error.name === 'UnauthorizedError') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+    if (error instanceof Error && error.name === 'ForbiddenError') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
     console.error('Assessments GET error:', error)
     return NextResponse.json({ error: 'Failed to fetch assessments' }, { status: 500 })

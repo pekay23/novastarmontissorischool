@@ -12,6 +12,8 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'No school assigned' }, { status: 400 })
     }
 
+    await requirePermission('finance:read')
+
     const { searchParams } = new URL(req.url)
     const studentId = searchParams.get('studentId')
     const status = searchParams.get('status')
@@ -52,6 +54,9 @@ export async function GET(req: NextRequest) {
   } catch (error) {
     if (error instanceof Error && error.name === 'UnauthorizedError') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+    if (error instanceof Error && error.name === 'ForbiddenError') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
     console.error('Finance invoices GET error:', error)
     return NextResponse.json({ error: 'Failed to fetch invoices' }, { status: 500 })

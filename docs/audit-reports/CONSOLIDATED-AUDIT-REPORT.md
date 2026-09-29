@@ -14,11 +14,15 @@ This comprehensive audit identified **253 total findings** across 8 categories. 
 
 **Remediation Progress (as of 2026-09-29):**
 - ✅ **8/8 Critical findings resolved** (C1-C8)
-- ✅ **10/10 High findings resolved** (H1-H10)
+- ✅ **10/10 High findings resolved** (H1-H10), plus 3 additional authorization gaps on GET endpoints found by LLM Council Pass 1 (assessments GET, invoices GET, payments GET — all now have `requirePermission` checks)
+- ✅ **Additional security fixes** found by LLM Council Pass 1:
+  - Hardcoded seed passwords replaced with env-var-based approach (`SEED_HEADMASTER_PASSWORD`, `SEED_PORTAL_ADMIN_PASSWORD`)
+  - Added `assessment:read` permission to seed catalog (38 new keys)
+  - Added 12 unit tests for rate-limiter module
 - ✅ **Build passes** - `bunx turbo run build` succeeds
 - ✅ **Typecheck passes** - All 13 packages typecheck clean
 - ✅ **Lint passes** - Zero errors, zero warnings (all 14 unused var warnings fixed)
-- ✅ **Tests** - 63 unit tests pass; 3 Playwright E2E specs written (not yet executed against a running stack)
+- ✅ **Tests** - 75 unit tests pass (63 original + 12 rate-limiter); 3 Playwright E2E specs written (not yet executed against a running stack)
 - ⚠️ **Database** - Initial migration written but never applied (no `_prisma_migrations` on Neon; live DB came from `db push`); RLS policies written and compile-verified but do not enforce isolation (see 3.1)
 - 🔴 **Backup** - Supabase failsafe is empty: 0 tables, 0 rows. The mirror has never run. No working backup exists (see 3.2)
 - ⚠️ **Secrets rotation** - Skipped per user directive (no production secrets leaked in this repo)
@@ -573,7 +577,7 @@ Each phase produced detailed markdown reports:
 4. `apps/public-site/app/layout.tsx` — Add SEO metadata
 
 ### Portal Critical Fixes
-1. `apps/portal/proxy.ts` → `middleware.ts` ✓
+1. `apps/portal/proxy.ts` — ✅ Valid Next.js 16 convention (not renamed to middleware.ts; proxy.ts is correct)
 2. `apps/portal/app/(portal)/announcements/page.tsx` — Add DropdownMenu imports
 3. `apps/portal/app/api/config/entities/*/route.ts` — Add RBAC
 4. `apps/public-site/app/(portal)/fees/page.tsx` — Fix payment methods fetch

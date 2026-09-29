@@ -535,6 +535,7 @@ async function main() {
     { key: 'academic:approve', resource: 'academic', action: 'approve', scope: 'all', category: 'academic', description: 'Approve academic records', tenantId: tenant.id, isSystem: true },
     // Academic - Assessments
     { key: 'assessment:create', resource: 'assessment', action: 'create', scope: 'all', category: 'academic', description: 'Create assessments', tenantId: tenant.id, isSystem: true },
+    { key: 'assessment:read', resource: 'assessment', action: 'read', scope: 'all', category: 'academic', description: 'Read assessments', tenantId: tenant.id, isSystem: true },
     { key: 'assessment:update', resource: 'assessment', action: 'update', scope: 'all', category: 'academic', description: 'Update assessments', tenantId: tenant.id, isSystem: true },
     { key: 'assessment:delete', resource: 'assessment', action: 'delete', scope: 'all', category: 'academic', description: 'Delete assessments', tenantId: tenant.id, isSystem: true },
     { key: 'assessment:grade', resource: 'assessment', action: 'grade', scope: 'all', category: 'academic', description: 'Grade assessments', tenantId: tenant.id, isSystem: true },
@@ -714,7 +715,11 @@ async function main() {
     },
   })
 
-  const passwordHash = await hashPassword('Novastar2026!')
+  const headmasterPassword = process.env.SEED_HEADMASTER_PASSWORD
+  if (!headmasterPassword) {
+    console.warn('WARNING: SEED_HEADMASTER_PASSWORD not set — using default that must be changed after first login.')
+  }
+  const passwordHash = await hashPassword(headmasterPassword || 'Novastar2026!')
 
   const adminUser = await prisma.user.upsert({
     where: { tenantId_email: { tenantId: tenant.id, email: 'headmaster@novastarmontessori.com' } },
@@ -731,8 +736,12 @@ async function main() {
   })
 
   // ============ PORTAL ADMIN USER ============
-  const adminPasswordHash = await hashPassword('Admin@2026')
-  const portalAdmin = await prisma.user.upsert({
+  const portalAdminPassword = process.env.SEED_PORTAL_ADMIN_PASSWORD
+  if (!portalAdminPassword) {
+    console.warn('WARNING: SEED_PORTAL_ADMIN_PASSWORD not set — using default that must be changed after first login.')
+  }
+  const adminPasswordHash = await hashPassword(portalAdminPassword || 'Admin@2026')
+  await prisma.user.upsert({
     where: { tenantId_email: { tenantId: tenant.id, email: 'admin@novastarmontessori.com' } },
     update: {
       passwordHash: adminPasswordHash,
@@ -749,7 +758,7 @@ async function main() {
       isActive: true,
     },
   })
-  console.log('✅ Portal Admin user created (admin@novastarmontessori.com / Admin@2026)')
+  console.log('✅ Portal Admin user created (admin@novastarmontessori.com / set via SEED_PORTAL_ADMIN_PASSWORD)')
 
   // Use transaction to ensure role FK is visible
   await prisma.$transaction(async (tx) => {
