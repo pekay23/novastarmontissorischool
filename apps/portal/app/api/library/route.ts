@@ -1,0 +1,110 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { prisma } from '@/lib/prisma'
+import { getTenantContext, requirePermission } from '@/lib/tenant'
+import { z } from 'zod'
+
+const BookSchema = z.object({
+  title: z.string().min(1),
+  author: z.string().optional(),
+  isbn: z.string().optional(),
+  publisher: z.string().optional(),
+  publishYear: z.number().int().optional(),
+  categoryId: z.string().optional(),
+  totalCopies: z.number().int().positive().default(1),
+  shelfLocation: z.string().optional(),
+  language: z.string().optional(),
+  edition: z.string().optional(),
+  description: z.string().optional(),
+})
+
+export async function GET(req: NextRequest) {
+  try {
+    const { schoolId, tenantId } = await getTenantContext()
+    if (!schoolId) {
+      return NextResponse.json({ error: 'No school assigned' }, { status: 400 })
+    }
+
+    const { searchParams } = new URL(req.url)
+    const search = searchParams.get('search')
+    const categoryId = searchParams.get('categoryId')
+
+    const where: Record<string, unknown> = { schoolId, tenantId }
+    if (search) {
+      where.OR = [
+        { title: { contains: search, mode: 'insensitive' } },
+        { author: { contains: search, mode: 'insensitive' } },
+        { isbn: { contains: search, mode: 'insensitive' } },
+      ]
+    }
+    if (categoryId) where.categoryId = categoryId
+
+    const books = await prisma.book.findMany({
+      where,
+      include: {
+        category: { select: { name: true } },
+        bookLoans: {
+          where: { status: 'ACTIVE' },
+          include: {
+            student: { select: { firstName: true, lastName: true } },
+          },
+        },
+      },
+      orderBy: { title: 'asc' },
+    })
+
+    return NextResponse.json({ data: books })
+  } catch (error) {
+    if (error instanceof Error && error.name === 'UnauthorizedError') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+    console.error('Library books GET error:', error)
+    return NextResponse.json({ error: 'Failed to fetch books' }, { status: 500 })
+  }
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    await requirePermission('library:book:create')
+    const { schoolId, tenantId } = await getTenantContext()
+    if (!schoolId) {
+      return NextResponse.json({ error: 'No school assigned' }, { status: 400 })
+    }
+
+    const body = await req.json()
+    const parseResult = BookSchema.safeParse(body)
+    if (!parseResult.success) {
+      return NextResponse.json({ error: 'Invalid input', details: parseResult.error.issues }, { status: 400 })
+    }
+    const data = parseResult.data
+
+    const book = await prisma.book.create({
+      data: {
+        tenantId,
+        schoolId,
+        title: data.title,
+        author: data.author || null,
+        isbn: data.isbn || null,
+        publisher: data.publisher || null,
+        publishYear: data.publishYear || null,
+        categoryId: data.categoryId || null,
+        totalCopies: data.totalCopies,
+        availableCopies: data.totalCopies,
+        shelfLocation: data.shelfLocation || null,
+        language: data.language || null,
+        edition: data.edition || null,
+        description: data.description || null,
+      },
+    })
+
+    return NextResponse.json(book, { status: 201 })
+  } catch (error) {
+    if (error instanceof Error && error.name === 'UnauthorizedError') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+    if (error instanceof Error && error.name === 'ForbiddenError') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+    console.error('Library books POST error:', error)
+    return NextResponse.json({ error: 'Failed to create book' }, { status: 500 })
+  }
+}

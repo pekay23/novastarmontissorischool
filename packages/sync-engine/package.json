@@ -1,0 +1,23 @@
+{
+  "name": "@novastar/sync-engine",
+  "version": "0.0.0",
+  "private": true,
+  "main": "index.ts",
+  "types": "index.ts",
+  "scripts": {
+    "dev": "tsx watch index.ts",
+    "build": "tsc --noEmit",
+    "lint": "eslint . --ext .ts",
+    "test": "bun test",
+    "start": "tsx index.ts"
+  },
+  "dependencies": {
+    "@novastar/database": "workspace:*",
+    "@novastar/shared-types": "workspace:*",
+    "idb": "^8.0.2"
+  },
+  "devDependencies": {
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "tsx": "^4.23.12"
+  }
+}

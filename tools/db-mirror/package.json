@@ -1,0 +1,17 @@
+{
+  "name": "@novastar/db-mirror",
+  "version": "0.0.0",
+  "private": true,
+  "main": "mirror.ts",
+  "scripts": {
+    "mirror": "bun mirror.ts",
+    "setup-pg-cron": "bun setup-pg-cron.ts"
+  },
+  "dependencies": {
+    "pg": "8.18.0"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.18.0",
+    "typescript": "npm:@typescript/typescript6@^6.0.2"
+  }
+}

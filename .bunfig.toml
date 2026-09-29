@@ -1,0 +1,11 @@
+[install]
+centralStore = true
+
+[run]
+test = { timeout = 30000 }
+
+[trustedDependencies]
+"@prisma/client" = true
+"better-sqlite3" = true
+"bcrypt" = true
+"sharp" = true

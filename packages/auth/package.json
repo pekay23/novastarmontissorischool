@@ -1,0 +1,24 @@
+{
+  "name": "@novastar/auth",
+  "version": "0.0.0",
+  "private": true,
+  "main": "index.ts",
+  "types": "index.ts",
+  "scripts": {
+    "dev": "bun run index.ts",
+    "lint": "eslint . --ext .ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@prisma/client": "^7.10.0",
+    "bcryptjs": "^2.4.3",
+    "next-auth": "^4.24.15"
+  },
+  "peerDependencies": {
+    "@novastar/database": "workspace:*",
+    "@novastar/shared-types": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "npm:@typescript/typescript6@^6.0.2"
+  }
+}

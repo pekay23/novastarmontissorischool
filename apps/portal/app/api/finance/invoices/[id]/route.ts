@@ -1,0 +1,52 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { prisma } from '@/lib/prisma'
+import { getTenantContext, requirePermission } from '@/lib/tenant'
+
+// Delete a fee invoice (only if no payments recorded)
+export async function DELETE(req: NextRequest) {
+  try {
+    const { schoolId, tenantId } = await getTenantContext()
+    if (!schoolId) {
+      return NextResponse.json({ error: 'No school assigned' }, { status: 400 })
+    }
+
+    await requirePermission('finance:invoice:delete')
+
+    const { pathname } = new URL(req.url)
+    const id = pathname.split('/').pop()
+    if (!id) {
+      return NextResponse.json({ error: 'Invoice ID required' }, { status: 400 })
+    }
+
+    const invoice = await prisma.feeInvoice.findFirst({
+      where: { id, schoolId, tenantId },
+      include: { payments: { select: { id: true } } },
+    })
+
+    if (!invoice) {
+      return NextResponse.json({ error: 'Invoice not found' }, { status: 404 })
+    }
+
+    if (invoice.payments.length > 0) {
+      return NextResponse.json(
+        { error: 'Cannot delete invoice with recorded payments' },
+        { status: 409 },
+      )
+    }
+
+    await prisma.feeInvoice.delete({
+      where: { id },
+    })
+
+    return NextResponse.json({ success: true })
+  } catch (error) {
+    if (error instanceof Error && error.name === 'UnauthorizedError') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+    if (error instanceof Error && error.name === 'ForbiddenError') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+    console.error('Finance invoice DELETE error:', error)
+    return NextResponse.json({ error: 'Failed to delete invoice' }, { status: 500 })
+  }
+}

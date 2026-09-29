@@ -1,0 +1,106 @@
+import fs from 'node:fs'
+import path from 'node:path'
+import type { NextConfig } from 'next'
+
+/**
+ * Load the monorepo-root env files into process.env before Next boots.
+ *
+ * This repo keeps a single set of env files at the root (`.env`, `.env.local`,
+ * both gitignored) and relies on Turbo's `globalEnv` to forward them. Next.js,
+ * however, only auto-loads `.env*` from the directory that contains this config,
+ * so running `next dev`/`next build` from inside apps/portal would otherwise
+ * start with no DATABASE_URL / NEXTAUTH_SECRET / NEXTAUTH_URL — which surfaces
+ * as NextAuth `NO_SECRET` errors and Prisma connection failures.
+ *
+ * Precedence (highest first): real environment > .env.local > .env.
+ * Values already present in process.env are never overwritten.
+ */
+const appDir = typeof __dirname !== 'undefined' ? __dirname : process.cwd()
+const repoRoot = path.resolve(appDir, '..', '..')
+
+function loadRootEnv(): void {
+  const merged = new Map<string, string>()
+
+  for (const file of ['.env', '.env.local']) {
+    const filePath = path.join(repoRoot, file)
+    if (!fs.existsSync(filePath)) continue
+
+    for (const rawLine of fs.readFileSync(filePath, 'utf8').split(/\r?\n/)) {
+      const match = /^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/.exec(rawLine)
+      if (!match) continue
+      merged.set(match[1], match[2].trim().replace(/^["']|["']$/g, ''))
+    }
+  }
+
+  for (const [key, value] of merged) {
+    if (process.env[key] === undefined) process.env[key] = value
+  }
+
+  if (process.env.NODE_ENV !== 'production') {
+    const required = ['DATABASE_URL', 'NEXTAUTH_SECRET', 'NEXTAUTH_URL']
+    const missing = required.filter((key) => !process.env[key])
+    if (missing.length > 0) {
+      console.warn(`[next.config] Missing env vars for the portal: ${missing.join(', ')}`)
+    }
+  }
+}
+
+loadRootEnv()
+
+const nextConfig: NextConfig = {
+  allowedDevOrigins: [
+    '192.168.8.202',
+    '192.168.8.226',
+    '172.25.96.1',
+    '172.31.16.1',
+  ],
+  // PWA for offline-first
+  experimental: {
+    webpackBuildWorker: true,
+  },
+  images: {
+    unoptimized: true,
+    remotePatterns: [
+      { protocol: 'https', hostname: 'utfs.io' },
+      { protocol: 'https', hostname: 'uploadthing.com' },
+      { protocol: 'https', hostname: '*.ufs.sh' },
+      { protocol: 'https', hostname: 'lh3.googleusercontent.com' },
+    ],
+    localPatterns: [
+      { pathname: '/images/**' },
+      { pathname: '/logo.svg' },
+      { pathname: '/favicon.ico' },
+    ],
+  },
+  typescript: {
+    ignoreBuildErrors: false,
+  },
+  // Output standalone for Docker
+  output: 'standalone',
+  // Trace from the workspace root so standalone output keeps the monorepo
+  // layout (apps/portal/server.js) and the workspace packages it links to.
+  outputFileTracingRoot: repoRoot,
+  async headers() {
+    return [
+      {
+        source: '/(.*)',
+        headers: [
+          { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          { key: 'Referrer-Policy', value: 'origin-when-cross-origin' },
+          { key: 'X-XSS-Protection', value: '1; mode=block' },
+        ],
+      },
+      {
+        source: '/sw.js',
+        headers: [
+          { key: 'Cache-Control', value: 'public, max-age=0, must-revalidate' },
+          { key: 'Service-Worker-Allowed', value: '/' },
+        ],
+      },
+    ]
+  },
+}
+
+export default nextConfig
+

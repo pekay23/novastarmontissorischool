@@ -1,0 +1,91 @@
+@import "tailwindcss";
+
+@theme {
+  --color-primary: 107 91% 18%;
+  --color-primary-foreground: 0 0% 100%;
+  --color-secondary: 191 71% 50%;
+  --color-secondary-foreground: 0 0% 100%;
+  --color-accent: 28 83% 40%;
+  --color-accent-foreground: 0 0% 100%;
+  --color-background: 0 0% 100%;
+  --color-foreground: 222 47% 12%;
+  --color-card: 0 0% 100%;
+  --color-card-foreground: 222 47% 12%;
+  --color-border: 220 31% 91%;
+  --color-input: 220 31% 91%;
+  --color-ring: 191 71% 50%;
+  --color-muted: 210 40% 96%;
+  --color-muted-foreground: 215 20% 40%;
+
+  --font-sans: Inter, ui-sans, system-ui, sans-serif;
+  --font-heading: Poppins, ui-serif, Georgia, serif;
+  --font-mono: ui-monospace, Menlo, Monaco, monospace;
+}
+
+@layer base {
+  :root {
+    --font-sans: var(--font-sans);
+    --font-heading: var(--font-heading);
+    --font-mono: var(--font-mono);
+  }
+
+  body {
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+    font-family: var(--font-sans), sans-serif;
+    font-size: 1rem;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-family: var(--font-heading), serif;
+    font-weight: 700;
+    line-height: 1.2;
+  }
+
+  /* Text shadow for readability on images */
+  .text-shadow {
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+  }
+
+  /* Hide scrollbar but allow scrolling */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #9ca3af;
+    border-radius: 4px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #6b7280;
+  }
+}
+
+@layer utilities {
+  /* Responsive text sizes */
+  .text-responsive-h1 {
+    font-size: clamp(1.75rem, 4vw, 3rem);
+  }
+  .text-responsive-h2 {
+    font-size: clamp(1.5rem, 3.5vw, 2.5rem);
+  }
+  .text-responsive-h3 {
+    font-size: clamp(1.25rem, 3vw, 2rem);
+  }
+
+  /* Aspect ratio utilities */
+  .aspect-video { aspect-ratio: 16/9; }
+  .aspect-square { aspect-ratio: 1/1; }
+  .aspect-4-3 { aspect-ratio: 4/3; }
+}

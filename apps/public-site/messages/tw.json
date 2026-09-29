@@ -1,0 +1,106 @@
+{
+  "home": {
+    "hero": {
+      "title": "Novastar Montessori Sukuuu",
+      "subtitle": "Ɛyɛ adweneɛɛ Montessori kɔɔ Kumasi, Ghana ma kyerɛkyerɛ mu kɔɔfiri Sukuuu",
+      "cta": "Suro Yɛn",
+      "secondaryCta": "Hwɛ Deɛ"
+    },
+    "stats": {
+      "students": "Obi nsa a wɔ su sɛn",
+      "teachers": "Ɛyɛ asɛm kyerɛkyerɛfo",
+      "programs": "Nsa kyerɛkyerɛ",
+      "years": " Ɔda a wɔ wɔ nsa mu"
+    },
+    "features": {
+      "title": "Ɛdeɛn Na Wobetumi Akyerɛ Novastar?",
+      "subtitle": "Yɛ hyɛ Montessori nkyerɛkyerɛ ne Ghanaian nkyerɛkyerɛ ho nnipaea",
+      "montessori": {
+        "title": "Montessori Nkyerɛkyerɛ",
+        "desc": "Nnipa a wɔboo no ho nyinaa kyerɛkyerɛ no wɔ nsa ne ndwuma"
+      },
+      "ges": {
+        "title": "GES Nkyerɛkyerɛ",
+        "desc": "Ete sɛe GES ne NaCCA nkyerɛkyerɛ ho nnipaea"
+      },
+      "qualified": {
+        "title": "Wokyerefo a wɔyɛ adwuma",
+        "desc": "Montessori kyerɛkyerɛfo a wɔayɛ PEN asɛm"
+      }
+    }
+  },
+  "navigation": {
+    "home": "Fie",
+    "about": "Kasɛm",
+    "academics": "Nsa",
+    "admissions": "Suro",
+    "fees": "Sika",
+    "facilities": "Nsa a wɔayɛ yiye",
+    "news": "Kasafo",
+    "events": "Adwumayɛ",
+    "gallery": "Mframa",
+    "contact": "Frɛ",
+    "applyNow": "Suro Yɛn",
+    "languageToggle": "Kan English"
+  },
+  "about": {
+    "title": "Kasɛm Novastar Montessori Sukuuu",
+    "subtitle": "Yɛ hyɛ adwuma pa ne nsesaa kɔɔ kyerɛkyerɛ mu kɔɔfiri adweneɛɛ Montessori nkyerɛkyerɛ",
+    "mission": "Yɛn Mision",
+    "vision": "Yɛn Wizɔn",
+    "history": "Yɛn Twi"
+  },
+  "academics": {
+    "title": "Nsa Kyerɛkyerɛ a Wɔwɔ",
+    "subtitle": "Kɔɔfiri Creche kosi Junior High School",
+    "programs": {
+      "creche": {
+        "title": "Creche & Nursery",
+        "age": "Nwonsia 6 – 3 afa"
+      },
+      "kindergarten": {
+        "title": "Kindergarten",
+        "age": "4-5 afa (KG1, KG2)"
+      },
+      "lowerPrimary": {
+        "title": "Lower Primary",
+        "age": "6-8 afa (B1, B2, B3)"
+      },
+      "upperPrimary": {
+        "title": "Upper Primary",
+        "age": "9-11 afa (B4, B5, B6)"
+      },
+      "jhs": {
+        "title": "Junior High School",
+        "age": "12-15 afa (JHS 1-3)"
+      }
+    }
+  },
+  "admissions": {
+    "title": "Suro",
+    "subtitle": "Ba mmoa yɛn nkabom mu",
+    "process": {
+      "step1": "Suro Wɔ Anidanso",
+      "step2": "Ntoma a wɔbɔɔ de bɔ so",
+      "step3": "Mpam ahwɛe",
+      "step4": "Wo Nsawiee Ne Asuro"
+    },
+    "requirements": "Nsa a wɔpɛ dɛ wɔbɔɔ",
+    "form": "Suro Fɔm"
+  },
+  "fees": {
+    "title": "Sika Kese Ho Nsɛm",
+    "subtitle": "Nkyerɛkyerɛ pa ne sika a wɔbɛtɔ ma kyerɛkyerɛ pa",
+    "payment": "Sika a wɔbɛtɔ nsa",
+    "momo": "MTN Mobile Money",
+    "bank": "Bank Sika",
+    "cash": "Sika kasa wɔ Sukuuu"
+  },
+  "contact": {
+    "title": "Frɛ Kɔkɔɔ",
+    "address": "Ayeduase New Site, K-5 Junction, Ayeduase Road, Kumasi, Ashanti Region, Ghana",
+    "phone": "+233 24 493 5251",
+    "email": "info@novastarmontissorischool.com",
+    "hours": "Mon-Fri: 7:30 AM - 5:30 PM"
+  }
+}
