@@ -152,6 +152,16 @@ jobs:
       - name: Generate Prisma Client
         run: bun run --cwd packages/database db:generate
 
+      # Playwright downloads browser binaries separately, matched to the
+      # installed @playwright/test version. Without this the specs cannot
+      # launch: "Executable doesn't exist at
+      # /home/runner/.cache/ms-playwright/chromium_headless_shell-1243/...".
+      # All three projects in playwright.config.ts are installed, not just
+      # chromium, because the config runs firefox and webkit too.
+      # --with-deps also installs the Linux system libraries they need.
+      - name: Install Playwright browsers
+        run: bunx playwright install --with-deps chromium firefox webkit
+
       - name: Run E2E tests
         run: bun run test:e2e
 
