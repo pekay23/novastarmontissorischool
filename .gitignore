@@ -1,0 +1,63 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+.next/
+out/
+dist/
+*.tsbuildinfo
+next-env.d.ts
+
+# Turbo
+.turbo/
+
+# Environment files — NEVER commit secrets
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+!.env.example
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Bun
+bun.lockb
+
+# Prisma migrations are tracked in git
+# prisma/migrations/  # intentionally NOT gitignored
+
+# Logs
+logs/
+*.log
+
+# Uploads
+uploads/
+public/uploads/
+
+# Cache
+.cache/
+.parcel-cache/
+.eslintcache
+*.tsbuildinfo
+
+# Generated HTML docs (build output — local only, run `bun run docs:html`)
+docs/html/
+
+# Hermes
+.hermes/
+.hermes-tmp.*
+
+# Local dev artifacts
+*.db
+*.db-journal
+.css-check.css
+null
