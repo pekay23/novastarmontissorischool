@@ -1,7 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server'
+﻿import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getTenantContext, requirePermission } from '@/lib/tenant'
 import { z } from 'zod'
+import { logError } from '@/lib/logger'
 
 const StudentSchema = z.object({
   studentId: z.string().min(1),
@@ -43,7 +44,7 @@ export async function GET(req: NextRequest) {
     if (error instanceof Error && error.name === 'ForbiddenError') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
-    console.error('Students GET error:', error)
+    logError('Students GET', error)
     return NextResponse.json({ error: 'Failed to fetch students' }, { status: 500 })
   }
 }
@@ -88,7 +89,8 @@ export async function POST(req: NextRequest) {
     if (error instanceof Error && error.name === 'ForbiddenError') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
-    console.error('Students POST error:', error)
+    logError('Students POST', error)
     return NextResponse.json({ error: 'Failed to create student' }, { status: 500 })
   }
 }
+

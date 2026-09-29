@@ -1,8 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server'
+﻿import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getTenantContext, requirePermission } from '@/lib/tenant'
 import { z } from 'zod'
 import { InventoryStatus } from '@novastar/database'
+import { logError } from '@/lib/logger'
 
 const InventoryItemSchema = z.object({
   name: z.string().min(1),
@@ -54,7 +55,7 @@ export async function GET(req: NextRequest) {
     if (error instanceof Error && error.name === 'UnauthorizedError') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
-    console.error('Inventory GET error:', error)
+    logError('Inventory GET', error)
     return NextResponse.json({ error: 'Failed to fetch inventory' }, { status: 500 })
   }
 }
@@ -114,7 +115,8 @@ export async function POST(req: NextRequest) {
     if (error instanceof Error && error.name === 'ForbiddenError') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
-    console.error('Inventory POST error:', error)
+    logError('Inventory POST', error)
     return NextResponse.json({ error: 'Failed to create inventory item' }, { status: 500 })
   }
 }
+

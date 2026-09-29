@@ -1,8 +1,9 @@
-import { NextResponse } from 'next/server'
+﻿import { NextResponse } from 'next/server'
 import { DEFAULT_ENTITY_REGISTRY } from '@novastar/shared-types'
 import { requirePermission } from '@/lib/tenant'
+import { logError } from '@/lib/logger'
 
-// GET /api/config — List all entity types with their definitions (requires auth)
+// GET /api/config â€” List all entity types with their definitions (requires auth)
 export async function GET() {
   try {
     await requirePermission('config:read')
@@ -31,10 +32,10 @@ export async function GET() {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
     if (error instanceof Error && error.name === 'ServerConfigError') {
-      console.error('Server config error:', error.message)
+      logError('ServerConfig', error)
       return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
     }
-    console.error('Config API error:', error)
+    logError('Config API', error)
     return NextResponse.json({ error: 'Failed to fetch config entity types' }, { status: 500 })
   }
 }

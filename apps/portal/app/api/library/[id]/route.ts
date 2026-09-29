@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getTenantContext, requirePermission } from '@/lib/tenant'
 import { z } from 'zod'
+import { logError } from '@/lib/logger'
 
 const UpdateBookSchema = z.object({
   title: z.string().min(1).optional(),
@@ -50,7 +51,7 @@ export async function GET(
     if (error instanceof Error && error.name === 'UnauthorizedError') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
-    console.error('Library book GET error:', error)
+    logError('Library book GET', error)
     return NextResponse.json({ error: 'Failed to fetch book' }, { status: 500 })
   }
 }
@@ -120,7 +121,7 @@ export async function PATCH(
     if (error instanceof Error && error.name === 'ForbiddenError') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
-    console.error('Library book PATCH error:', error)
+    logError('Library book PATCH', error)
     return NextResponse.json({ error: 'Failed to update book' }, { status: 500 })
   }
 }
@@ -161,7 +162,7 @@ export async function DELETE(
     if (error instanceof Error && error.name === 'ForbiddenError') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
-    console.error('Library book DELETE error:', error)
+    logError('Library book DELETE', error)
     return NextResponse.json({ error: 'Failed to delete book' }, { status: 500 })
   }
 }

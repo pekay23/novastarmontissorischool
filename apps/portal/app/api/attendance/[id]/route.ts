@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getTenantContext, requirePermission } from '@/lib/tenant'
 import { z } from 'zod'
+import { logError } from '@/lib/logger'
 
 const UpdateAttendanceSchema = z.object({
   status: z.enum(['PRESENT', 'ABSENT', 'LATE', 'EXCUSED', 'HALF_DAY']).optional(),
@@ -32,7 +33,7 @@ export async function GET(
     if (error instanceof Error && error.name === 'UnauthorizedError') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
-    console.error('Attendance GET error:', error)
+    logError('Attendance GET', error)
     return NextResponse.json({ error: 'Failed to fetch attendance record' }, { status: 500 })
   }
 }
@@ -77,7 +78,7 @@ export async function PATCH(
     if (error instanceof Error && error.name === 'ForbiddenError') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
-    console.error('Attendance PATCH error:', error)
+    logError('Attendance PATCH', error)
     return NextResponse.json({ error: 'Failed to update attendance' }, { status: 500 })
   }
 }
@@ -104,7 +105,7 @@ export async function DELETE(
     if (error instanceof Error && error.name === 'ForbiddenError') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
-    console.error('Attendance DELETE error:', error)
+    logError('Attendance DELETE', error)
     return NextResponse.json({ error: 'Failed to delete attendance' }, { status: 500 })
   }
 }

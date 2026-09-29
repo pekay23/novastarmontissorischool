@@ -1,6 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server'
+﻿import { NextRequest, NextResponse } from 'next/server'
 import { getToken } from 'next-auth/jwt'
 import { prisma } from '@/lib/prisma'
+import { logError } from '@/lib/logger'
 
 export async function GET(req: NextRequest) {
   try {
@@ -29,7 +30,8 @@ export async function GET(req: NextRequest) {
       },
     })
   } catch (error) {
-    console.error('Session error:', error)
+    logError('Session', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
+

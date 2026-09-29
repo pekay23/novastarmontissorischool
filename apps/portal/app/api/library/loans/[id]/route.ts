@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getTenantContext, requirePermission } from '@/lib/tenant'
+import { logError } from '@/lib/logger'
 
 export async function GET(req: NextRequest) {
   try {
@@ -27,7 +28,7 @@ export async function GET(req: NextRequest) {
     if (error instanceof Error && error.name === 'UnauthorizedError') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
-    console.error('Library loans GET error:', error)
+    logError('Library loans GET', error)
     return NextResponse.json({ error: 'Failed to fetch loans' }, { status: 500 })
   }
 }
@@ -82,7 +83,7 @@ export async function POST(
     if (error instanceof Error && error.name === 'ForbiddenError') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
-    console.error('Library loan return error:', error)
+    logError('Library loan return', error)
     return NextResponse.json({ error: 'Failed to return book' }, { status: 500 })
   }
 }

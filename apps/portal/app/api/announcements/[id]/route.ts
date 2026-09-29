@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getTenantContext, requirePermission } from '@/lib/tenant'
 import { z } from 'zod'
+import { logError } from '@/lib/logger'
 
 const UpdateAnnouncementSchema = z.object({
   title: z.string().min(1).optional(),
@@ -36,7 +37,7 @@ export async function GET(
     if (error instanceof Error && error.name === 'UnauthorizedError') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
-    console.error('Announcement GET error:', error)
+    logError('Announcement GET', error)
     return NextResponse.json({ error: 'Failed to fetch announcement' }, { status: 500 })
   }
 }
@@ -91,7 +92,7 @@ export async function PATCH(
     if (error instanceof Error && error.name === 'ForbiddenError') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
-    console.error('Announcement PATCH error:', error)
+    logError('Announcement PATCH', error)
     return NextResponse.json({ error: 'Failed to update announcement' }, { status: 500 })
   }
 }
@@ -118,7 +119,7 @@ export async function DELETE(
     if (error instanceof Error && error.name === 'ForbiddenError') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
-    console.error('Announcement DELETE error:', error)
+    logError('Announcement DELETE', error)
     return NextResponse.json({ error: 'Failed to delete announcement' }, { status: 500 })
   }
 }

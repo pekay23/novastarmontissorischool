@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import { authOptions } from '@/lib/auth'
 import { requirePermission } from '@/lib/tenant'
+import { logError } from '@/lib/logger'
 
 // Prisma model delegates are camelCase. entityModelMap maps URL segment to model name.
 // Dynamic access uses a typed delegate interface instead of `as any`.
@@ -288,10 +289,10 @@ export async function GET(
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
     if (error instanceof Error && error.name === 'ServerConfigError') {
-      console.error('Server config error:', error.message)
+      logError('ServerConfig', error)
       return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
     }
-    console.error(`Config entity fetch error:`, error)
+    logError('ConfigEntity', error)
     return NextResponse.json({ error: 'Failed to fetch entity' }, { status: 500 })
   }
 }
@@ -351,10 +352,10 @@ export async function PATCH(
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
     if (error instanceof Error && error.name === 'ServerConfigError') {
-      console.error('Server config error:', error.message)
+      logError('ServerConfig', error)
       return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
     }
-    console.error(`Config entity update error:`, error)
+    logError('ConfigEntity', error)
     return NextResponse.json({ error: 'Failed to update entity' }, { status: 500 })
   }
 }
@@ -403,10 +404,10 @@ export async function DELETE(
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
     if (error instanceof Error && error.name === 'ServerConfigError') {
-      console.error('Server config error:', error.message)
+      logError('ServerConfig', error)
       return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
     }
-    console.error(`Config entity delete error:`, error)
+    logError('ConfigEntity', error)
     return NextResponse.json({ error: 'Failed to delete entity' }, { status: 500 })
   }
 }

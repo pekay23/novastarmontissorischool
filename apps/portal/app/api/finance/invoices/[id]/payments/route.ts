@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getTenantContext, requirePermission } from '@/lib/tenant'
 import { z } from 'zod'
+import { logError } from '@/lib/logger'
 
 // GET /api/finance/invoices/[id]/payments — List payments for a specific invoice
 export async function GET(
@@ -55,7 +56,7 @@ export async function GET(
     if (error instanceof Error && error.name === 'ForbiddenError') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
-    console.error('Finance invoice payments GET error:', error)
+    logError('Finance invoice payments GET', error)
     return NextResponse.json({ error: 'Failed to fetch payments' }, { status: 500 })
   }
 }
@@ -155,7 +156,7 @@ export async function POST(
     if (error instanceof Error && error.name === 'ForbiddenError') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
-    console.error('Finance invoice payments POST error:', error)
+    logError('Finance invoice payments POST', error)
     return NextResponse.json({ error: 'Failed to record payment' }, { status: 500 })
   }
 }

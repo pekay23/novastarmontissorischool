@@ -98,6 +98,22 @@ const nextConfig: NextConfig = {
       "form-action 'self'",
     ].join('; ')
 
+    // CORS: lock origin to NEXT_PUBLIC_ORIGIN in production; allow same-origin in dev
+    const isProd = process.env.NODE_ENV === 'production'
+    const allowedOrigin = isProd
+      ? process.env.NEXT_PUBLIC_ORIGIN || ''
+      : process.env.NEXT_PUBLIC_ORIGIN || '*'
+
+    const corsHeaders = isProd && allowedOrigin
+      ? [
+          { key: 'Access-Control-Allow-Origin', value: allowedOrigin },
+          { key: 'Access-Control-Allow-Credentials', value: 'true' },
+        ]
+      : [
+          { key: 'Access-Control-Allow-Origin', value: allowedOrigin },
+          { key: 'Access-Control-Allow-Credentials', value: isProd ? 'true' : 'false' },
+        ]
+
     return [
       {
         source: '/(.*)',
@@ -108,6 +124,14 @@ const nextConfig: NextConfig = {
           { key: 'Strict-Transport-Security', value: 'max-age=31536000; includeSubDomains; preload' },
           { key: 'Content-Security-Policy', value: csp },
           { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=(), payment=(self)' },
+        ],
+      },
+      {
+        source: '/api/:path*',
+        headers: [
+          ...corsHeaders,
+          { key: 'Access-Control-Allow-Methods', value: 'GET,POST,PATCH,DELETE,OPTIONS' },
+          { key: 'Access-Control-Allow-Headers', value: 'Content-Type, Authorization' },
         ],
       },
       {

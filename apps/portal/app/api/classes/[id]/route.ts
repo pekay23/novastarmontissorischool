@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getTenantContext, requirePermission } from '@/lib/tenant'
 import { z } from 'zod'
+import { logError } from '@/lib/logger'
 
 const UpdateClassSchema = z.object({
   name: z.string().min(1).optional(),
@@ -34,7 +35,7 @@ export async function GET(
     if (error instanceof Error && error.name === 'UnauthorizedError') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
-    console.error('Class GET error:', error)
+    logError('Class GET', error)
     return NextResponse.json({ error: 'Failed to fetch class' }, { status: 500 })
   }
 }
@@ -78,7 +79,7 @@ export async function PATCH(
     if (error instanceof Error && error.name === 'ForbiddenError') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
-    console.error('Class PATCH error:', error)
+    logError('Class PATCH', error)
     return NextResponse.json({ error: 'Failed to update class' }, { status: 500 })
   }
 }
@@ -105,7 +106,7 @@ export async function DELETE(
     if (error instanceof Error && error.name === 'ForbiddenError') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
-    console.error('Class DELETE error:', error)
+    logError('Class DELETE', error)
     return NextResponse.json({ error: 'Failed to delete class' }, { status: 500 })
   }
 }

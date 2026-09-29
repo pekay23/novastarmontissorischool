@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getTenantContext, requirePermission } from '@/lib/tenant'
 import { z } from 'zod'
+import { logError } from '@/lib/logger'
 
 const UpdateEventSchema = z.object({
   title: z.string().min(1).optional(),
@@ -34,7 +35,7 @@ export async function GET(
     if (error instanceof Error && error.name === 'UnauthorizedError') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
-    console.error('Event GET error:', error)
+    logError('Event GET', error)
     return NextResponse.json({ error: 'Failed to fetch event' }, { status: 500 })
   }
 }
@@ -83,7 +84,7 @@ export async function PATCH(
     if (error instanceof Error && error.name === 'ForbiddenError') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
-    console.error('Event PATCH error:', error)
+    logError('Event PATCH', error)
     return NextResponse.json({ error: 'Failed to update event' }, { status: 500 })
   }
 }
@@ -110,7 +111,7 @@ export async function DELETE(
     if (error instanceof Error && error.name === 'ForbiddenError') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
-    console.error('Event DELETE error:', error)
+    logError('Event DELETE', error)
     return NextResponse.json({ error: 'Failed to delete event' }, { status: 500 })
   }
 }

@@ -1,7 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server'
+﻿import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getTenantContext, requirePermission } from '@/lib/tenant'
 import { z } from 'zod'
+import { logError } from '@/lib/logger'
 
 const ClassSchema = z.object({
   name: z.string().min(1),
@@ -30,7 +31,7 @@ export async function GET(_req: NextRequest) {
     if (error instanceof Error && error.name === 'UnauthorizedError') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
-    console.error('Classes GET error:', error)
+    logError('Classes GET', error)
     return NextResponse.json({ error: 'Failed to fetch classes' }, { status: 500 })
   }
 }
@@ -75,7 +76,8 @@ export async function POST(req: NextRequest) {
     if (error instanceof Error && error.name === 'ForbiddenError') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
-    console.error('Classes POST error:', error)
+    logError('Classes POST', error)
     return NextResponse.json({ error: 'Failed to create class' }, { status: 500 })
   }
 }
+

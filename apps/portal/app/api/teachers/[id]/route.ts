@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getTenantContext, requirePermission } from '@/lib/tenant'
 import { z } from 'zod'
+import { logError } from '@/lib/logger'
 
 const UpdateStaffSchema = z.object({
   firstName: z.string().min(1).optional(),
@@ -34,7 +35,7 @@ export async function GET(
     if (error instanceof Error && error.name === 'UnauthorizedError') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
-    console.error('Staff GET error:', error)
+    logError('Staff GET', error)
     return NextResponse.json({ error: 'Failed to fetch staff member' }, { status: 500 })
   }
 }
@@ -79,7 +80,7 @@ export async function PATCH(
     if (error instanceof Error && error.name === 'ForbiddenError') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
-    console.error('Staff PATCH error:', error)
+    logError('Staff PATCH', error)
     return NextResponse.json({ error: 'Failed to update staff member' }, { status: 500 })
   }
 }
@@ -106,7 +107,7 @@ export async function DELETE(
     if (error instanceof Error && error.name === 'ForbiddenError') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
-    console.error('Staff DELETE error:', error)
+    logError('Staff DELETE', error)
     return NextResponse.json({ error: 'Failed to delete staff member' }, { status: 500 })
   }
 }

@@ -1,7 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server'
+﻿import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getTenantContext, requirePermission } from '@/lib/tenant'
 import { z } from 'zod'
+import { logError } from '@/lib/logger'
 
 const BookSchema = z.object({
   title: z.string().min(1),
@@ -57,7 +58,7 @@ export async function GET(req: NextRequest) {
     if (error instanceof Error && error.name === 'UnauthorizedError') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
-    console.error('Library books GET error:', error)
+    logError('Library books GET', error)
     return NextResponse.json({ error: 'Failed to fetch books' }, { status: 500 })
   }
 }
@@ -104,7 +105,8 @@ export async function POST(req: NextRequest) {
     if (error instanceof Error && error.name === 'ForbiddenError') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
-    console.error('Library books POST error:', error)
+    logError('Library books POST', error)
     return NextResponse.json({ error: 'Failed to create book' }, { status: 500 })
   }
 }
+

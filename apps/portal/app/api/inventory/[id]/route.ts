@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { getTenantContext, requirePermission } from '@/lib/tenant'
 import { z } from 'zod'
 import { InventoryStatus } from '@novastar/database'
+import { logError } from '@/lib/logger'
 
 const UpdateInventoryItemSchema = z.object({
   name: z.string().min(1).optional(),
@@ -98,7 +99,7 @@ export async function PATCH(
     if (error instanceof Error && error.name === 'ForbiddenError') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
-    console.error('Inventory item PATCH error:', error)
+    logError('Inventory item PATCH', error)
     return NextResponse.json({ error: 'Failed to update item' }, { status: 500 })
   }
 }
@@ -131,7 +132,7 @@ export async function DELETE(
     if (error instanceof Error && error.name === 'ForbiddenError') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
-    console.error('Inventory item DELETE error:', error)
+    logError('Inventory item DELETE', error)
     return NextResponse.json({ error: 'Failed to delete item' }, { status: 500 })
   }
 }

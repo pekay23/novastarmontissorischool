@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getTenantContext, requirePermission } from '@/lib/tenant'
 import { z } from 'zod'
+import { logError } from '@/lib/logger'
 
 // GET /api/assessments/[id] — Get a single assessment with scores
 export async function GET(
@@ -49,7 +50,7 @@ export async function GET(
     if (error instanceof Error && error.name === 'ForbiddenError') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
-    console.error('Assessment GET error:', error)
+    logError('Assessment GET', error)
     return NextResponse.json({ error: 'Failed to fetch assessment' }, { status: 500 })
   }
 }
@@ -119,7 +120,7 @@ export async function PATCH(
     if (error instanceof Error && error.name === 'ForbiddenError') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
-    console.error('Assessment PATCH error:', error)
+    logError('Assessment PATCH', error)
     return NextResponse.json({ error: 'Failed to update assessment' }, { status: 500 })
   }
 }
@@ -167,7 +168,7 @@ export async function DELETE(
     if (error instanceof Error && error.name === 'ForbiddenError') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
-    console.error('Assessment DELETE error:', error)
+    logError('Assessment DELETE', error)
     return NextResponse.json({ error: 'Failed to delete assessment' }, { status: 500 })
   }
 }

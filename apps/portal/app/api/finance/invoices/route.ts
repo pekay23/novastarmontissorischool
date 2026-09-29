@@ -1,8 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server'
+﻿import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getTenantContext, requirePermission } from '@/lib/tenant'
 import { InvoiceStatus } from '@novastar/database'
 import { z } from 'zod'
+import { logError } from '@/lib/logger'
 
 // List all fee invoices for the current school/tenant
 export async function GET(req: NextRequest) {
@@ -58,7 +59,7 @@ export async function GET(req: NextRequest) {
     if (error instanceof Error && error.name === 'ForbiddenError') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
-    console.error('Finance invoices GET error:', error)
+    logError('Finance invoices GET', error)
     return NextResponse.json({ error: 'Failed to fetch invoices' }, { status: 500 })
   }
 }
@@ -167,7 +168,8 @@ export async function POST(req: NextRequest) {
     if (error instanceof Error && error.name === 'ForbiddenError') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
-    console.error('Finance invoices POST error:', error)
+    logError('Finance invoices POST', error)
     return NextResponse.json({ error: 'Failed to generate invoices' }, { status: 500 })
   }
 }
+

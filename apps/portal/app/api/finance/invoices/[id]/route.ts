@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getTenantContext, requirePermission } from '@/lib/tenant'
+import { logError } from '@/lib/logger'
 
 // Delete a fee invoice (only if no payments recorded)
 export async function DELETE(req: NextRequest) {
@@ -46,7 +47,7 @@ export async function DELETE(req: NextRequest) {
     if (error instanceof Error && error.name === 'ForbiddenError') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
-    console.error('Finance invoice DELETE error:', error)
+    logError('Finance invoice DELETE', error)
     return NextResponse.json({ error: 'Failed to delete invoice' }, { status: 500 })
   }
 }

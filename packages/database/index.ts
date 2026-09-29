@@ -6,8 +6,13 @@ const globalForPrisma = globalThis as unknown as {
 }
 
 function createMockPrisma(): PrismaClient {
-  // Returns empty results — used during `next build` when DATABASE_URL is unavailable
-  // At runtime, DATABASE_URL is always set and the real client is used
+  // Returns empty results — used during `next build` when DATABASE_URL is unavailable.
+  // At runtime, DATABASE_URL is always set and the real client is used.
+  // Logs a warning so errors are not silently masked during build.
+  if (process.env.NODE_ENV !== 'production' || process.env.NEXT_PHASE !== undefined) {
+    console.warn('[prisma] Mock client active — DATABASE_URL is not set. Queries will return empty results. This is expected during `next build` only.')
+  }
+
   const modelProxy = new Proxy({} as Record<string, unknown>, {
     get(_target, prop: string | symbol) {
       if (prop === 'count' || prop === 'countDistinct') return () => Promise.resolve(0)

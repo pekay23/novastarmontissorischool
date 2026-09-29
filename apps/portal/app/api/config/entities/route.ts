@@ -1,9 +1,10 @@
-import { NextResponse } from 'next/server'
+﻿import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { DEFAULT_ENTITY_REGISTRY } from '@novastar/shared-types'
 import { requirePermission, getTenantContext } from '@/lib/tenant'
+import { logError } from '@/lib/logger'
 
-// GET /api/config/entities — List all entity definitions
+// GET /api/config/entities â€” List all entity definitions
 // Merges DEFAULT_ENTITY_REGISTRY with any admin overrides stored in ConfigEntity table
 export async function GET() {
   try {
@@ -42,10 +43,11 @@ export async function GET() {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
     if (error instanceof Error && error.name === 'ServerConfigError') {
-      console.error('Server config error:', error.message)
+      logError('ServerConfig', error)
       return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
     }
-    console.error('Config entities list error:', error)
+    logError('Config entities list', error)
     return NextResponse.json({ error: 'Failed to fetch entity definitions' }, { status: 500 })
   }
 }
+

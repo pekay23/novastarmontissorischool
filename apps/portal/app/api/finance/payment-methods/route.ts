@@ -1,6 +1,7 @@
-import { NextResponse } from 'next/server'
+﻿import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getTenantContext, requirePermission } from '@/lib/tenant'
+import { logError } from '@/lib/logger'
 
 // List enabled payment methods for the current school/tenant
 export async function GET() {
@@ -29,7 +30,8 @@ export async function GET() {
     if (error instanceof Error && error.name === 'ForbiddenError') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
-    console.error('Finance payment methods GET error:', error)
+    logError('Finance payment methods GET', error)
     return NextResponse.json({ error: 'Failed to fetch payment methods' }, { status: 500 })
   }
 }
+

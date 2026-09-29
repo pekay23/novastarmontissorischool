@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getTenantContext, requirePermission } from '@/lib/tenant'
 import { z } from 'zod'
+import { logError } from '@/lib/logger'
 
 // GET /api/assessments/[id]/scores — List all scores for an assessment
 export async function GET(
@@ -52,7 +53,7 @@ export async function GET(
     if (error instanceof Error && error.name === 'ForbiddenError') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
-    console.error('Scores GET error:', error)
+    logError('Scores GET', error)
     return NextResponse.json({ error: 'Failed to fetch scores' }, { status: 500 })
   }
 }
@@ -149,7 +150,7 @@ export async function POST(
     if (error instanceof Error && error.name === 'ForbiddenError') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
-    console.error('Score POST error:', error)
+    logError('Score POST', error)
     return NextResponse.json({ error: 'Failed to save score' }, { status: 500 })
   }
 }

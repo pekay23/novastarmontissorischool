@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getTenantContext, requirePermission } from '@/lib/tenant'
+import { logError } from '@/lib/logger'
 
 // GET /api/reports/academic/[studentId] — Generate a student academic report card
 export async function GET(
@@ -137,7 +138,7 @@ export async function GET(
     if (error instanceof Error && error.name === 'ForbiddenError') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
-    console.error('Academic report GET error:', error)
+    logError('Academic report GET', error)
     return NextResponse.json({ error: 'Failed to generate report' }, { status: 500 })
   }
 }

@@ -4,6 +4,7 @@ import { authOptions, TENANT_ID } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { DEFAULT_ENTITY_REGISTRY, type EntityDefinition } from '@novastar/shared-types'
 import { requirePermission } from '@/lib/tenant'
+import { logError } from '@/lib/logger'
 
 // GET /api/config/entities/[type] — Get a single entity definition
 // Returns admin-overridden definition if it exists, otherwise the default
@@ -26,7 +27,7 @@ export async function GET(
 
     const tenantId = TENANT_ID
     if (!tenantId) {
-      console.error('Server config error: TENANT_ID environment variable is not set')
+      logError('ServerConfig', new Error('TENANT_ID environment variable is not set'))
       return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
     }
 
@@ -51,10 +52,10 @@ export async function GET(
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
     if (error instanceof Error && error.name === 'ServerConfigError') {
-      console.error('Server config error:', error.message)
+      logError('ServerConfig', error)
       return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
     }
-    console.error('Config entity fetch error:', error)
+    logError('Config entity fetch', error)
     return NextResponse.json({ error: 'Failed to fetch entity definition' }, { status: 500 })
   }
 }
@@ -89,7 +90,7 @@ export async function PATCH(
     // Tenant guard — TENANT_ID must be set (no hardcoded fallback)
     const tenantId = TENANT_ID
     if (!tenantId) {
-      console.error('Server config error: TENANT_ID environment variable is not set')
+      logError('ServerConfig', new Error('TENANT_ID environment variable is not set'))
       return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
     }
 
@@ -128,10 +129,10 @@ export async function PATCH(
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
     if (error instanceof Error && error.name === 'ServerConfigError') {
-      console.error('Server config error:', error.message)
+      logError('ServerConfig', error)
       return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
     }
-    console.error('Config entity update error:', error)
+    logError('Config entity update', error)
     return NextResponse.json({ error: 'Failed to update entity definition' }, { status: 500 })
   }
 }
@@ -153,7 +154,7 @@ export async function DELETE(
 
     const tenantId = TENANT_ID
     if (!tenantId) {
-      console.error('Server config error: TENANT_ID environment variable is not set')
+      logError('ServerConfig', new Error('TENANT_ID environment variable is not set'))
       return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
     }
 
@@ -180,10 +181,10 @@ export async function DELETE(
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
     if (error instanceof Error && error.name === 'ServerConfigError') {
-      console.error('Server config error:', error.message)
+      logError('ServerConfig', error)
       return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
     }
-    console.error('Config entity delete error:', error)
+    logError('Config entity delete', error)
     return NextResponse.json({ error: 'Failed to delete entity definition' }, { status: 500 })
   }
 }

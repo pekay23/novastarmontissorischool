@@ -1,6 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server'
+﻿import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getTenantContext } from '@/lib/tenant'
+import { logError } from '@/lib/logger'
 
 export async function GET(req: NextRequest) {
   try {
@@ -28,7 +29,8 @@ export async function GET(req: NextRequest) {
     if (error instanceof Error && error.name === 'UnauthorizedError') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
-    console.error('Terms GET error:', error)
+    logError('Terms GET', error)
     return NextResponse.json({ error: 'Failed to fetch terms' }, { status: 500 })
   }
 }
+

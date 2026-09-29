@@ -1,8 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server'
+﻿import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getTenantContext, requirePermission } from '@/lib/tenant'
 import { InvoiceStatus, PaymentStatus } from '@novastar/database'
 import { z } from 'zod'
+import { logError } from '@/lib/logger'
 
 // List payments for a specific invoice
 export async function GET(req: NextRequest) {
@@ -41,7 +42,7 @@ export async function GET(req: NextRequest) {
     if (error instanceof Error && error.name === 'ForbiddenError') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
-    console.error('Finance payments GET error:', error)
+    logError('Finance payments GET', error)
     return NextResponse.json({ error: 'Failed to fetch payments' }, { status: 500 })
   }
 }
@@ -200,7 +201,8 @@ export async function POST(req: NextRequest) {
     if (error instanceof Error && error.name === 'ForbiddenError') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
-    console.error('Finance payments POST error:', error)
+    logError('Finance payments POST', error)
     return NextResponse.json({ error: 'Failed to record payment' }, { status: 500 })
   }
 }
+
