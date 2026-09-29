@@ -31,6 +31,15 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      # Every job is a clean runner, so @prisma/client is never generated and
+      # exports nothing. packages/database/index.ts imports PrismaClient, the
+      # models and the enums, so typecheck and the app builds both fail with
+      # TS2305 until the client is generated. --frozen-lockfile does not
+      # generate it: that depends on @prisma/client's postinstall hook, which
+      # does not fire reliably under bun's isolated node_modules layout.
+      - name: Generate Prisma Client
+        run: bun run --cwd packages/database db:generate
+
       - name: Run lint
         run: bun run lint
 
@@ -52,6 +61,15 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      # Every job is a clean runner, so @prisma/client is never generated and
+      # exports nothing. packages/database/index.ts imports PrismaClient, the
+      # models and the enums, so typecheck and the app builds both fail with
+      # TS2305 until the client is generated. --frozen-lockfile does not
+      # generate it: that depends on @prisma/client's postinstall hook, which
+      # does not fire reliably under bun's isolated node_modules layout.
+      - name: Generate Prisma Client
+        run: bun run --cwd packages/database db:generate
+
       - name: Run unit tests
         run: bun run test
 
@@ -72,6 +90,15 @@ jobs:
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
+
+      # Every job is a clean runner, so @prisma/client is never generated and
+      # exports nothing. packages/database/index.ts imports PrismaClient, the
+      # models and the enums, so typecheck and the app builds both fail with
+      # TS2305 until the client is generated. --frozen-lockfile does not
+      # generate it: that depends on @prisma/client's postinstall hook, which
+      # does not fire reliably under bun's isolated node_modules layout.
+      - name: Generate Prisma Client
+        run: bun run --cwd packages/database db:generate
 
       - name: Build all apps
         run: bun run build
@@ -96,6 +123,15 @@ jobs:
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
+
+      # Every job is a clean runner, so @prisma/client is never generated and
+      # exports nothing. packages/database/index.ts imports PrismaClient, the
+      # models and the enums, so typecheck and the app builds both fail with
+      # TS2305 until the client is generated. --frozen-lockfile does not
+      # generate it: that depends on @prisma/client's postinstall hook, which
+      # does not fire reliably under bun's isolated node_modules layout.
+      - name: Generate Prisma Client
+        run: bun run --cwd packages/database db:generate
 
       - name: Run E2E tests
         run: bun run test:e2e
