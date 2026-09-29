@@ -1,8 +1,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { DEFAULT_ENTITY_REGISTRY } from '@novastar/shared-types'
-import { requirePermission } from '@/lib/tenant'
-import { TENANT_ID } from '@/lib/auth'
+import { requirePermission, getTenantContext } from '@/lib/tenant'
 
 // GET /api/config/entities — List all entity definitions
 // Merges DEFAULT_ENTITY_REGISTRY with any admin overrides stored in ConfigEntity table
@@ -10,11 +9,9 @@ export async function GET() {
   try {
     await requirePermission('config:read')
 
-    const tenantId = TENANT_ID
-    if (!tenantId) {
-      console.error('Server config error: TENANT_ID environment variable is not set')
-      return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
-    }
+    // Resolve tenant from the session (not a process-level constant) so the
+    // filter and the authorization decision use the same source of truth.
+    const { tenantId } = await getTenantContext()
 
     // Fetch all admin overrides from DB (filtered by tenant)
     const overrides = await prisma.configEntity.findMany({

@@ -91,8 +91,35 @@ describe('Rate Limiter', () => {
     })
   })
 
+  describe('checkRateLimit - per-entry windowMs sweep correctness', () => {
+    it('should not wipe a long-window limiter when a short-window sweep fires', () => {
+      const shortWindow = 100
+      const longWindow = 60000
+      const max = 2
+
+      // Arm a short-window sweep
+      checkRateLimit('short', max, shortWindow)
+      checkRateLimit('short', max, shortWindow)
+
+      // Now hit a long-window limiter
+      checkRateLimit('long', max, longWindow)
+      checkRateLimit('long', max, longWindow)
+      // Third hit should be blocked
+      expect(checkRateLimit('long', max, longWindow).success).toBe(false)
+
+      // Wait past the short window so the sweep fires
+      return new Promise<void>((resolve) => {
+        setTimeout(() => {
+          // The long-window counter must still be blocked (sweep shouldn't erase it)
+          expect(checkRateLimit('long', max, longWindow).success).toBe(false)
+          resolve()
+        }, 200)
+      })
+    })
+  })
+
   describe('clientIdentifier', () => {
-    it('should prefer x-real-ip when present', () => {
+    it('should prefer x-real-ip when present (trusted proxy)', () => {
       const request = new Request('http://localhost', {
         headers: {
           'x-forwarded-for': '203.0.113.5, 70.41.3.18, 150.172.238.178',
@@ -102,24 +129,28 @@ describe('Rate Limiter', () => {
       expect(clientIdentifier(request)).toBe('198.51.100.42')
     })
 
-    it('should extract last hop from multi-hop x-forwarded-for when x-real-ip absent', () => {
+    it('should use hop at index (length-1-TRUSTED_PROXY_HOPS) for multi-hop XFF', () => {
+      // Default TRUSTED_PROXY_HOPS=1: client is at index hops.length-2
       const request = new Request('http://localhost', {
         headers: { 'x-forwarded-for': '203.0.113.5, 70.41.3.18, 150.172.238.178' },
       })
-      // Multi-hop: last entry is the client (trusted proxy appends it)
-      expect(clientIdentifier(request)).toBe('150.172.238.178')
+      // 3 hops, hop at index 1 = '70.41.3.18' (client, not the nearest proxy)
+      expect(clientIdentifier(request)).toBe('70.41.3.18')
     })
 
-    it('should ignore single-hop x-forwarded-for as untrusted', () => {
+    it('should discard single-hop x-forwarded-for as untrusted (need > 1 hop for 1 trusted proxy)', () => {
       const request = new Request('http://localhost', {
         headers: { 'x-forwarded-for': '203.0.113.5' },
       })
       expect(clientIdentifier(request)).toBe('unknown')
     })
 
-    it('should fall back to x-real-ip when x-forwarded-for absent', () => {
+    it('should fall back to x-real-ip when x-forwarded-for has insufficient hops', () => {
       const request = new Request('http://localhost', {
-        headers: { 'x-real-ip': '198.51.100.42' },
+        headers: {
+          'x-forwarded-for': '203.0.113.5',
+          'x-real-ip': '198.51.100.42',
+        },
       })
       expect(clientIdentifier(request)).toBe('198.51.100.42')
     })
@@ -131,9 +162,28 @@ describe('Rate Limiter', () => {
 
     it('should trim whitespace and ignore empty hops in multi-hop x-forwarded-for', () => {
       const request = new Request('http://localhost', {
-        headers: { 'x-forwarded-for': '  203.0.113.5  ,  , 70.41.3.18' },
+        headers: { 'x-forwarded-for': '  203.0.113.5  , 70.41.3.18,  , 150.172.238.178' },
       })
+      // 3 real hops after filtering: [203.0.113.5, 70.41.3.18, 150.172.238.178]
+      // hop at index 1 = 70.41.3.18
       expect(clientIdentifier(request)).toBe('70.41.3.18')
+    })
+
+    it('should use two-hop x-forwarded-for with 1 trusted proxy', () => {
+      const request = new Request('http://localhost', {
+        headers: { 'x-forwarded-for': '203.0.113.5, 70.41.3.18' },
+      })
+      // 2 hops > 1 trusted proxy, client at index 0
+      expect(clientIdentifier(request)).toBe('203.0.113.5')
+    })
+
+    it('should return unknown when only the trusted proxy hop is present', () => {
+      // Only 1 hop = just the proxy, no client visible
+      const request = new Request('http://localhost', {
+        headers: { 'x-forwarded-for': '70.41.3.18' },
+      })
+      // hop not > TRUSTED_PROXY_HOPS (1), so fall through
+      expect(clientIdentifier(request)).toBe('unknown')
     })
   })
 

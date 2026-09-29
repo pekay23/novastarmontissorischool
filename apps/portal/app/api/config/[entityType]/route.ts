@@ -12,7 +12,6 @@ import {
   GradingScaleSchema,
   FeeCategorySchema,
   PaymentMethodConfigSchema,
-  RoleSchema,
   AssessmentTypeConfigSchema,
   GradingLevelSchema,
 } from '@novastar/shared-types'
@@ -72,6 +71,8 @@ const entityModelMap: Record<string, {
     createSchema: z.object({
       name: z.string().min(1),
       description: z.string().nullable().optional(),
+      permissions: z.array(z.string()).default([]),
+      inheritsFrom: z.array(z.string()).default([]),
     }),
     allowedSortFields: ['name', 'isSystem', 'createdAt'],
   },

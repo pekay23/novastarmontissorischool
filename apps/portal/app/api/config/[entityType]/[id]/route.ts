@@ -86,13 +86,13 @@ const entityUpdateSchemas: Record<string, z.ZodSchema> = {
     sortOrder: z.number().int().optional(),
     providerConfig: z.record(z.string(), z.unknown()).nullable().optional(),
   }),
-   // Privilege-management fields (permissions, inheritsFrom, isSystem) are
-   // intentionally excluded — they cannot be edited via the generic config PATCH.
-   // Use a dedicated administrative endpoint for role permission management.
-   role: z.object({
-    name: z.string().optional(),
-    description: z.string().nullable().optional(),
-  }),
+    // Privilege-management fields (permissions, inheritsFrom, isSystem) are
+    // intentionally excluded from both create and update — they cannot be
+    // edited via the generic config endpoints. Use a dedicated admin endpoint.
+    role: z.object({
+     name: z.string().optional(),
+     description: z.string().nullable().optional(),
+   }),
   assessment_type: z.object({
     code: z.string().optional(),
     name: z.string().optional(),

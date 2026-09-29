@@ -298,7 +298,7 @@ describe('Middleware - Rate Limiter', () => {
     expect(authRoute).toContain('Retry-After')
   })
 
-  it('should use last hop of x-forwarded-for (not first)', () => {
-    expect(rateLimitSrc).toContain('hops[hops.length - 1]')
+  it('should use TRUSTED_PROXY_HOPS for hop indexing (not first hop blindly)', () => {
+    expect(rateLimitSrc).toContain('TRUSTED_PROXY_HOPS')
   })
 })

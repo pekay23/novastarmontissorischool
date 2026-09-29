@@ -47,10 +47,8 @@ function scheduleSweep(windowMs: number): void {
       }
     }
   }, windowMs + 1000)
-  // Allow the process to exit without waiting for the timer in Node.js
-  if (typeof (sweepTimer as unknown) === 'object' && 'unref' in (sweepTimer as unknown as { unref?: unknown })) {
-    (sweepTimer as unknown as { unref: () => void }).unref()
-  }
+  // Don't keep the process alive waiting for the sweep timer.
+  sweepTimer.unref?.()
 }
 
 function hits(identifier: string, windowMs: number, now: number): number[] {
@@ -109,35 +107,50 @@ export function resetRateLimit(): void {
 }
 
 /**
+ * Number of trusted proxy hops. When set to a non-negative integer, the last
+ * N entries of `x-forwarded-for` are considered proxy-appended and ignored.
+ * The trusted client IP is the entry at index `hops.length - 1 - N`.
+ *
+ * Defaults to 1 (one trusted edge proxy, e.g. Vercel/CDN). Set to 0 if the
+ * app receives requests directly (no proxy in front), in which case both
+ * `x-forwarded-for` and `x-real-ip` are treated as untrusted and the
+ * identifier collapses to 'unknown'.
+ */
+const TRUSTED_PROXY_HOPS = Math.max(0, Number.parseInt(process.env.TRUSTED_PROXY_HOPS ?? '1', 10) || 0)
+
+/**
  * Extract a client identifier from the request.
  *
  * Security model:
- * - `x-real-ip` is set by the trusted reverse proxy / platform (e.g. Vercel)
- *   and is the most reliable source of the actual client IP. We prefer it.
- * - `x-forwarded-for` is only consulted for multi-hop chains where the trusted
- *   proxy appends the real client IP. With a single hop the header is entirely
- *   client-controlled, so we discard it and fall through.
- * - If no trusted header is present, we collapse to 'unknown' (a shared bucket)
- *   rather than silently disabling the limit.
- *
- * Deployment note: in a multi-proxy chain where each proxy prepends the peer
- * it observed, the convention is client-first and the trusted hop count must
- * be configured. This function assumes a single trusted edge that appends.
- * For multi-hop setups, set TRUSTED_PROXY_HOPS to index from the right.
+ * - When TRUSTED_PROXY_HOPS > 0, the app is behind a trusted proxy that sets
+ *   `x-real-ip` and/or appends to `x-forwarded-for`. We use the hop at index
+ *   `hops.length - 1 - TRUSTED_PROXY_HOPS`, which is the client IP the proxy
+ *   observed.
+ * - When TRUSTED_PROXY_HOPS === 0 (direct exposure), both XFF and x-real-ip
+ *   are client-settable and must be treated as untrusted. The identifier
+ *   collapses to 'unknown' — a shared bucket — rather than silently trusting
+ *   an attacker-controlled value.
  */
 export function clientIdentifier(request: Request): string {
+  if (TRUSTED_PROXY_HOPS === 0) {
+    return 'unknown'
+  }
+
+  // Prefer x-real-ip: set by the trusted edge (Vercel, nginx real_ip module),
+  // not by the client. This is the most reliable signal.
   const realIp = request.headers.get('x-real-ip')
   if (realIp) {
     return realIp.trim()
   }
 
+  // Fall back to XFF: only trust it when there are more hops than the trusted
+  // proxy count. The client IP is the entry at index
+  // `hops.length - 1 - TRUSTED_PROXY_HOPS`.
   const forwarded = request.headers.get('x-forwarded-for')
   if (forwarded) {
     const hops = forwarded.split(',').map(s => s.trim()).filter(Boolean)
-    // Only trust multi-hop chains where the proxy appended the client IP
-    // to the end. A single hop is client-controlled and untrusted.
-    if (hops.length > 1) {
-      return hops[hops.length - 1]!
+    if (hops.length > TRUSTED_PROXY_HOPS) {
+      return hops[hops.length - 1 - TRUSTED_PROXY_HOPS]!
     }
   }
 
