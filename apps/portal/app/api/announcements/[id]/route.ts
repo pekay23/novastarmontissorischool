@@ -80,7 +80,7 @@ export async function PATCH(
     if (data.publishedAt !== undefined) updateData.publishedAt = data.publishedAt ? new Date(data.publishedAt) : null
 
     const updated = await prisma.news.update({
-      where: { id },
+      where: { id, schoolId, tenantId },
       data: updateData,
     })
     return NextResponse.json({ success: true, announcement: updated })
@@ -109,7 +109,7 @@ export async function DELETE(
     const existing = await prisma.news.findFirst({ where: { id, schoolId, tenantId } })
     if (!existing) return NextResponse.json({ error: 'Announcement not found' }, { status: 404 })
 
-    await prisma.news.delete({ where: { id } })
+    await prisma.news.delete({ where: { id, schoolId, tenantId } })
     return NextResponse.json({ success: true })
   } catch (error) {
     if (error instanceof Error && error.name === 'UnauthorizedError') {

@@ -67,7 +67,7 @@ export async function PATCH(
     if (data.classTeacherId !== undefined) updateData.classTeacherId = data.classTeacherId ?? null
 
     const updated = await prisma.class.update({
-      where: { id },
+      where: { id, schoolId, tenantId },
       data: updateData,
     })
     return NextResponse.json({ success: true, class: updated })
@@ -96,7 +96,7 @@ export async function DELETE(
     const existing = await prisma.class.findFirst({ where: { id, schoolId, tenantId } })
     if (!existing) return NextResponse.json({ error: 'Class not found' }, { status: 404 })
 
-    await prisma.class.delete({ where: { id } })
+    await prisma.class.delete({ where: { id, schoolId, tenantId } })
     return NextResponse.json({ success: true })
   } catch (error) {
     if (error instanceof Error && error.name === 'UnauthorizedError') {

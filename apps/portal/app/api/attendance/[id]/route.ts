@@ -66,7 +66,7 @@ export async function PATCH(
     updateData.markedById = userId
 
     const updated = await prisma.attendanceStudent.update({
-      where: { id },
+      where: { id, tenantId },
       data: updateData,
     })
     return NextResponse.json({ success: true, attendance: updated })
@@ -95,7 +95,7 @@ export async function DELETE(
     const existing = await prisma.attendanceStudent.findFirst({ where: { id, tenantId } })
     if (!existing) return NextResponse.json({ error: 'Attendance record not found' }, { status: 404 })
 
-    await prisma.attendanceStudent.delete({ where: { id } })
+    await prisma.attendanceStudent.delete({ where: { id, tenantId } })
     return NextResponse.json({ success: true })
   } catch (error) {
     if (error instanceof Error && error.name === 'UnauthorizedError') {

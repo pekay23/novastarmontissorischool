@@ -17,7 +17,7 @@ export async function DELETE(
     })
     if (!existing) return NextResponse.json({ error: 'Enrollment not found' }, { status: 404 })
 
-    await prisma.enrollment.delete({ where: { id } })
+    await prisma.enrollment.delete({ where: { id, tenantId } })
     return NextResponse.json({ success: true, message: `Removed ${existing.student.firstName} ${existing.student.lastName} from class` })
   } catch (error) {
     if (error instanceof Error && error.name === 'UnauthorizedError') {

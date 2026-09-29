@@ -58,7 +58,7 @@ export async function POST(
 
     const updatedLoan = await prisma.$transaction(async (tx) => {
       const returned = await tx.bookLoan.update({
-        where: { id },
+        where: { id, tenantId },
         data: {
           status: new Date(loan.dueDate) < new Date() ? 'OVERDUE' : 'RETURNED',
           returnedAt: new Date(),

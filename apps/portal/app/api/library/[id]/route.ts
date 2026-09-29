@@ -108,7 +108,7 @@ export async function PATCH(
     }
 
     const updated = await prisma.book.update({
-      where: { id },
+      where: { id, schoolId, tenantId },
       data: updateData,
     })
 
@@ -152,7 +152,7 @@ export async function DELETE(
       )
     }
 
-    await prisma.book.delete({ where: { id } })
+    await prisma.book.delete({ where: { id, schoolId, tenantId } })
     return NextResponse.json({ success: true })
   } catch (error) {
     if (error instanceof Error && error.name === 'UnauthorizedError') {

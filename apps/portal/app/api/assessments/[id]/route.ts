@@ -107,7 +107,7 @@ export async function PATCH(
     }
 
     const updated = await prisma.assessment.update({
-      where: { id },
+      where: { id, schoolId, tenantId },
       data: updateData,
     })
 
@@ -156,7 +156,7 @@ export async function DELETE(
     }
 
     await prisma.assessment.delete({
-      where: { id },
+      where: { id, schoolId, tenantId },
     })
 
     return NextResponse.json({ success: true })

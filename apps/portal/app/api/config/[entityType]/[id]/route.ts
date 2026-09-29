@@ -327,7 +327,7 @@ export async function PATCH(
     }
 
     const updated = await model.update({
-      where: { id },
+      where: { id, tenantId, schoolId },
       data: validated.data,
     })
 
@@ -380,7 +380,7 @@ export async function DELETE(
       return NextResponse.json({ error: 'System entities cannot be deleted' }, { status: 403 })
     }
 
-    await model.delete({ where: { id } })
+    await model.delete({ where: { id, tenantId, schoolId } })
 
     return NextResponse.json({ success: true })
   } catch (error) {

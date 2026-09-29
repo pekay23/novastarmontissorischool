@@ -35,7 +35,7 @@ export async function DELETE(req: NextRequest) {
     }
 
     await prisma.feeInvoice.delete({
-      where: { id },
+      where: { id, schoolId, tenantId },
     })
 
     return NextResponse.json({ success: true })

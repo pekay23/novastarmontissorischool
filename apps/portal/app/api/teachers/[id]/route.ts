@@ -68,7 +68,7 @@ export async function PATCH(
     if (data.address !== undefined) updateData.address = data.address
 
     const updated = await prisma.staff.update({
-      where: { id },
+      where: { id, schoolId, tenantId },
       data: updateData,
     })
     return NextResponse.json({ success: true, staff: updated })
@@ -97,7 +97,7 @@ export async function DELETE(
     const existing = await prisma.staff.findFirst({ where: { id, schoolId, tenantId } })
     if (!existing) return NextResponse.json({ error: 'Staff member not found' }, { status: 404 })
 
-    await prisma.staff.delete({ where: { id } })
+    await prisma.staff.delete({ where: { id, schoolId, tenantId } })
     return NextResponse.json({ success: true })
   } catch (error) {
     if (error instanceof Error && error.name === 'UnauthorizedError') {

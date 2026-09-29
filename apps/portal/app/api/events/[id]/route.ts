@@ -72,7 +72,7 @@ export async function PATCH(
     if (data.status !== undefined) updateData.status = data.status
 
     const updated = await prisma.event.update({
-      where: { id },
+      where: { id, schoolId, tenantId },
       data: updateData,
     })
     return NextResponse.json({ success: true, event: updated })
@@ -101,7 +101,7 @@ export async function DELETE(
     const existing = await prisma.event.findFirst({ where: { id, schoolId, tenantId } })
     if (!existing) return NextResponse.json({ error: 'Event not found' }, { status: 404 })
 
-    await prisma.event.delete({ where: { id } })
+    await prisma.event.delete({ where: { id, schoolId, tenantId } })
     return NextResponse.json({ success: true })
   } catch (error) {
     if (error instanceof Error && error.name === 'UnauthorizedError') {

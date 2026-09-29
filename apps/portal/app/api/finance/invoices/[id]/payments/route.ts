@@ -128,7 +128,7 @@ export async function POST(
       })
 
       await tx.feeInvoice.update({
-        where: { id: invoice.id },
+        where: { id: invoice.id, tenantId, schoolId },
         data: {
           paidAmount: { increment: data.amount },
           status:

@@ -70,7 +70,7 @@ export async function PATCH(
     if (data.classId !== undefined) updateData.classId = data.classId ?? null
 
     const updated = await prisma.student.update({
-      where: { id },
+      where: { id, schoolId, tenantId },
       data: updateData,
     })
     return NextResponse.json({ success: true, student: updated })
@@ -99,7 +99,7 @@ export async function DELETE(
     const existing = await prisma.student.findFirst({ where: { id, schoolId, tenantId } })
     if (!existing) return NextResponse.json({ error: 'Student not found' }, { status: 404 })
 
-    await prisma.student.delete({ where: { id } })
+    await prisma.student.delete({ where: { id, schoolId, tenantId } })
     return NextResponse.json({ success: true })
   } catch (error) {
     if (error instanceof Error && error.name === 'UnauthorizedError') {

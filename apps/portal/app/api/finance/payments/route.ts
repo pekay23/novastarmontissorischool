@@ -148,7 +148,7 @@ export async function POST(req: NextRequest) {
       }
 
       await tx.feeInvoice.update({
-        where: { id: invoiceId },
+        where: { id: invoiceId, tenantId, schoolId },
         data: {
           paidAmount: newPaidAmount,
           balance: Math.max(newBalance, 0),

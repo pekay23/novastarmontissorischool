@@ -86,7 +86,7 @@ export async function PATCH(
     if (data.status !== undefined) updateData.status = data.status
 
     const updated = await prisma.inventoryItem.update({
-      where: { id },
+      where: { id, schoolId, tenantId },
       data: updateData,
     })
 
@@ -122,7 +122,7 @@ export async function DELETE(
       return NextResponse.json({ error: 'Item not found' }, { status: 404 })
     }
 
-    await prisma.inventoryItem.delete({ where: { id } })
+    await prisma.inventoryItem.delete({ where: { id, schoolId, tenantId } })
     return NextResponse.json({ success: true })
   } catch (error) {
     if (error instanceof Error && error.name === 'UnauthorizedError') {

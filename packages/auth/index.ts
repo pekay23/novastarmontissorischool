@@ -18,7 +18,7 @@ export async function getEffectivePermissions(
 ): Promise<Set<string>> {
   // 1. Get user's direct role permissions
   const user = await prisma.user.findUnique({
-    where: { id: userId },
+    where: { id: userId, tenantId },
     include: {
       role: true,
     }
@@ -69,7 +69,7 @@ async function resolveRolePermissions(
   visited.add(roleId)
 
   const role = await prisma.role.findUnique({
-    where: { id: roleId },
+    where: { id: roleId, tenantId },
   })
 
   if (!role) return []
@@ -144,7 +144,7 @@ export async function createDelegation(input: CreateDelegationInput): Promise<De
 
   // Check delegation rules for this role
   const fromUser = await prisma.user.findUnique({
-    where: { id: input.fromUserId },
+    where: { id: input.fromUserId, tenantId: input.tenantId },
     include: { role: true },
   })
 
@@ -197,7 +197,7 @@ export async function approveDelegation(
   }
 
   const delegation = await prisma.delegation.update({
-    where: { id: delegationId },
+    where: { id: delegationId, tenantId },
     data: {
       isActive: true,
       approvedById: approverId,
@@ -226,7 +226,7 @@ export async function revokeDelegation(
   tenantId: string
 ): Promise<Delegation> {
   await prisma.delegation.update({
-    where: { id: delegationId },
+    where: { id: delegationId, tenantId },
     data: { isActive: false },
   })
 
@@ -238,7 +238,7 @@ export async function revokeDelegation(
     entityId: delegationId,
   })
 
-  return prisma.delegation.findUniqueOrThrow({ where: { id: delegationId } })
+  return prisma.delegation.findUniqueOrThrow({ where: { id: delegationId, tenantId } })
 }
 
 // --- Delegation Rules ---
@@ -339,7 +339,7 @@ export async function logAudit(input: AuditInput): Promise<void> {
 
 export async function getUserSession(userId: string, tenantId: string) {
   const user = await prisma.user.findUnique({
-    where: { id: userId },
+    where: { id: userId, tenantId },
     include: {
       role: true,
       delegationsFrom: true,
