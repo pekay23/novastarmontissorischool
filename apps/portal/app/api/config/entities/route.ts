@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { DEFAULT_ENTITY_REGISTRY } from '@novastar/shared-types'
 import { requirePermission } from '@/lib/tenant'
+import { TENANT_ID } from '@/lib/auth'
 
 // GET /api/config/entities — List all entity definitions
 // Merges DEFAULT_ENTITY_REGISTRY with any admin overrides stored in ConfigEntity table
@@ -9,9 +10,15 @@ export async function GET() {
   try {
     await requirePermission('config:read')
 
-    // Fetch all admin overrides from DB
+    const tenantId = TENANT_ID
+    if (!tenantId) {
+      console.error('Server config error: TENANT_ID environment variable is not set')
+      return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    }
+
+    // Fetch all admin overrides from DB (filtered by tenant)
     const overrides = await prisma.configEntity.findMany({
-      where: { isSystem: false },
+      where: { tenantId, isSystem: false },
     })
 
     // Build a lookup map of overrides
@@ -37,10 +44,11 @@ export async function GET() {
     if (error instanceof Error && error.name === 'ForbiddenError') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
+    if (error instanceof Error && error.name === 'ServerConfigError') {
+      console.error('Server config error:', error.message)
+      return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    }
     console.error('Config entities list error:', error)
-    // Fallback to defaults if DB unavailable
-    return NextResponse.json({
-      entityTypes: DEFAULT_ENTITY_REGISTRY.map(e => ({ ...e, _isOverridden: false })),
-    })
+    return NextResponse.json({ error: 'Failed to fetch entity definitions' }, { status: 500 })
   }
 }

@@ -55,6 +55,7 @@ describe('Middleware - Config Endpoint Protection', () => {
   const configRoute = readRoute('config/route.ts')
   const entitiesRoute = readRoute('config/[entityType]/route.ts')
   const entityIdRoute = readRoute('config/[entityType]/[id]/route.ts')
+  const entitiesListRoute = readRoute('config/entities/route.ts')
   const entitiesTypeRoute = readRoute('config/entities/[type]/route.ts')
 
   describe('config/route.ts', () => {
@@ -164,6 +165,33 @@ describe('Middleware - Config Endpoint Protection', () => {
     it('should handle ForbiddenError in DELETE catch block', () => {
       const handler = extractHandler(entitiesTypeRoute, 'DELETE')
       expect(handler).toContain("'ForbiddenError'")
+    })
+  })
+
+  describe('config/entities/route.ts', () => {
+    it('should require config:read for GET', () => {
+      const handler = extractHandler(entitiesListRoute, 'GET')
+      expect(handler).toContain("requirePermission('config:read')")
+    })
+
+    it('should filter overrides by tenantId', () => {
+      const handler = extractHandler(entitiesListRoute, 'GET')
+      expect(handler).toContain('tenantId')
+    })
+
+    it('should not fall back to defaults on error (no silent data swallow)', () => {
+      const handler = extractHandler(entitiesListRoute, 'GET')
+      expect(handler).not.toContain('DEFAULT_ENTITY_REGISTRY.map(e => ({ ...e, _isOverridden: false }))')
+    })
+
+    it('should handle UnauthorizedError in GET catch block', () => {
+      const handler = extractHandler(entitiesListRoute, 'GET')
+      expect(handler).toContain("'UnauthorizedError'")
+    })
+
+    it('should handle ServerConfigError in GET catch block', () => {
+      const handler = extractHandler(entitiesListRoute, 'GET')
+      expect(handler).toContain("'ServerConfigError'")
     })
   })
 })
