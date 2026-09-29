@@ -12,142 +12,139 @@ function readLib(name: string): string {
   return readFileSync(join(PORTAL, 'lib', name), 'utf-8')
 }
 
-describe('Middleware - Core Logic Tests', () => {
-  describe('Permission String Format', () => {
-    it('should parse resource:action format', () => {
-      const permission = 'student:read'
-      const [resource, action] = permission.split(':')
-      expect(resource).toBe('student')
-      expect(action).toBe('read')
-    })
+/** Extract the body of an exported route handler function from source. */
+function extractHandler(src: string, handlerName: string): string {
+  const marker = `export async function ${handlerName}`
+  const start = src.indexOf(marker)
+  if (start === -1) return ''
 
-    it('should parse resource:action@scope format', () => {
-      const permission = 'student:read@tenant_123'
-      const [main, scope] = permission.split('@')
-      const [resource, action] = main.split(':')
-      expect(resource).toBe('student')
-      expect(action).toBe('read')
-      expect(scope).toBe('tenant_123')
-    })
-
-    it('should handle wildcard permissions', () => {
-      const permission = 'student:*'
-      const [resource, action] = permission.split(':')
-      expect(resource).toBe('student')
-      expect(action).toBe('*')
-    })
-
-    it('should handle full wildcard', () => {
-      const permission = '*:*:*'
-      const [resource, action, scope] = permission.split(':')
-      expect(resource).toBe('*')
-      expect(action).toBe('*')
-      expect(scope).toBe('*')
-    })
-
-    it('should construct permission keys from resource and action', () => {
-      const resource = 'assessment'
-      const action = 'create'
-      const key = `${resource}:${action}`
-      expect(key).toBe('assessment:create')
-    })
-  })
-
-  describe('Tenant Context Structure', () => {
-    it('should define tenant context shape', () => {
-      const context = {
-        tenantId: 'tenant_123',
-        schoolId: 'school_456',
-        userId: 'user_789',
+  // Skip past the parameter list (which may contain nested braces) to find
+  // the opening brace of the function body.
+  let i = start + marker.length
+  let parenDepth = 0
+  let bodyStart = -1
+  for (; i < src.length; i++) {
+    const ch = src[i]
+    if (ch === '(') parenDepth++
+    else if (ch === ')') {
+      parenDepth--
+      if (parenDepth === 0) {
+        // End of parameter list; find the '{' that starts the body
+        while (i < src.length && src[i] !== '{' && src[i] !== '\n') i++
+        while (i < src.length && src[i] !== '{') i++
+        bodyStart = i
+        break
       }
+    }
+  }
+  if (bodyStart === -1) return ''
 
-      expect(context.tenantId).toBeDefined()
-      expect(context.schoolId).toBeDefined()
-      expect(context.userId).toBeDefined()
-    })
-  })
-
-  describe('Authorization Result Types', () => {
-    it('should define unauthorized error', () => {
-      class UnauthorizedError extends Error {
-        constructor() {
-          super('Unauthorized')
-          this.name = 'UnauthorizedError'
-        }
-      }
-      const error = new UnauthorizedError()
-      expect(error.name).toBe('UnauthorizedError')
-      expect(error.message).toBe('Unauthorized')
-    })
-
-    it('should define forbidden error', () => {
-      class ForbiddenError extends Error {
-        constructor() {
-          super('Forbidden')
-          this.name = 'ForbiddenError'
-        }
-      }
-      const error = new ForbiddenError()
-      expect(error.name).toBe('ForbiddenError')
-      expect(error.message).toBe('Forbidden')
-    })
-  })
-
-  describe('Session Token Validation', () => {
-    it('should validate session token format', () => {
-      const validToken = 'nextauth.session-token.abc123'
-      const invalidToken = 'invalid'
-
-      expect(validToken.includes('nextauth')).toBe(true)
-      expect(validToken.split('.').length).toBeGreaterThan(1)
-      expect(invalidToken).not.toContain('nextauth')
-    })
-
-    it('should detect expired sessions', () => {
-      const futureDate = new Date(Date.now() + 86400000).toISOString()
-      const pastDate = new Date(Date.now() - 86400000).toISOString()
-
-      expect(new Date(futureDate) > new Date()).toBe(true)
-      expect(new Date(pastDate) < new Date()).toBe(true)
-    })
-  })
-})
+  // Count braces from the body opening brace
+  let depth = 0
+  for (let j = bodyStart; j < src.length; j++) {
+    if (src[j] === '{') depth++
+    if (src[j] === '}') {
+      depth--
+      if (depth === 0) return src.slice(start, j + 1)
+    }
+  }
+  return src.slice(start)
+}
 
 describe('Middleware - Config Endpoint Protection', () => {
+  const configRoute = readRoute('config/route.ts')
   const entitiesRoute = readRoute('config/[entityType]/route.ts')
   const entityIdRoute = readRoute('config/[entityType]/[id]/route.ts')
   const entitiesTypeRoute = readRoute('config/entities/[type]/route.ts')
 
-  it('should require config:read for GET on config/[entityType]', () => {
-    expect(entitiesRoute).toContain("requirePermission('config:read')")
+  describe('config/route.ts', () => {
+    it('should require config:read for GET on base config endpoint', () => {
+      const handler = extractHandler(configRoute, 'GET')
+      expect(handler).toContain("requirePermission('config:read')")
+    })
   })
 
-  it('should require config:write for POST on config/[entityType]', () => {
-    expect(entitiesRoute).toContain("requirePermission('config:write')")
+  describe('config/[entityType]/route.ts', () => {
+    it('should require config:read for GET', () => {
+      const handler = extractHandler(entitiesRoute, 'GET')
+      expect(handler).toContain("requirePermission('config:read')")
+    })
+
+    it('should require config:write for POST', () => {
+      const handler = extractHandler(entitiesRoute, 'POST')
+      expect(handler).toContain("requirePermission('config:write')")
+    })
+
+    it('should handle ForbiddenError in GET catch block', () => {
+      const handler = extractHandler(entitiesRoute, 'GET')
+      expect(handler).toContain("'ForbiddenError'")
+    })
+
+    it('should handle ForbiddenError in POST catch block', () => {
+      const handler = extractHandler(entitiesRoute, 'POST')
+      expect(handler).toContain("'ForbiddenError'")
+    })
   })
 
-  it('should require config:read for GET on config/[entityType]/[id]', () => {
-    expect(entityIdRoute).toContain("requirePermission('config:read')")
+  describe('config/[entityType]/[id]/route.ts', () => {
+    it('should require config:read for GET', () => {
+      const handler = extractHandler(entityIdRoute, 'GET')
+      expect(handler).toContain("requirePermission('config:read')")
+    })
+
+    it('should require config:write for PATCH', () => {
+      const handler = extractHandler(entityIdRoute, 'PATCH')
+      expect(handler).toContain("requirePermission('config:write')")
+    })
+
+    it('should require config:write for DELETE', () => {
+      const handler = extractHandler(entityIdRoute, 'DELETE')
+      expect(handler).toContain("requirePermission('config:write')")
+    })
+
+    it('GET catch block should handle ForbiddenError', () => {
+      const handler = extractHandler(entityIdRoute, 'GET')
+      expect(handler).toContain("'ForbiddenError'")
+    })
+
+    it('PATCH catch block should handle ForbiddenError', () => {
+      const handler = extractHandler(entityIdRoute, 'PATCH')
+      expect(handler).toContain("'ForbiddenError'")
+    })
+
+    it('DELETE catch block should handle ForbiddenError', () => {
+      const handler = extractHandler(entityIdRoute, 'DELETE')
+      expect(handler).toContain("'ForbiddenError'")
+    })
   })
 
-  it('should require config:write for PATCH on config/[entityType]/[id]', () => {
-    expect(entityIdRoute).toContain("requirePermission('config:write')")
-  })
+  describe('config/entities/[type]/route.ts', () => {
+    it('should require config:read for GET', () => {
+      expect(entitiesTypeRoute).toContain("requirePermission('config:read')")
+    })
 
-  it('should require config:write for DELETE on config/[entityType]/[id]', () => {
-    expect(entityIdRoute).toContain("requirePermission('config:write')")
-  })
+    it('should require config:write for PATCH', () => {
+      expect(entitiesTypeRoute).toContain("requirePermission('config:write')")
+    })
 
-  it('should handle ForbiddenError in config/[entityType] catch blocks', () => {
-    expect(entitiesRoute).toContain("'ForbiddenError'")
-  })
+    it('should require config:write for DELETE', () => {
+      expect(entitiesTypeRoute).toContain("requirePermission('config:write')")
+    })
 
-  it('should handle ForbiddenError in config/[entityType]/[id] catch blocks', () => {
-    expect(entityIdRoute).toContain("'ForbiddenError'")
-  })
+    it('should handle ForbiddenError in GET catch block', () => {
+      const handler = extractHandler(entitiesTypeRoute, 'GET')
+      expect(handler).toContain("'ForbiddenError'")
+    })
 
-  it('should require config:read for GET on config/entities/[type]', () => {
-    expect(entitiesTypeRoute).toContain("requirePermission('config:read')")
+    it('should handle ForbiddenError in PATCH catch block', () => {
+      const handler = extractHandler(entitiesTypeRoute, 'PATCH')
+      expect(handler).toContain("'ForbiddenError'")
+    })
+
+    it('should handle ForbiddenError in DELETE catch block', () => {
+      const handler = extractHandler(entitiesTypeRoute, 'DELETE')
+      expect(handler).toContain("'ForbiddenError'")
+    })
   })
 })
 
@@ -251,5 +248,9 @@ describe('Middleware - Rate Limiter', () => {
   it('should return 429 with Retry-After header on rate limit', () => {
     expect(authRoute).toContain('status: 429')
     expect(authRoute).toContain('Retry-After')
+  })
+
+  it('should use last hop of x-forwarded-for (not first)', () => {
+    expect(rateLimitSrc).toContain('hops[hops.length - 1]')
   })
 })

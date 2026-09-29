@@ -370,7 +370,8 @@ export async function GET(
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
     if (error instanceof Error && error.name === 'ServerConfigError') {
-      return NextResponse.json({ error: error.message }, { status: 500 })
+      console.error('Server config error:', error.message)
+      return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
     }
     console.error(`Config entity fetch error:`, error)
     return NextResponse.json({ error: 'Failed to fetch entities' }, { status: 500 })
@@ -424,7 +425,8 @@ export async function POST(
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
     if (error instanceof Error && error.name === 'ServerConfigError') {
-      return NextResponse.json({ error: error.message }, { status: 500 })
+      console.error('Server config error:', error.message)
+      return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
     }
     console.error(`Config entity create error:`, error)
     return NextResponse.json({ error: 'Failed to create entity' }, { status: 500 })

@@ -12,13 +12,19 @@
     "inspect-supabase": "bun inspect-supabase.ts",
     "check-schema-drift": "bun check-schema-drift.ts",
     "check-rls-bypass": "bun check-rls-bypass.ts",
-    "validate-rls": "bun validate-rls.ts"
+    "validate-rls": "bun validate-rls.ts",
+    "lint": "eslint . --ext .ts",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "pg": "8.18.0"
   },
   "devDependencies": {
+    "@eslint/js": "^9.18.0",
     "@types/pg": "^8.18.0",
+    "@typescript-eslint/eslint-plugin": "8.68.0",
+    "@typescript-eslint/parser": "8.68.0",
+    "eslint": "^9.18.0",
     "typescript": "npm:@typescript/typescript6@^6.0.2"
   }
 }

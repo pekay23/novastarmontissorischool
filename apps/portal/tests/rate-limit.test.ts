@@ -92,9 +92,17 @@ describe('Rate Limiter', () => {
   })
 
   describe('clientIdentifier', () => {
-    it('should extract IP from x-forwarded-for header', () => {
+    it('should extract last hop from multi-hop x-forwarded-for header', () => {
       const request = new Request('http://localhost', {
         headers: { 'x-forwarded-for': '203.0.113.5, 70.41.3.18, 150.172.238.178' },
+      })
+      // Multi-hop: last entry is the original client (trusted proxy appends it)
+      expect(clientIdentifier(request)).toBe('150.172.238.178')
+    })
+
+    it('should extract single hop from single-element x-forwarded-for', () => {
+      const request = new Request('http://localhost', {
+        headers: { 'x-forwarded-for': '203.0.113.5' },
       })
       expect(clientIdentifier(request)).toBe('203.0.113.5')
     })
@@ -111,11 +119,11 @@ describe('Rate Limiter', () => {
       expect(clientIdentifier(request)).toBe('unknown')
     })
 
-    it('should trim whitespace from x-forwarded-for', () => {
+    it('should trim whitespace and ignore empty hops in x-forwarded-for', () => {
       const request = new Request('http://localhost', {
-        headers: { 'x-forwarded-for': '  203.0.113.5  , 70.41.3.18' },
+        headers: { 'x-forwarded-for': '  203.0.113.5  ,  , 70.41.3.18' },
       })
-      expect(clientIdentifier(request)).toBe('203.0.113.5')
+      expect(clientIdentifier(request)).toBe('70.41.3.18')
     })
   })
 

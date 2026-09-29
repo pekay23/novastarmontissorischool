@@ -28,7 +28,7 @@ This comprehensive audit identified **253 total findings** across 8 categories. 
 - ✅ **Lint passes** - Zero errors, zero warnings (all 14 unused var warnings fixed)
 - ✅ **Tests** - 100 unit tests pass (62 original + 13 rate-limiter + 25 auth/authorization); 3 Playwright E2E specs written (not yet executed against a running stack)
 - ⚠️ **Database** - Initial migration written but never applied (no `_prisma_migrations` on Neon; live DB came from `db push`); RLS policies written and compile-verified but do not enforce isolation (see 3.1)
-- 🔴 **Backup** - Supabase failsafe is empty: 0 tables, 0 rows. The mirror has never run. No working backup exists (see 3.2)
+- ✅ **Backup** - Supabase failsafe mirror rebuilt and verified: 56 tables, 50 mirrored, 126 FKs with zero orphans. Still manual, not scheduled (see 3.2)
 - ⚠️ **Secrets rotation** - Skipped per user directive (no production secrets leaked in this repo)
 
 ### Severity Distribution
@@ -517,29 +517,62 @@ it). That reads `process.env.TENANT_ID`, not the session — a single-tenant
 process, so cross-tenant leakage is not currently reachable, but the
 defense-in-depth this finding asked for does not exist.
 
-### ⚠️ 3.2 Supabase Failsafe Is Empty — No Backup Exists (Critical, new)
+### ✅ 3.2 Supabase Failsafe — Mirror Fixed, Backup Now Real
 
-Checked directly against `SUPABASE_DATABASE_URL`: the `public` schema contains
-**0 tables**, 0 RLS policies, 0 rows. The failsafe holds no data, so there is
-currently no working backup of the Neon primary. RLS cannot be applied to a
-database with no tables, so this request is not actionable as stated.
+**Now working.** The failsafe was empty (0 tables, 0 rows) and the mirror had
+never run. It now runs and is verified.
 
-The mirror has never run. Three independent reasons, all confirmed:
+The original mirror could never have worked — three independent faults:
+1. **Wrong table names.** `mirror.ts` referenced snake_case tables (`tenant`,
+   `school`, `fee_invoice`). Neon has 50 tables, all PascalCase quoted
+   (`"Tenant"`, `"School"`, `"FeeInvoice"`). Every statement targeted a
+   nonexistent relation.
+2. **pg_cron never registered.** `cron.job` was not queryable and
+   `mirror_to_supabase()` did not exist; the setup file still contained
+   `YOUR_PASSWORD`.
+3. **`psql` not installed**, which the old `COPY ... TO PROGRAM 'psql ...'`
+   approach required.
 
-1. **Wrong table names.** `tools/db-mirror/mirror.ts` and
-   `setup-pg-cron.sql` reference snake_case tables (`tenant`, `school`,
-   `fee_invoice`). Neon has 50 tables, all PascalCase quoted (`"Tenant"`,
-   `"School"`, `"FeeInvoice"`). Zero snake_case tables exist, so every mirror
-   statement targets a nonexistent relation.
-2. **pg_cron never set up.** `cron.job` is not queryable on Neon and
-   `mirror_to_supabase()` does not exist in `pg_proc`. The setup script is a
-   template still containing `YOUR_PASSWORD`.
-3. **`psql` is not installed**, so `mirror.ts` cannot run, and its
-   `COPY ... TO PROGRAM 'psql ...'` approach shells out to a binary that does
-   not exist.
+`tools/db-mirror/mirror.ts` is rewritten over `pg` (already a dependency) and
+derives every table and column name from `information_schema`, so it cannot
+drift from the live schema the way a hardcoded list did. The dead
+`setup-pg-cron.sql` was removed, and the `setup-pg-cron` script that pointed at
+a nonexistent `.ts` file was replaced with real scripts.
 
-Neon does hold real data — 25 non-empty tables, e.g. `SubjectLevel` 180,
-`Permission` 28, `Subject` 19, `Class` 14, `Role` 7.
+Current state:
+- **Neon:** 50 tables, 26 populated, opened **read-only** for the whole run
+  (`SET default_transaction_read_only = on`), so a stray write is rejected
+  rather than corrupting production.
+- **Supabase:** 56 tables created from the authoritative schema via
+  `prisma migrate diff --from-empty` (reviewed: all CREATE/ALTER, no
+  DROP/TRUNCATE/DELETE), applied as one atomic implicit transaction.
+- 50 tables mirrored in foreign-key dependency order, topologically sorted from
+  live `pg_constraint` rather than name order.
+- **Idempotent:** re-running converges. Verified by running twice — counts and
+  content identical, no duplicates.
+
+Verification (`tools/db-mirror/verify-restore.ts`, 13 assertions, all pass):
+- All 11 populated ARRAY and JSON/JSONB columns byte-identical between Neon and
+  Supabase, including `Role.permissions`, `Role.inheritsFrom`,
+  `PaymentMethodConfig.providerConfig`, `Tenant.settings`
+- **126 foreign keys, zero orphans** — proves children were inserted after
+  parents, which matching row counts alone would not reveal
+- Timestamps preserved on `Permission` (65 rows)
+
+An earlier version of this check used a hardcoded column list that happened to
+miss every populated ARRAY column, including `Role.permissions`, so it reported
+PASS while verifying nothing meaningful. It now discovers columns from the live
+database and fails if it finds none.
+
+Commands: `bun run db:mirror`, `bun run db:mirror:verify`,
+`bun run db:restore-check`.
+
+**Still outstanding:** the mirror is manual. Nothing schedules it, so the
+failsafe will silently go stale. Scheduling (GitHub Actions or a host-level
+cron) has not been set up. Separately, 6 tables — `Book`, `BookCategory`,
+`BookLoan`, `InventoryCategory`, `InventoryItem`, `InventoryTransaction` —
+exist on Supabase but not on Neon, so they stay empty until the Neon schema is
+migrated (see 3.1 blocker 3).
 
 ### Known Limitations (documented tradeoffs)
 
@@ -556,7 +589,7 @@ Neon does hold real data — 25 non-empty tables, e.g. `SubjectLevel` 180,
 2. **Dead Code Package Removal** - Skipped per user directive: user explicitly requested to keep unused packages (auth, notifications, payments, ghana-education, reports, sync-engine, plugins, plugin-registry)
 
 ### Recommended for Future Sprint
-1. Build a working Neon → Supabase mirror (3.2) — there is no backup today
+1. Schedule the Neon → Supabase mirror (3.2) — it runs manually, so the failsafe will silently go stale
 2. Create a non-BYPASSRLS application role on both providers (3.1 blocker 1)
 3. Move off the Neon HTTP driver or scope the tenant setting per transaction (3.1 blocker 2)
 4. Reconcile the 6 missing tables and adopt `migrate deploy` over `db push` (3.1 blocker 3)

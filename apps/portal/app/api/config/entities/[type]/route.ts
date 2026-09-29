@@ -43,6 +43,9 @@ export async function GET(
 
     return NextResponse.json({ ...defaultDef, _isOverridden: false })
   } catch (error) {
+    if (error instanceof Error && error.name === 'ForbiddenError') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
     console.error('Config entity fetch error:', error)
     return NextResponse.json({ error: 'Failed to fetch entity definition' }, { status: 500 })
   }
@@ -109,6 +112,9 @@ export async function PATCH(
 
     return NextResponse.json({ success: true, id: upserted.id })
   } catch (error) {
+    if (error instanceof Error && error.name === 'ForbiddenError') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
     console.error('Config entity update error:', error)
     return NextResponse.json({ error: 'Failed to update entity definition' }, { status: 500 })
   }
@@ -150,6 +156,9 @@ export async function DELETE(
 
     return NextResponse.json({ success: true, restored: true })
   } catch (error) {
+    if (error instanceof Error && error.name === 'ForbiddenError') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
     console.error('Config entity delete error:', error)
     return NextResponse.json({ error: 'Failed to delete entity definition' }, { status: 500 })
   }

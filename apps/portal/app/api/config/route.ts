@@ -2,10 +2,13 @@ import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { DEFAULT_ENTITY_REGISTRY } from '@novastar/shared-types'
+import { requirePermission } from '@/lib/tenant'
 
 // GET /api/config — List all entity types with their definitions (requires auth)
 export async function GET() {
   try {
+    await requirePermission('config:read')
+
     const session = await getServerSession(authOptions)
     if (!session?.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
