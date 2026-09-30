@@ -10,6 +10,18 @@ import { formatPhone } from '@novastar/shared-utils'
 
 type Step = 'personal' | 'parent' | 'academic' | 'review' | 'success'
 
+const PROGRAMMES = [
+  { value: 'creche', label: 'Crèche & Nursery' },
+  { value: 'kg', label: 'Kindergarten (KG1 / KG2)' },
+  { value: 'lower-primary', label: 'Lower Primary (B1–B3)' },
+  { value: 'upper-primary', label: 'Upper Primary (B4–B6)' },
+  { value: 'jhs', label: 'Junior High (JHS 1–3)' },
+]
+
+const PROGRAMME_LABELS = Object.fromEntries(PROGRAMMES.map((p) => [p.value, p.label]))
+
+const SCHOOL_WHATSAPP = '233244935251'
+
 interface AdmissionsFormData {
   firstName: string
   lastName: string
@@ -44,6 +56,46 @@ export default function AdmissionsPage() {
     previousResults: '',
   })
   const [submitting, setSubmitting] = useState(false)
+  const [errors, setErrors] = useState<Partial<Record<keyof AdmissionsFormData, string>>>({})
+
+  /*
+    Per-step validation. Next cannot advance past an incomplete step, which
+    means the review step is always a truthful summary and the server is never
+    handed a half-filled application. The API re-validates regardless.
+  */
+  const validateStep = (step: Step): boolean => {
+    const found: Partial<Record<keyof AdmissionsFormData, string>> = {}
+    const need = (field: keyof AdmissionsFormData, message: string) => {
+      if (!formData[field]?.trim()) found[field] = message
+    }
+
+    if (step === 'personal') {
+      need('firstName', 'Enter the child’s first name')
+      need('lastName', 'Enter the child’s last name')
+      need('dateOfBirth', 'Enter the child’s date of birth')
+    }
+    if (step === 'parent') {
+      need('parentName', 'Enter the parent or guardian’s name')
+      need('parentPhone', 'Enter a phone number we can reach you on')
+      need('address', 'Enter your home address')
+      if (formData.parentEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.parentEmail)) {
+        found.parentEmail = 'That email address does not look right'
+      }
+    }
+    if (step === 'academic') {
+      need('program', 'Choose the programme you are applying to')
+    }
+
+    setErrors(found)
+    if (Object.keys(found).length > 0) {
+      toast.error({
+        title: 'Check the highlighted fields',
+        description: 'A few details are still needed before you can continue.',
+      })
+      return false
+    }
+    return true
+  }
 
   const steps: { id: Step; label: string }[] = [
     { id: 'personal', label: 'Student Info' },
@@ -54,6 +106,8 @@ export default function AdmissionsPage() {
 
   const updateField = (field: keyof AdmissionsFormData, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }))
+    // Clear the field's error as soon as the visitor starts fixing it.
+    setErrors((prev) => (prev[field] ? { ...prev, [field]: undefined } : prev))
   }
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
@@ -154,26 +208,29 @@ export default function AdmissionsPage() {
                   {currentStep === 'personal' && (
                     <>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <Input
-                          label="First Name"
-                          value={formData.firstName}
-                          onChange={(e: ChangeEvent<HTMLInputElement>) => updateField('firstName', e.target.value)}
-                          required
-                        />
-                        <Input
-                          label="Last Name"
-                          value={formData.lastName}
-                          onChange={(e: ChangeEvent<HTMLInputElement>) => updateField('lastName', e.target.value)}
-                          required
-                        />
-                      </div>
                       <Input
-                        label="Date of Birth"
-                        type="date"
-                        value={formData.dateOfBirth}
-                        onChange={(e: ChangeEvent<HTMLInputElement>) => updateField('dateOfBirth', e.target.value)}
+                        label="First Name"
+                        value={formData.firstName}
+                        onChange={(e: ChangeEvent<HTMLInputElement>) => updateField('firstName', e.target.value)}
+                        error={errors.firstName}
                         required
                       />
+                      <Input
+                        label="Last Name"
+                        value={formData.lastName}
+                        onChange={(e: ChangeEvent<HTMLInputElement>) => updateField('lastName', e.target.value)}
+                        error={errors.lastName}
+                        required
+                      />
+                    </div>
+                    <Input
+                      label="Date of Birth"
+                      type="date"
+                      value={formData.dateOfBirth}
+                      onChange={(e: ChangeEvent<HTMLInputElement>) => updateField('dateOfBirth', e.target.value)}
+                      error={errors.dateOfBirth}
+                      required
+                    />
                       <RadioGroup
                         label="Gender"
                         options={[
@@ -193,13 +250,15 @@ export default function AdmissionsPage() {
                         label="Parent/Guardian Full Name"
                         value={formData.parentName}
                         onChange={(e: ChangeEvent<HTMLInputElement>) => updateField('parentName', e.target.value)}
+                        error={errors.parentName}
                         required
                       />
                       <Input
                         label="Phone Number"
                         value={formData.parentPhone}
                         onChange={(e: ChangeEvent<HTMLInputElement>) => updateField('parentPhone', e.target.value)}
-                        placeholder="+233 55 441 6937"
+                        placeholder="+233 55 000 0000"
+                        error={errors.parentPhone}
                         required
                       />
                       <Input
@@ -207,11 +266,13 @@ export default function AdmissionsPage() {
                         type="email"
                         value={formData.parentEmail}
                         onChange={(e: ChangeEvent<HTMLInputElement>) => updateField('parentEmail', e.target.value)}
+                        error={errors.parentEmail}
                       />
                       <Input
                         label="Home Address"
                         value={formData.address}
                         onChange={(e: ChangeEvent<HTMLInputElement>) => updateField('address', e.target.value)}
+                        error={errors.address}
                         required
                       />
                     </>
@@ -223,13 +284,8 @@ export default function AdmissionsPage() {
                         label="Program Applying For"
                         value={formData.program}
                         onValueChange={(val: string) => updateField('program', val)}
-                        options={[
-                          { value: 'creche', label: 'Creche & Nursery' },
-                          { value: 'kg', label: 'Kindergarten (KG1/KG2)' },
-                          { value: 'lower-primary', label: 'Lower Primary (B1-B3)' },
-                          { value: 'upper-primary', label: 'Upper Primary (B4-B6)' },
-                          { value: 'jhs', label: 'Junior High (JHS 1-3)' },
-                        ]}
+                        options={PROGRAMMES}
+                        error={errors.program}
                         required
                       />
                       <Input
@@ -250,10 +306,15 @@ export default function AdmissionsPage() {
                     <div className="space-y-4">
                       <h3 className="text-lg font-semibold text-primary">Review Your Application</h3>
                       <ReviewItem label="Student" value={`${formData.firstName} ${formData.lastName}`} />
-                      <ReviewItem label="DOB" value={formData.dateOfBirth} />
-                      <ReviewItem label="Parent" value={formData.parentName} />
+                      <ReviewItem label="Date of birth" value={formData.dateOfBirth} />
+                      <ReviewItem label="Parent/Guardian" value={formData.parentName} />
                       <ReviewItem label="Phone" value={formatPhone(formData.parentPhone)} />
-                      <ReviewItem label="Program" value={formData.program} />
+                      <ReviewItem label="Email" value={formData.parentEmail} />
+                      <ReviewItem label="Address" value={formData.address} />
+                      <ReviewItem
+                        label="Programme"
+                        value={PROGRAMME_LABELS[formData.program] ?? formData.program}
+                      />
                       <div className="text-xs text-muted-foreground">
                         <p>By submitting, you confirm the information is accurate and consent to the school's admissions process.</p>
                       </div>
@@ -261,40 +322,91 @@ export default function AdmissionsPage() {
                   )}
 
                   {/* Navigation */}
-                  <div className="flex justify-between pt-4 border-t">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => {
-                        const idx = steps.findIndex((s) => s.id === currentStep)
-                        if (idx > 0) setCurrentStep(steps[idx - 1].id)
-                      }}
-                      disabled={currentStep === 'personal'}
-                    >
-                      Back
-                    </Button>
-                    {currentStep === 'review' && (
-                      <Button type="submit" disabled={submitting}>
-                        {submitting ? 'Submitting...' : 'Submit Application'}
+                  {currentStep !== 'success' && (
+                    <div className="flex items-center justify-between gap-3 border-t pt-5">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        onClick={() => {
+                          const idx = steps.findIndex((s) => s.id === currentStep)
+                          if (idx > 0) setCurrentStep(steps[idx - 1].id)
+                        }}
+                        disabled={currentStep === 'personal' || submitting}
+                      >
+                        Back
                       </Button>
-                    )}
-                    {currentStep === 'success' && (
-                      <Button variant="outline" onClick={() => setCurrentStep('personal')}>
-                        Submit Another Application
-                      </Button>
-                    )}
-                  </div>
+
+                      {/*
+                        The forward action was missing entirely. There was a
+                        Back button and a Submit button that only rendered on
+                        the review step, so a visitor could never get from step
+                        one to step two and no application could ever be
+                        submitted. Next is also the natural place to block
+                        advancing on incomplete required fields.
+                      */}
+                      {currentStep !== 'review' ? (
+                        <Button
+                          type="button"
+                          onClick={() => {
+                            if (validateStep(currentStep)) {
+                              const idx = steps.findIndex((s) => s.id === currentStep)
+                              if (idx < steps.length - 1) setCurrentStep(steps[idx + 1].id)
+                            }
+                          }}
+                        >
+                          Next
+                        </Button>
+                      ) : (
+                        <Button type="submit" disabled={submitting}>
+                          {submitting ? 'Submitting…' : 'Submit application'}
+                        </Button>
+                      )}
+                    </div>
+                  )}
                 </form>
 
                 {currentStep === 'success' && (
-                  <div className="text-center py-8">
-                    <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                      <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <div className="py-8 text-center" role="status">
+                    <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-primary-soft">
+                      <svg className="h-8 w-8 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                       </svg>
                     </div>
-                    <h3 className="text-xl font-semibold text-green-800 mb-2">Application Submitted Successfully!</h3>
-                    <p className="text-muted-foreground">We've received your application and will review it shortly. You'll hear from us soon.</p>
+                    <h3 className="mb-2 text-xl text-primary-dark">Application received</h3>
+                    <p className="mx-auto max-w-md text-muted-foreground">
+                      Thank you. Our admissions office reviews applications in the order they
+                      arrive and will call you on the number you gave us, usually within two
+                      working days.
+                    </p>
+                    <p className="mx-auto mt-4 max-w-md text-sm text-muted-foreground">
+                      Need to add another child, or would rather talk to us first?{' '}
+                      <a
+                        href={`https://wa.me/${SCHOOL_WHATSAPP}?text=${encodeURIComponent(
+                          'Hello, I have just submitted an application and would like to add some information.',
+                        )}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-medium text-primary-dark underline"
+                      >
+                        Message us on WhatsApp
+                      </a>
+                      .
+                    </p>
+                    <Button
+                      variant="outline"
+                      className="mt-6"
+                      onClick={() => {
+                        setFormData({
+                          firstName: '', lastName: '', dateOfBirth: '', gender: 'MALE',
+                          parentName: '', parentPhone: '', parentEmail: '', address: '',
+                          program: '', currentSchool: '', previousResults: '',
+                        })
+                        setErrors({})
+                        setCurrentStep('personal')
+                      }}
+                    >
+                      Submit another application
+                    </Button>
                   </div>
                 )}
               </CardContent>
@@ -318,25 +430,35 @@ function ProcessStep({ number, title, desc }: { number: string; title: string; d
   )
 }
 
-function Input({ label, value, onChange, type, placeholder, required }: {
+function Input({ label, value, onChange, type, placeholder, required, error }: {
   label?: string
   value?: string
   onChange?: (e: ChangeEvent<HTMLInputElement>) => void
   type?: string
   placeholder?: string
   required?: boolean
+  error?: string
 }) {
+  const id = `f-${label?.toLowerCase().replace(/[^a-z]+/g, '-')}`
   return (
-    <div className="space-y-1">
-      <label className="text-sm font-medium">{label}{required && '*'}</label>
+    <div className="space-y-1.5">
+      <label htmlFor={id} className="text-sm font-medium text-foreground">
+        {label}{required && <span className="text-destructive" aria-hidden="true"> *</span>}
+      </label>
       <input
+        id={id}
         type={type || 'text'}
         value={value}
         onChange={onChange}
         placeholder={placeholder}
         required={required}
-        className="w-full px-3 py-2 border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+        aria-invalid={error ? true : undefined}
+        aria-describedby={error ? `${id}-error` : undefined}
+        className={`w-full rounded-md border bg-surface px-3 py-2.5 text-foreground transition-colors placeholder:text-muted-foreground ${
+          error ? 'border-destructive' : 'border-input'
+        }`}
       />
+      {error && <p id={`${id}-error`} className="text-sm text-destructive">{error}</p>}
     </div>
   )
 }
@@ -347,15 +469,17 @@ function Textarea({ label, value, onChange, placeholder }: {
   onChange?: (e: ChangeEvent<HTMLTextAreaElement>) => void
   placeholder?: string
 }) {
+  const id = `f-${label?.toLowerCase().replace(/[^a-z]+/g, '-')}`
   return (
-    <div className="space-y-1">
-      <label className="text-sm font-medium">{label}</label>
+    <div className="space-y-1.5">
+      <label htmlFor={id} className="text-sm font-medium text-foreground">{label}</label>
       <textarea
+        id={id}
         value={value}
         onChange={onChange}
         placeholder={placeholder}
         rows={4}
-        className="w-full px-3 py-2 border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+        className="w-full rounded-md border border-input bg-surface px-3 py-2.5 text-foreground placeholder:text-muted-foreground"
       />
     </div>
   )
@@ -368,48 +492,58 @@ function RadioGroup({ label, options, value, onChange }: {
   onChange?: (value: string) => void
 }) {
   return (
-    <div className="space-y-1">
-      <label className="text-sm font-medium">{label}</label>
-      <div className="flex gap-4">
-        {options.map((opt: { value: string; label: string }) => (
-          <label key={opt.value} className="flex items-center gap-2">
+    <fieldset className="space-y-2">
+      <legend className="text-sm font-medium text-foreground">{label}</legend>
+      <div className="flex flex-wrap gap-5">
+        {options.map((opt) => (
+          <label key={opt.value} className="flex cursor-pointer items-center gap-2">
             <input
               type="radio"
               name={label}
               value={opt.value}
               checked={value === opt.value}
               onChange={() => onChange?.(opt.value)}
-              className="accent-primary"
+              className="h-4 w-4 accent-primary"
             />
             {opt.label}
           </label>
         ))}
       </div>
-    </div>
+    </fieldset>
   )
 }
 
-function Select({ label, value, onValueChange, options, required }: {
+function Select({ label, value, onValueChange, options, required, error }: {
   label?: string
   value?: string
   onValueChange?: (value: string) => void
   options: Array<{ value: string; label: string }>
   required?: boolean
+  error?: string
 }) {
+  const id = `f-${label?.toLowerCase().replace(/[^a-z]+/g, '-')}`
   return (
-    <div className="space-y-1">
-      <label className="text-sm font-medium">{label}{required && '*'}</label>
+    <div className="space-y-1.5">
+      <label htmlFor={id} className="text-sm font-medium text-foreground">
+        {label}{required && <span className="text-destructive" aria-hidden="true"> *</span>}
+      </label>
       <select
+        id={id}
         value={value}
         onChange={(e: ChangeEvent<HTMLSelectElement>) => onValueChange?.(e.target.value)}
         required={required}
-        className="w-full px-3 py-2 border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+        aria-invalid={error ? true : undefined}
+        aria-describedby={error ? `${id}-error` : undefined}
+        className={`w-full rounded-md border bg-surface px-3 py-2.5 text-foreground ${
+          error ? 'border-destructive' : 'border-input'
+        }`}
       >
-        <option value="">Select...</option>
-        {options.map((opt: { value: string; label: string }) => (
+        <option value="">Choose a programme…</option>
+        {options.map((opt) => (
           <option key={opt.value} value={opt.value}>{opt.label}</option>
         ))}
       </select>
+      {error && <p id={`${id}-error`} className="text-sm text-destructive">{error}</p>}
     </div>
   )
 }

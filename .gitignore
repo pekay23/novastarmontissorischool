@@ -63,6 +63,11 @@ docs/html/
 .hermes/
 .hermes-tmp.*
 
+# Screenshots and visual baseline artifacts
+screenshots/
+**/screenshots/
+tools/audit-baseline/
+
 # Local dev artifacts
 *.db
 *.db-journal

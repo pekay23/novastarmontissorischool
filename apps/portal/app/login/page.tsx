@@ -21,7 +21,6 @@ function LoginContent() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!email || !password || !schoolCode) return
 
     setIsLoading(true)
     setError('')
@@ -31,14 +30,20 @@ function LoginContent() {
         redirect: false,
         email,
         password,
+        // The server falls back to DEFAULT_SCHOOL_CODE when this is empty
+        // (see resolveSchool in lib/auth.ts), so a single-school deployment
+        // can sign in without the code. Previously this form returned early
+        // and refused to submit when the field was blank, which made the
+        // fallback unreachable from the UI and blocked anyone who did not
+        // know the internal code. surface the error instead of swallowing it.
         schoolCode,
         callbackUrl,
       })
 
       if (result?.error) {
-        setError(result.error)
+        setError('Invalid credentials. Check your email, password and school code.')
       } else {
-        router.push(result?.url || '/dashboard')
+        router.push(result?.url || callbackUrl)
       }
     } catch (_err) {
       setError('Login failed. Please try again.')
@@ -63,10 +68,23 @@ function LoginContent() {
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
+              {/*
+                Each field carries an id paired with the label's htmlFor, and a
+                name attribute. The id pairing is what lets a screen reader
+                associate the label with its control and what lets clicking the
+                label focus the field; without it the three labels announced as
+                unlabelled inputs. The name is what makes these fields
+                addressable by form name, which the E2E suite relies on.
+              */}
               <div>
-                <label className="block text-sm font-medium mb-1">School Code</label>
+                <label htmlFor="schoolCode" className="block text-sm font-medium mb-1">
+                  School Code
+                </label>
                 <Input
+                  id="schoolCode"
+                  name="schoolCode"
                   type="text"
+                  autoComplete="organization"
                   placeholder="Enter your school code"
                   value={schoolCode}
                   onChange={(e) => setSchoolCode(e.target.value)}
@@ -74,9 +92,14 @@ function LoginContent() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Email</label>
+                <label htmlFor="email" className="block text-sm font-medium mb-1">
+                  Email
+                </label>
                 <Input
+                  id="email"
+                  name="email"
                   type="email"
+                  autoComplete="email"
                   placeholder="Enter your email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
@@ -84,9 +107,14 @@ function LoginContent() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Password</label>
+                <label htmlFor="password" className="block text-sm font-medium mb-1">
+                  Password
+                </label>
                 <Input
+                  id="password"
+                  name="password"
                   type="password"
+                  autoComplete="current-password"
                   placeholder="Enter your password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
@@ -95,7 +123,9 @@ function LoginContent() {
               </div>
 
               {error && (
-                <p className="text-sm text-destructive">{error}</p>
+                <p role="alert" className="text-sm text-destructive">
+                  {error}
+                </p>
               )}
 
               <Button type="submit" className="w-full" disabled={isLoading}>

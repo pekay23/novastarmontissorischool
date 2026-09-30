@@ -63,11 +63,25 @@ export default function PortalLayout({
   const schoolName = (session?.user as { schoolName?: string })?.schoolName ||
     session?.user?.name?.split(' ')[0] || 'School Portal'
 
-  // Filter navigation based on role permissions
-  // Roles with broad access (admin, super_admin) see all items;
-  // staff see everything except Settings (restricted to admin)
+  // Settings is restricted to roles that manage the school itself.
+  //
+  // This used to test for 'admin' and 'super_admin', neither of which the seed
+  // ever assigns: tools/seed/index.ts creates HEADMASTER, ASSISTANT_HEAD,
+  // HEAD_TEACHER, CLASSROOM_TEACHER, ACCOUNTANT, ADMIN_STAFF and PARENT. So no
+  // provisioned user could ever see Settings, and the school could not manage
+  // itself. Gate on the roles that actually exist.
+  //
+  // 'admin'/'super_admin' are kept for a future super-admin surface, which is
+  // what apps/super-admin is intended to become.
+  const SETTINGS_ROLES = new Set([
+    'HEADMASTER',
+    'ASSISTANT_HEAD',
+    'admin',
+    'super_admin',
+  ])
+
   const visibleNav = navigation.filter((item) => {
-    if (userRole === 'admin' || userRole === 'super_admin') return true
+    if (SETTINGS_ROLES.has(userRole)) return true
     if (item.href === '/settings') return false
     return true
   })

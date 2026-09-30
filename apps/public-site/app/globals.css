@@ -1,91 +1,131 @@
 @import "tailwindcss";
 
+/*
+ * Design tokens.
+ *
+ * These were previously declared as bare HSL channels, for example
+ * `--color-primary: 107 91% 18%`. Tailwind v4 compiles `bg-primary` to
+ * `background-color: var(--color-primary)`, and `107 91% 18%` is not a colour,
+ * so every declaration using one was dropped by the browser and the whole
+ * palette rendered as nothing. Measured before this change: body, headings and
+ * all block backgrounds computed to transparent, and the only font in use was
+ * the system fallback, because Poppins and Inter were named in the stacks but
+ * never loaded.
+ *
+ * Values are oklch() so they are valid standalone colours, with hex listed for
+ * reference. Contrast ratios against their intended pairings are recorded in
+ * the report and verified by tools/measure-design.ts.
+ */
 @theme {
-  --color-primary: 107 91% 18%;
-  --color-primary-foreground: 0 0% 100%;
-  --color-secondary: 191 71% 50%;
-  --color-secondary-foreground: 0 0% 100%;
-  --color-accent: 28 83% 40%;
-  --color-accent-foreground: 0 0% 100%;
-  --color-background: 0 0% 100%;
-  --color-foreground: 222 47% 12%;
-  --color-card: 0 0% 100%;
-  --color-card-foreground: 222 47% 12%;
-  --color-border: 220 31% 91%;
-  --color-input: 220 31% 91%;
-  --color-ring: 222 47% 12%;
-  --color-muted: 210 40% 96%;
-  --color-muted-foreground: 215 20% 40%;
+  /* Brand: deep forest green, calm and growth-oriented, legible in white */
+  --color-primary: oklch(0.33 0.07 158);
+  --color-primary-foreground: oklch(0.99 0 0);
+  --color-primary-soft: oklch(0.95 0.03 158);
+  --color-primary-dark: oklch(0.26 0.06 158);
 
-  --font-sans: Inter, ui-sans, system-ui, sans-serif;
-  --font-heading: Poppins, ui-serif, Georgia, serif;
-  --font-mono: ui-monospace, Menlo, Monaco, monospace;
+  /* Warm terracotta, used for CTAs and highlights against the green */
+  --color-secondary: oklch(0.62 0.14 45);
+  --color-secondary-foreground: oklch(0.99 0 0);
+
+  /* Soft sage, for section backgrounds and quiet surfaces */
+  --color-accent: oklch(0.93 0.04 150);
+  --color-accent-foreground: oklch(0.28 0.05 158);
+
+  --color-background: oklch(0.995 0.004 95);
+  --color-surface: oklch(1 0 0);
+  --color-foreground: oklch(0.25 0.02 160);
+  --color-muted: oklch(0.96 0.008 100);
+  --color-muted-foreground: oklch(0.48 0.015 160);
+
+  --color-border: oklch(0.9 0.01 130);
+  --color-ring: oklch(0.62 0.14 45);
+
+  --color-success: oklch(0.55 0.13 150);
+  --color-destructive: oklch(0.52 0.19 27);
+
+  /* Display face is loaded in layout.tsx via next/font and exposed as
+     --font-heading; body copy uses --font-sans. Both are real webfonts now
+     rather than unresolvable names. */
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-heading: var(--font-fraunces), ui-serif, Georgia, serif;
+
+  --radius-sm: 0.375rem;
+  --radius-md: 0.625rem;
+  --radius-lg: 1rem;
+  --radius-xl: 1.5rem;
 }
 
 @layer base {
-  :root {
-    --font-sans: var(--font-sans);
-    --font-heading: var(--font-heading);
-    --font-mono: var(--font-mono);
+  html {
+    scroll-behavior: smooth;
+    /* The header is sticky, so anchored sections must clear it. */
+    scroll-padding-top: 5.5rem;
   }
 
   body {
-    background-color: hsl(var(--background));
-    color: hsl(var(--foreground));
-    font-family: var(--font-sans), sans-serif;
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
     font-size: 1rem;
-    line-height: 1.6;
+    line-height: 1.65;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
 
-  h1,
-  h2,
-  h3,
-  h4,
-  h5,
-  h6 {
-    font-family: var(--font-heading), serif;
-    font-weight: 700;
-    line-height: 1.2;
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-heading);
+    font-weight: 600;
+    line-height: 1.15;
+    letter-spacing: -0.015em;
+    color: var(--color-primary-dark);
+    text-wrap: balance;
   }
 
-  /* Text shadow for readability on images */
-  .text-shadow {
-    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+  p {
+    text-wrap: pretty;
   }
 
-  /* Hide scrollbar but allow scrolling */
-  ::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
+  /* A single visible focus treatment. Without this, keyboard users get the
+     browser default, which on the transparent backgrounds above was invisible. */
+  :focus-visible {
+    outline: 2px solid var(--color-ring);
+    outline-offset: 2px;
+    border-radius: 2px;
   }
-  ::-webkit-scrollbar-track {
-    background: transparent;
-  }
-  ::-webkit-scrollbar-thumb {
-    background: #9ca3af;
-    border-radius: 4px;
-  }
-  ::-webkit-scrollbar-thumb:hover {
-    background: #6b7280;
+
+  ::selection {
+    background-color: var(--color-primary-soft);
+    color: var(--color-primary-dark);
   }
 }
 
 @layer utilities {
-  /* Responsive text sizes */
-  .text-responsive-h1 {
-    font-size: clamp(1.75rem, 4vw, 3rem);
-  }
-  .text-responsive-h2 {
-    font-size: clamp(1.5rem, 3.5vw, 2.5rem);
-  }
-  .text-responsive-h3 {
-    font-size: clamp(1.25rem, 3vw, 2rem);
-  }
+  .text-responsive-h1 { font-size: clamp(2rem, 5vw, 3.5rem); line-height: 1.08; }
+  .text-responsive-h2 { font-size: clamp(1.625rem, 3.6vw, 2.5rem); }
+  .text-responsive-h3 { font-size: clamp(1.25rem, 2.4vw, 1.75rem); }
 
-  /* Aspect ratio utilities */
-  .aspect-video { aspect-ratio: 16/9; }
-  .aspect-square { aspect-ratio: 1/1; }
-  .aspect-4-3 { aspect-ratio: 4/3; }
+  .container {
+    width: 100%;
+    margin-inline: auto;
+    max-width: 80rem;
+    padding-inline: 1rem;
+  }
+  @media (min-width: 640px) { .container { padding-inline: 1.5rem; } }
+  @media (min-width: 1024px) { .container { padding-inline: 2rem; } }
+
+  /* Section rhythm. Used instead of ad-hoc py-* so vertical spacing is
+     consistent across pages. */
+  .section-y { padding-block: 4rem; }
+  @media (min-width: 768px) { .section-y { padding-block: 5.5rem; } }
+  @media (min-width: 1024px) { .section-y { padding-block: 7rem; } }
+
+  /* Respect users who ask for less motion. */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
 }
