@@ -1,19 +1,24 @@
 ﻿import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { getTenantContext, requirePermission } from '@/lib/tenant'
+import { getTenantContext } from '@/lib/tenant'
+import { hasPermission } from '@novastar/auth'
 import { InvoiceStatus } from '@novastar/database'
 import { z } from 'zod'
 import { logError } from '@/lib/logger'
+import { FinanceService } from '@novastar/domain'
 
 // List all fee invoices for the current school/tenant
 export async function GET(req: NextRequest) {
   try {
-    const { schoolId, tenantId } = await getTenantContext()
+    const { schoolId, tenantId, userId } = await getTenantContext()
     if (!schoolId) {
       return NextResponse.json({ error: 'No school assigned' }, { status: 400 })
     }
 
-    await requirePermission('finance:read')
+    // RBAC: use @novastar/auth hasPermission
+    if (!(await hasPermission(userId, 'finance:read', tenantId, schoolId))) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
 
     const { searchParams } = new URL(req.url)
     const studentId = searchParams.get('studentId')
@@ -68,95 +73,38 @@ const GenerateInvoiceSchema = z.object({
   classId: z.string(),
   termId: z.string(),
   academicYearId: z.string(),
-  dueDate: z.string().transform((val) => new Date(val)),
+  dueDate: z.string().optional(),
   description: z.string().optional(),
 })
 
 // Generate fee invoices for all students in a class for a term
 export async function POST(req: NextRequest) {
   try {
-    const { schoolId, tenantId } = await getTenantContext()
-    if (!schoolId) {
+    const ctx = await getTenantContext()
+    if (!ctx.schoolId) {
       return NextResponse.json({ error: 'No school assigned' }, { status: 400 })
     }
 
-    await requirePermission('finance:invoice:create')
+    // RBAC: use @novastar/auth hasPermission
+    if (!(await hasPermission(ctx.userId, 'finance:invoice:create', ctx.tenantId, ctx.schoolId))) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
 
     const body = await req.json()
     const parseResult = GenerateInvoiceSchema.safeParse(body)
     if (!parseResult.success) {
       return NextResponse.json({ error: 'Invalid input', details: parseResult.error.issues }, { status: 400 })
     }
-    const { classId, termId, academicYearId, dueDate, description } = parseResult.data
+    const { classId, termId, academicYearId } = parseResult.data
 
-    // Find the FeeStructure for this class level + academic year + term
-    const feeStructure = await prisma.feeStructure.findFirst({
-      where: { schoolId, academicYearId, termId, classLevel: { classes: { some: { id: classId } } } },
-      include: { lineItems: { include: { category: true } } },
-    })
-
-    if (!feeStructure || feeStructure.lineItems.length === 0) {
-      return NextResponse.json({ error: 'No active fee structure found for this class' }, { status: 400 })
-    }
-
-    // Find all students enrolled in this class for this term
-    const enrollments = await prisma.enrollment.findMany({
-      where: { tenantId, classId, termId, isActive: true },
-      include: { student: true },
-    })
-
-    if (enrollments.length === 0) {
-      return NextResponse.json({ error: 'No students enrolled in this class for this term' }, { status: 400 })
-    }
-
-    const invoicePrefix = `INV-${new Date().getFullYear()}-${String(enrollments.length).padStart(3, '0')}`
-
-    const result = await prisma.$transaction(async (tx) => {
-      const createdInvoices = []
-      let counter = 1
-
-      for (const enrollment of enrollments) {
-        const totalAmount = feeStructure.lineItems.reduce(
-          (sum, item) => sum + Number(item.amount),
-          0,
-        )
-
-        const invoiceNumber = `${invoicePrefix}-${String(counter).padStart(4, '0')}`
-        counter++
-
-        const invoice = await tx.feeInvoice.create({
-          data: {
-            tenantId,
-            schoolId,
-            studentId: enrollment.studentId,
-            termId,
-            invoiceNumber,
-            totalAmount,
-            balance: totalAmount,
-            status: InvoiceStatus.PENDING,
-            dueDate,
-            issuedAt: new Date(),
-            lineItems: {
-              create: feeStructure.lineItems.map((item) => ({
-                tenantId,
-                categoryId: item.categoryId,
-                amount: Number(item.amount),
-                isMandatory: item.isMandatory,
-                description: description || undefined,
-              })),
-            },
-          },
-        })
-        createdInvoices.push(invoice)
-      }
-
-      return createdInvoices
-    })
+    // Delegate to the FinanceService domain service
+    const finance = new FinanceService(ctx)
+    const result = await finance.generateInvoicesForClass(classId, termId, academicYearId)
 
     return NextResponse.json({
       success: true,
-      count: result.length,
-      invoices: result,
+      count: result.count,
+      invoices: result.invoices,
     })
   } catch (error) {
     if (error instanceof Error && error.name === 'UnauthorizedError') {

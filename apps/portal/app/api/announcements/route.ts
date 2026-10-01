@@ -1,6 +1,7 @@
 ﻿import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { getTenantContext, requirePermission } from '@/lib/tenant'
+import { getTenantContext } from '@/lib/tenant'
+import { hasPermission } from '@novastar/auth'
 import { z } from 'zod'
 import { logError } from '@/lib/logger'
 
@@ -46,9 +47,13 @@ const CreateAnnouncementSchema = z.object({
 
 export async function POST(req: NextRequest) {
   try {
-    await requirePermission('announcement:create')
     const { schoolId, tenantId, userId } = await getTenantContext()
     if (!schoolId) return NextResponse.json({ error: 'No school assigned' }, { status: 400 })
+
+    // RBAC
+    if (!(await hasPermission(userId, 'announcement:create', tenantId, schoolId))) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
 
     const body = await req.json()
     const parseResult = CreateAnnouncementSchema.safeParse(body)

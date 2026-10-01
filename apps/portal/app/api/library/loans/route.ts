@@ -1,6 +1,7 @@
 ﻿import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { getTenantContext, requirePermission } from '@/lib/tenant'
+import { getTenantContext } from '@/lib/tenant'
+import { hasPermission } from '@novastar/auth'
 import { z } from 'zod'
 import { logError } from '@/lib/logger'
 
@@ -13,8 +14,12 @@ const BorrowSchema = z.object({
 
 export async function POST(req: NextRequest) {
   try {
-    await requirePermission('library:loan:create')
-    const { tenantId } = await getTenantContext()
+    const { tenantId, userId } = await getTenantContext()
+
+    // RBAC
+    if (!(await hasPermission(userId, 'library:loan:create', tenantId, undefined))) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
 
     const body = await req.json()
     const parseResult = BorrowSchema.safeParse(body)

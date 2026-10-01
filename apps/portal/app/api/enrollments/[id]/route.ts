@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { getTenantContext, requirePermission } from '@/lib/tenant'
+import { getTenantContext } from '@/lib/tenant'
+import { hasPermission } from '@novastar/auth'
 import { logError } from '@/lib/logger'
 
 export async function DELETE(
@@ -8,8 +9,12 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    await requirePermission('enrollment:delete')
-    const { tenantId } = await getTenantContext()
+    const { tenantId, userId, schoolId } = await getTenantContext()
+
+    // RBAC
+    if (!(await hasPermission(userId, 'enrollment:delete', tenantId, schoolId ?? undefined))) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
 
     const { id } = await params
     const existing = await prisma.enrollment.findFirst({

@@ -1,6 +1,6 @@
 {
   "$schema": "https://v2-11-5.turborepo.dev/schema.json",
-  "globalDependencies": [".env*"],
+  "globalDependencies": [".env*", "packages/database/.env"],
   "tasks": {
     "dev": {
       "cache": false,
@@ -84,6 +84,10 @@
     "SUPABASE_PUBLISHABLE_KEY",
     "NEXT_PUBLIC_SUPABASE_URL",
     "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY",
-    "SUPABASE_URL"
+    "SUPABASE_URL",
+    "DATABASE_URL_POOLED",
+    "SUPABASE_DIRECT_URL",
+    "DATABASE_URL_RLS",
+    "SUPABASE_DATABASE_URL_RLS"
   ]
 }

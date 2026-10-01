@@ -59,9 +59,10 @@ describe('Middleware - Config Endpoint Protection', () => {
   const entitiesTypeRoute = readRoute('config/entities/[type]/route.ts')
 
   describe('config/route.ts', () => {
-    it('should require config:read for GET on base config endpoint', () => {
+    it('should use hasPermission with config:read for GET on base config endpoint', () => {
       const handler = extractHandler(configRoute, 'GET')
-      expect(handler).toContain("requirePermission('config:read')")
+      expect(handler).toContain('hasPermission')
+      expect(handler).toContain("'config:read'")
     })
 
     it('should handle ForbiddenError in GET catch block', () => {
@@ -83,14 +84,16 @@ describe('Middleware - Config Endpoint Protection', () => {
   })
 
   describe('config/[entityType]/route.ts', () => {
-    it('should require config:read for GET', () => {
+    it('should use hasPermission with config:read for GET', () => {
       const handler = extractHandler(entitiesRoute, 'GET')
-      expect(handler).toContain("requirePermission('config:read')")
+      expect(handler).toContain('hasPermission')
+      expect(handler).toContain("'config:read'")
     })
 
-    it('should require config:write for POST', () => {
+    it('should use hasPermission with config:write for POST', () => {
       const handler = extractHandler(entitiesRoute, 'POST')
-      expect(handler).toContain("requirePermission('config:write')")
+      expect(handler).toContain('hasPermission')
+      expect(handler).toContain("'config:write'")
     })
 
     it('should handle ForbiddenError in GET catch block', () => {
@@ -105,19 +108,22 @@ describe('Middleware - Config Endpoint Protection', () => {
   })
 
   describe('config/[entityType]/[id]/route.ts', () => {
-    it('should require config:read for GET', () => {
+    it('should use hasPermission with config:read for GET', () => {
       const handler = extractHandler(entityIdRoute, 'GET')
-      expect(handler).toContain("requirePermission('config:read')")
+      expect(handler).toContain('hasPermission')
+      expect(handler).toContain("'config:read'")
     })
 
-    it('should require config:write for PATCH', () => {
+    it('should use hasPermission with config:write for PATCH', () => {
       const handler = extractHandler(entityIdRoute, 'PATCH')
-      expect(handler).toContain("requirePermission('config:write')")
+      expect(handler).toContain('hasPermission')
+      expect(handler).toContain("'config:write'")
     })
 
-    it('should require config:write for DELETE', () => {
+    it('should use hasPermission with config:write for DELETE', () => {
       const handler = extractHandler(entityIdRoute, 'DELETE')
-      expect(handler).toContain("requirePermission('config:write')")
+      expect(handler).toContain('hasPermission')
+      expect(handler).toContain("'config:write'")
     })
 
     it('GET catch block should handle ForbiddenError', () => {
@@ -137,19 +143,22 @@ describe('Middleware - Config Endpoint Protection', () => {
   })
 
   describe('config/entities/[type]/route.ts', () => {
-    it('should require config:read for GET', () => {
+    it('should use hasPermission with config:read for GET', () => {
       const handler = extractHandler(entitiesTypeRoute, 'GET')
-      expect(handler).toContain("requirePermission('config:read')")
+      expect(handler).toContain('hasPermission')
+      expect(handler).toContain("'config:read'")
     })
 
-    it('should require config:write for PATCH', () => {
+    it('should use hasPermission with config:write for PATCH', () => {
       const handler = extractHandler(entitiesTypeRoute, 'PATCH')
-      expect(handler).toContain("requirePermission('config:write')")
+      expect(handler).toContain('hasPermission')
+      expect(handler).toContain("'config:write'")
     })
 
-    it('should require config:write for DELETE', () => {
+    it('should use hasPermission with config:write for DELETE', () => {
       const handler = extractHandler(entitiesTypeRoute, 'DELETE')
-      expect(handler).toContain("requirePermission('config:write')")
+      expect(handler).toContain('hasPermission')
+      expect(handler).toContain("'config:write'")
     })
 
     it('should handle ForbiddenError in GET catch block', () => {
@@ -169,9 +178,10 @@ describe('Middleware - Config Endpoint Protection', () => {
   })
 
   describe('config/entities/route.ts', () => {
-    it('should require config:read for GET', () => {
+    it('should use hasPermission with config:read for GET', () => {
       const handler = extractHandler(entitiesListRoute, 'GET')
-      expect(handler).toContain("requirePermission('config:read')")
+      expect(handler).toContain('hasPermission')
+      expect(handler).toContain("'config:read'")
     })
 
     it('should filter overrides by tenantId', () => {
@@ -202,32 +212,39 @@ describe('Middleware - Finance Endpoint Protection', () => {
   const invoicePaymentsRoute = readRoute('finance/invoices/[id]/payments/route.ts')
   const paymentMethodsRoute = readRoute('finance/payment-methods/route.ts')
 
-  it('should require finance:invoice:create for POST invoices', () => {
-    expect(invoicesRoute).toContain("requirePermission('finance:invoice:create')")
+  it('should use hasPermission with finance:invoice:create for POST invoices', () => {
+    expect(invoicesRoute).toContain('hasPermission')
+    expect(invoicesRoute).toContain('finance:invoice:create')
   })
 
-  it('should require finance:read for GET invoices', () => {
-    expect(invoicesRoute).toContain("requirePermission('finance:read')")
+  it('should use hasPermission with finance:read for GET invoices', () => {
+    expect(invoicesRoute).toContain('hasPermission')
+    expect(invoicesRoute).toContain('finance:read')
   })
 
-  it('should require finance:payment:record for POST payments', () => {
-    expect(paymentsRoute).toContain("requirePermission('finance:payment:record')")
+  it('should use hasPermission with finance:payment:record for POST payments', () => {
+    expect(paymentsRoute).toContain('hasPermission')
+    expect(paymentsRoute).toContain('finance:payment:record')
   })
 
-  it('should require finance:read for GET payments', () => {
-    expect(paymentsRoute).toContain("requirePermission('finance:read')")
+  it('should use hasPermission with finance:read for GET payments', () => {
+    expect(paymentsRoute).toContain('hasPermission')
+    expect(paymentsRoute).toContain('finance:read')
   })
 
-  it('should require finance:read for GET invoice payments', () => {
-    expect(invoicePaymentsRoute).toContain("requirePermission('finance:read')")
+  it('should use hasPermission with finance:read for GET invoice payments', () => {
+    expect(invoicePaymentsRoute).toContain('hasPermission')
+    expect(invoicePaymentsRoute).toContain('finance:read')
   })
 
-  it('should require finance:payment for POST invoice payments', () => {
-    expect(invoicePaymentsRoute).toContain("requirePermission('finance:payment')")
+  it('should use hasPermission with finance:payment for POST invoice payments', () => {
+    expect(invoicePaymentsRoute).toContain('hasPermission')
+    expect(invoicePaymentsRoute).toContain('finance:payment')
   })
 
-  it('should require finance:read for GET payment-methods', () => {
-    expect(paymentMethodsRoute).toContain("requirePermission('finance:read')")
+  it('should use hasPermission with finance:read for GET payment-methods', () => {
+    expect(paymentMethodsRoute).toContain('hasPermission')
+    expect(paymentMethodsRoute).toContain('finance:read')
   })
 })
 
@@ -236,32 +253,39 @@ describe('Middleware - Assessment Endpoint Protection', () => {
   const assessmentIdRoute = readRoute('assessments/[id]/route.ts')
   const scoresRoute = readRoute('assessments/[id]/scores/route.ts')
 
-  it('should require assessment:create for POST assessments', () => {
-    expect(assessmentsRoute).toContain("requirePermission('assessment:create')")
+  it('should use hasPermission with assessment:create for POST assessments', () => {
+    expect(assessmentsRoute).toContain('hasPermission')
+    expect(assessmentsRoute).toContain('assessment:create')
   })
 
-  it('should require assessment:read for GET assessments list', () => {
-    expect(assessmentsRoute).toContain("requirePermission('assessment:read')")
+  it('should use hasPermission with assessment:read for GET assessments list', () => {
+    expect(assessmentsRoute).toContain('hasPermission')
+    expect(assessmentsRoute).toContain('assessment:read')
   })
 
-  it('should require assessment:read for GET assessment by id', () => {
-    expect(assessmentIdRoute).toContain("requirePermission('assessment:read')")
+  it('should use hasPermission with assessment:read for GET assessment by id', () => {
+    expect(assessmentIdRoute).toContain('hasPermission')
+    expect(assessmentIdRoute).toContain('assessment:read')
   })
 
-  it('should require assessment:update for PATCH assessment', () => {
-    expect(assessmentIdRoute).toContain("requirePermission('assessment:update')")
+  it('should use hasPermission with assessment:update for PATCH assessment', () => {
+    expect(assessmentIdRoute).toContain('hasPermission')
+    expect(assessmentIdRoute).toContain('assessment:update')
   })
 
-  it('should require assessment:delete for DELETE assessment', () => {
-    expect(assessmentIdRoute).toContain("requirePermission('assessment:delete')")
+  it('should use hasPermission with assessment:delete for DELETE assessment', () => {
+    expect(assessmentIdRoute).toContain('hasPermission')
+    expect(assessmentIdRoute).toContain('assessment:delete')
   })
 
-  it('should require assessment:read for GET assessment scores', () => {
-    expect(scoresRoute).toContain("requirePermission('assessment:read')")
+  it('should use hasPermission with assessment:read for GET assessment scores', () => {
+    expect(scoresRoute).toContain('hasPermission')
+    expect(scoresRoute).toContain('assessment:read')
   })
 
-  it('should require assessment:grade for POST scores', () => {
-    expect(scoresRoute).toContain("requirePermission('assessment:grade')")
+  it('should use hasPermission with assessment:grade for POST scores', () => {
+    expect(scoresRoute).toContain('hasPermission')
+    expect(scoresRoute).toContain('assessment:grade')
   })
 })
 

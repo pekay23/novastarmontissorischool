@@ -9,7 +9,9 @@
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "typescript": "npm:@typescript/typescript6@^6.0.2"
+  },
+  "dependencies": {
     "zod": "^4.4.3"
   }
 }

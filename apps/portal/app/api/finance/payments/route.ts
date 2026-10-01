@@ -1,19 +1,23 @@
 ﻿import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { getTenantContext, requirePermission } from '@/lib/tenant'
-import { InvoiceStatus, PaymentStatus } from '@novastar/database'
+import { hasPermission } from '@novastar/auth'
+import { getTenantContext } from '@/lib/tenant'
 import { z } from 'zod'
 import { logError } from '@/lib/logger'
+import { FinanceService } from '@novastar/domain'
 
 // List payments for a specific invoice
 export async function GET(req: NextRequest) {
   try {
-    const { schoolId, tenantId } = await getTenantContext()
+    const { schoolId, tenantId, userId } = await getTenantContext()
     if (!schoolId) {
       return NextResponse.json({ error: 'No school assigned' }, { status: 400 })
     }
 
-    await requirePermission('finance:read')
+    // RBAC: use @novastar/auth hasPermission (handles delegations + role inheritance)
+    if (!(await hasPermission(userId, 'finance:read', tenantId, schoolId))) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
 
     const { searchParams } = new URL(req.url)
     const invoiceId = searchParams.get('invoiceId')
@@ -60,137 +64,35 @@ const RecordPaymentSchema = z.object({
 // Record a payment against an invoice
 export async function POST(req: NextRequest) {
   try {
-    const { schoolId, tenantId, userId } = await getTenantContext()
-    if (!schoolId) {
+    const ctx = await getTenantContext()
+    if (!ctx.schoolId) {
       return NextResponse.json({ error: 'No school assigned' }, { status: 400 })
     }
 
-    await requirePermission('finance:payment:record')
+    // RBAC: use @novastar/auth hasPermission (handles delegations + role inheritance)
+    if (!(await hasPermission(ctx.userId, 'finance:payment:record', ctx.tenantId, ctx.schoolId))) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
 
     const body = await req.json()
     const parseResult = RecordPaymentSchema.safeParse(body)
     if (!parseResult.success) {
       return NextResponse.json({ error: 'Invalid input', details: parseResult.error.issues }, { status: 400 })
     }
-    const { invoiceId, amount, methodCode, reference, transactionId, momoPhone, notes } = parseResult.data
+    const { invoiceId, amount, methodCode, reference, momoPhone, notes } = parseResult.data
 
-    // Verify the invoice belongs to this school/tenant
-    const invoice = await prisma.feeInvoice.findFirst({
-      where: { id: invoiceId, schoolId, tenantId },
-      include: { lineItems: true },
+    // Delegate to the FinanceService domain service
+    const finance = new FinanceService(ctx)
+    const result = await finance.recordPayment({
+      invoiceId,
+      amount,
+      methodCode,
+      reference,
+      momoPhone,
+      notes,
     })
 
-    if (!invoice) {
-      return NextResponse.json({ error: 'Invoice not found' }, { status: 404 })
-    }
-
-    // Verify payment method is enabled for this school
-    // For cash/bank, create a minimal PaymentMethodConfig if it doesn't exist
-    let paymentMethod = await prisma.paymentMethodConfig.findFirst({
-      where: { schoolId, tenantId, code: methodCode, isEnabled: true },
-    })
-
-    if (!paymentMethod) {
-      if (methodCode === 'cash' || methodCode === 'bank') {
-        paymentMethod = await prisma.paymentMethodConfig.create({
-          data: {
-            tenantId,
-            schoolId,
-            code: methodCode,
-            name: methodCode === 'cash' ? 'Cash' : 'Bank Transfer',
-            isEnabled: true,
-          },
-        })
-      } else {
-        return NextResponse.json({ error: 'Payment method not available' }, { status: 400 })
-      }
-    }
-
-    const methodId = paymentMethod.id
-
-    // Calculate new balance
-    const currentPaid = Number(invoice.paidAmount)
-    const currentBalance = Number(invoice.balance)
-    const newPaidAmount = currentPaid + amount
-    const newBalance = currentBalance - amount
-
-    if (amount > currentBalance) {
-      return NextResponse.json(
-        { error: `Payment amount (${amount}) exceeds remaining balance (${currentBalance})` },
-        { status: 400 },
-      )
-    }
-
-    // Create payment and update invoice in a transaction
-    const [payment] = await prisma.$transaction(async (tx) => {
-      const newPayment = await tx.payment.create({
-        data: {
-          tenantId,
-          schoolId,
-          invoiceId,
-          studentId: invoice.studentId,
-          amount,
-          methodId,
-          reference,
-          transactionId,
-          momoPhone,
-          status: PaymentStatus.COMPLETED,
-          notes,
-          recordedById: userId,
-        },
-      })
-
-      // Determine new invoice status
-      let newStatus: InvoiceStatus = invoice.status
-      if (newBalance <= 0) {
-        newStatus = InvoiceStatus.PAID
-      } else if (newPaidAmount > 0) {
-        newStatus = InvoiceStatus.PARTIAL
-      }
-
-      await tx.feeInvoice.update({
-        where: { id: invoiceId, tenantId, schoolId },
-        data: {
-          paidAmount: newPaidAmount,
-          balance: Math.max(newBalance, 0),
-          status: newStatus,
-          paidAt: newBalance <= 0 ? new Date() : undefined,
-        },
-      })
-
-      // Record audit log
-      await tx.auditLog.create({
-        data: {
-          tenantId,
-          schoolId,
-          userId,
-          action: 'payment_recorded',
-          entity: 'Payment',
-          entityId: newPayment.id,
-          newData: JSON.stringify({
-            amount,
-            methodCode,
-            invoiceId,
-            reference,
-            newStatus,
-          }),
-        },
-      })
-
-      return [newPayment]
-    })
-
-    return NextResponse.json({
-      success: true,
-      payment,
-      invoice: {
-        id: invoice.id,
-        invoiceNumber: invoice.invoiceNumber,
-        paidAmount: newPaidAmount,
-        balance: Math.max(newBalance, 0),
-        status: newBalance <= 0 ? InvoiceStatus.PAID : InvoiceStatus.PARTIAL,
-      },
-    })
+    return NextResponse.json(result, { status: 201 })
   } catch (error) {
     if (error instanceof Error && error.name === 'UnauthorizedError') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

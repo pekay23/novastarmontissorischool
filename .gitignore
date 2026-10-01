@@ -66,7 +66,18 @@ docs/html/
 # Screenshots and visual baseline artifacts
 screenshots/
 **/screenshots/
-tools/audit-baseline/
+docs/audit-reports/visual-baseline-*/
+
+# NOTE: tools/audit-baseline/ was previously ignored wholesale, which meant the
+# tool's own source code and its findings.json could never be committed. Only
+# the tool's generated output is ignored now — see tools/audit-baseline/.gitignore
+
+# Unfinished ADRs and build plans — these contain in-progress architecture
+# notes, security review findings, and internal business rules. Do not commit
+# until reviewed. README.md (the ADR index) is tracked and exempt.
+docs/adr/ADR-NNN-*.md
+docs/adr/ADR-0*.md
+docs/technical/2026-10-01_*.md
 
 # Local dev artifacts
 *.db

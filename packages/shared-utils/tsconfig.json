@@ -1,17 +1,10 @@
 {
+  "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "lib": ["ES2022"],
-    "moduleResolution": "bundler",
-    "strict": true,
+    "noEmit": true,
     "noUncheckedIndexedAccess": true,
     "types": ["node"],
-    "module": "esnext",
-    "target": "esnext",
-    "moduleResolution": "bundler",
-    "resolveJsonModule": true,
-    "declaration": true,
-    "outDir": "dist",
-    "noEmit": false,
     "paths": {
       "@novastar/*": ["../../packages/*/index.ts"]
     }

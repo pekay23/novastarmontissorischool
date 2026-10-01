@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { getTenantContext, requirePermission } from '@/lib/tenant'
+import { hasPermission } from '@novastar/auth'
+import { getTenantContext } from '@/lib/tenant'
 import { z } from 'zod'
 import { logError } from '@/lib/logger'
+import { FinanceService } from '@novastar/domain'
 
 // GET /api/finance/invoices/[id]/payments — List payments for a specific invoice
 export async function GET(
@@ -10,12 +12,15 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const { schoolId, tenantId } = await getTenantContext()
+    const { schoolId, tenantId, userId } = await getTenantContext()
     if (!schoolId) {
       return NextResponse.json({ error: 'No school assigned' }, { status: 400 })
     }
 
-    await requirePermission('finance:read')
+    // RBAC
+    if (!(await hasPermission(userId, 'finance:read', tenantId, schoolId))) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
 
     const { id: invoiceId } = await params
 
@@ -76,79 +81,37 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    await requirePermission('finance:payment')
-    const { schoolId, tenantId, userId } = await getTenantContext()
-    if (!schoolId) {
+    const ctx = await getTenantContext()
+    if (!ctx.schoolId) {
       return NextResponse.json({ error: 'No school assigned' }, { status: 400 })
     }
 
-    const { id: invoiceId } = await params
-
-    const invoice = await prisma.feeInvoice.findFirst({
-      where: { id: invoiceId, schoolId, tenantId },
-      include: { student: { select: { id: true } } },
-    })
-
-    if (!invoice) {
-      return NextResponse.json({ error: 'Invoice not found' }, { status: 404 })
+    // RBAC
+    if (!(await hasPermission(ctx.userId, 'finance:payment', ctx.tenantId, ctx.schoolId))) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
+
+    const { id: invoiceId } = await params
 
     const body = await req.json()
     const parseResult = RecordPaymentSchema.safeParse(body)
     if (!parseResult.success) {
       return NextResponse.json({ error: 'Invalid input', details: parseResult.error.issues }, { status: 400 })
     }
-    const data = parseResult.data
+    const { amount, methodCode, reference, notes, momoPhone } = parseResult.data
 
-    const method = await prisma.paymentMethodConfig.findFirst({
-      where: { tenantId, schoolId, code: data.methodCode, isEnabled: true },
+    // Delegate to the FinanceService domain service
+    const finance = new FinanceService(ctx)
+    const result = await finance.recordPayment({
+      invoiceId,
+      amount,
+      methodCode,
+      reference,
+      momoPhone,
+      notes,
     })
 
-    if (!method) {
-      return NextResponse.json({ error: `Payment method ${data.methodCode} not found or disabled` }, { status: 400 })
-    }
-
-    const payment = await prisma.$transaction(async (tx) => {
-      const newPayment = await tx.payment.create({
-        data: {
-          tenantId,
-          schoolId,
-          invoiceId: invoice.id,
-          studentId: invoice.studentId,
-          amount: data.amount,
-          methodId: method.id,
-          reference: data.reference,
-          momoPhone: data.momoPhone || null,
-          transactionId: data.transactionId || null,
-          notes: data.notes || null,
-          recordedById: userId,
-        },
-        include: {
-          method: { select: { name: true, code: true } },
-        },
-      })
-
-      await tx.feeInvoice.update({
-        where: { id: invoice.id, tenantId, schoolId },
-        data: {
-          paidAmount: { increment: data.amount },
-          status:
-            data.amount >= Number(invoice.balance)
-              ? 'PAID'
-              : Number(invoice.paidAmount) + data.amount > 0
-              ? 'PARTIAL'
-              : invoice.status,
-          paidAt:
-            data.amount >= Number(invoice.balance)
-              ? new Date()
-              : invoice.paidAt,
-        },
-      })
-
-      return newPayment
-    })
-
-    return NextResponse.json(payment, { status: 201 })
+    return NextResponse.json(result, { status: 201 })
   } catch (error) {
     if (error instanceof Error && error.name === 'UnauthorizedError') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

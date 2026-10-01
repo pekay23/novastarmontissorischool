@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
-import { authOptions, TENANT_ID } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { DEFAULT_ENTITY_REGISTRY, type EntityDefinition } from '@novastar/shared-types'
-import { requirePermission } from '@/lib/tenant'
+import { hasPermission } from '@novastar/auth'
+import { getTenantContext } from '@/lib/tenant'
 import { logError } from '@/lib/logger'
 
 // GET /api/config/entities/[type] — Get a single entity definition
@@ -13,22 +12,18 @@ export async function GET(
   { params }: { params: Promise<{ type: string }> },
 ) {
   try {
-    await requirePermission('config:read')
-    const session = await getServerSession(authOptions)
-    if (!session?.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const { tenantId, schoolId, userId } = await getTenantContext()
+
+    // RBAC: use @novastar/auth hasPermission (handles delegations + role inheritance)
+    if (!(await hasPermission(userId, 'config:read', tenantId, schoolId ?? undefined))) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
+
     const { type } = await params
 
     const defaultDef = DEFAULT_ENTITY_REGISTRY.find(e => e.type === type)
     if (!defaultDef) {
       return NextResponse.json({ error: 'Unknown entity type' }, { status: 404 })
-    }
-
-    const tenantId = TENANT_ID
-    if (!tenantId) {
-      logError('ServerConfig', new Error('TENANT_ID environment variable is not set'))
-      return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
     }
 
     // Fetch from DB (ConfigEntity stores full EntityDefinition as JSON)
@@ -66,7 +61,13 @@ export async function PATCH(
   { params }: { params: Promise<{ type: string }> }
 ) {
   try {
-    await requirePermission('config:write')
+    const { tenantId, userId } = await getTenantContext()
+
+    // RBAC: use @novastar/auth hasPermission (handles delegations + role inheritance)
+    if (!(await hasPermission(userId, 'config:write', tenantId))) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
     const { type } = await params
 
     const defaultDef = DEFAULT_ENTITY_REGISTRY.find(e => e.type === type)
@@ -87,14 +88,6 @@ export async function PATCH(
     // Ensure type matches
     body.type = type
 
-    // Tenant guard — TENANT_ID must be set (no hardcoded fallback)
-    const tenantId = TENANT_ID
-    if (!tenantId) {
-      logError('ServerConfig', new Error('TENANT_ID environment variable is not set'))
-      return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
-    }
-
-    // Upsert into ConfigEntity table
     const upserted = await prisma.configEntity.upsert({
       where: { tenantId_type: { tenantId, type } },
       update: {
@@ -144,18 +137,18 @@ export async function DELETE(
   { params }: { params: Promise<{ type: string }> }
 ) {
   try {
-    await requirePermission('config:write')
+    const { tenantId, userId } = await getTenantContext()
+
+    // RBAC: use @novastar/auth hasPermission (handles delegations + role inheritance)
+    if (!(await hasPermission(userId, 'config:write', tenantId))) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
     const { type } = await params
 
     const defaultDef = DEFAULT_ENTITY_REGISTRY.find(e => e.type === type)
     if (!defaultDef) {
       return NextResponse.json({ error: 'Unknown entity type' }, { status: 404 })
-    }
-
-    const tenantId = TENANT_ID
-    if (!tenantId) {
-      logError('ServerConfig', new Error('TENANT_ID environment variable is not set'))
-      return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
     }
 
     const existing = await prisma.configEntity.findUnique({

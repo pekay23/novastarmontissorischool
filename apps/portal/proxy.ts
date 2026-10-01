@@ -1,12 +1,38 @@
+/**
+ * Portal proxy (Next.js 16's name for middleware).
+ *
+ * `proxy.ts` is the Next.js 16 convention. `middleware.ts` is deprecated in
+ * 16.3.3 and cannot coexist with `proxy.ts` — having both fails the build with
+ * "Both middleware file ./middleware.ts and proxy file ./proxy.ts are
+ * detected." See docs/audit-reports/CONSOLIDATED-AUDIT-REPORT.md (SEC-01),
+ * which re-evaluated an earlier "rename proxy.ts to middleware.ts" finding as a
+ * false positive.
+ *
+ * Runs on every matched request and enforces, in order:
+ * - Per-client-IP rate limiting (100 req/min API, 300 req/min pages)
+ * - Session authentication via next-auth
+ * - Role-based path authorization
+ *
+ * Tenant isolation is NOT enforced here: `token.schoolId` is a claim snapshot,
+ * so per-request tenant scoping is resolved downstream in getTenantContext()
+ * (apps/portal/lib/tenant.ts).
+ */
+
 import { withAuth } from 'next-auth/middleware'
 import { NextResponse } from 'next/server'
+import { checkRateLimit, clientIdentifier } from '@/lib/rate-limit'
 
 // Paths that don't require authentication
 const publicPaths = ['/login', '/api/auth', '/api/health', '/_next', '/favicon.ico', '/logo.svg']
 
+// Rate limits, per client IP, per minute.
+const API_RATE_LIMIT = 100
+const PAGE_RATE_LIMIT = 300
+const RATE_LIMIT_WINDOW_MS = 60_000
+
 // Role-based permissions
 const PERMISSIONS: Record<string, string[]> = {
-  admin: ['*'],  // All access
+  admin: ['*'], // All access
   teacher: ['dashboard', 'students', 'attendance', 'grades', 'announcements', 'messages'],
   finance: ['dashboard', 'fees', 'payments', 'reports', 'students'],
   bursar: ['dashboard', 'fees', 'payments', 'reports'],
@@ -26,8 +52,30 @@ export default withAuth(
     const token = (req as any).nextauth?.token
     const { pathname } = req.nextUrl
 
-    // Allow public paths
-    if (publicPaths.some(p => pathname.startsWith(p))) return NextResponse.next()
+    // Allow public paths before any limiting or authorization work.
+    if (publicPaths.some((p) => pathname.startsWith(p))) return NextResponse.next()
+
+    // --- Rate limiting ---
+    // Uses the shared limiter in lib/rate-limit.ts, which is covered by
+    // tests/rate-limit.test.ts. Its store is per-process; a multi-instance
+    // deployment needs a shared store (Redis/Upstash) to enforce globally.
+    const isApi = pathname.startsWith('/api/')
+    const max = isApi ? API_RATE_LIMIT : PAGE_RATE_LIMIT
+    const { success, reset } = checkRateLimit(clientIdentifier(req), max, RATE_LIMIT_WINDOW_MS)
+
+    if (!success) {
+      const retryAfterSeconds = Math.max(1, Math.ceil((reset - Date.now()) / 1000))
+      if (isApi) {
+        return NextResponse.json(
+          { error: 'Rate limit exceeded', retryAfter: retryAfterSeconds },
+          { status: 429, headers: { 'Retry-After': String(retryAfterSeconds) } }
+        )
+      }
+      return new NextResponse('Too Many Requests', {
+        status: 429,
+        headers: { 'Retry-After': String(retryAfterSeconds) },
+      })
+    }
 
     if (!token) {
       const url = req.nextUrl.clone()
@@ -38,17 +86,17 @@ export default withAuth(
 
     const role = token.role as string
     const perms = PERMISSIONS[role]
-    
+
     // Check role-based permissions
     if (perms) {
       if (perms.includes('*')) {
         return NextResponse.next()
       }
-      
+
       const sections = pathname.split('/').filter(Boolean)
       const section = sections[1] || ''
-      
-      const hasPerm = perms.some(p => section === p || section.startsWith(p))
+
+      const hasPerm = perms.some((p) => section === p || section.startsWith(p))
       if (!hasPerm) {
         return NextResponse.redirect(new URL('/dashboard/unauthorized', req.url))
       }

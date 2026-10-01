@@ -17,6 +17,7 @@
     "@hookform/resolvers": "^5.9.1",
     "@novastar/auth": "workspace:*",
     "@novastar/database": "workspace:*",
+    "@novastar/domain": "workspace:*",
     "@novastar/ghana-education": "workspace:*",
     "@novastar/notifications": "workspace:*",
     "@novastar/payments": "workspace:*",

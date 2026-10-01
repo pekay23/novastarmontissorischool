@@ -1,18 +1,20 @@
 ﻿import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { DEFAULT_ENTITY_REGISTRY } from '@novastar/shared-types'
-import { requirePermission, getTenantContext } from '@/lib/tenant'
+import { hasPermission } from '@novastar/auth'
+import { getTenantContext } from '@/lib/tenant'
 import { logError } from '@/lib/logger'
 
 // GET /api/config/entities â€” List all entity definitions
 // Merges DEFAULT_ENTITY_REGISTRY with any admin overrides stored in ConfigEntity table
 export async function GET() {
   try {
-    await requirePermission('config:read')
+    const { tenantId, schoolId, userId } = await getTenantContext()
 
-    // Resolve tenant from the session (not a process-level constant) so the
-    // filter and the authorization decision use the same source of truth.
-    const { tenantId } = await getTenantContext()
+    // RBAC: use @novastar/auth hasPermission (handles delegations + role inheritance)
+    if (!(await hasPermission(userId, 'config:read', tenantId, schoolId ?? undefined))) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
 
     // Fetch all admin overrides from DB (filtered by tenant)
     const overrides = await prisma.configEntity.findMany({

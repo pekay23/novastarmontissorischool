@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { getTenantContext, requirePermission } from '@/lib/tenant'
+import { getTenantContext } from '@/lib/tenant'
+import { hasPermission } from '@novastar/auth'
 import { z } from 'zod'
 import { logError } from '@/lib/logger'
 
@@ -10,12 +11,15 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const { schoolId, tenantId } = await getTenantContext()
+    const { schoolId, tenantId, userId } = await getTenantContext()
     if (!schoolId) {
       return NextResponse.json({ error: 'No school assigned' }, { status: 400 })
     }
 
-    await requirePermission('assessment:read')
+    // RBAC
+    if (!(await hasPermission(userId, 'assessment:read', tenantId, schoolId))) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
 
     const { id: assessmentId } = await params
 
@@ -70,12 +74,15 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const { schoolId, tenantId, userId: _userId } = await getTenantContext()
+    const { schoolId, tenantId, userId } = await getTenantContext()
     if (!schoolId) {
       return NextResponse.json({ error: 'No school assigned' }, { status: 400 })
     }
 
-    await requirePermission('assessment:grade')
+    // RBAC
+    if (!(await hasPermission(userId, 'assessment:grade', tenantId, schoolId))) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
 
     const { id: assessmentId } = await params
 

@@ -1,6 +1,7 @@
 ﻿import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { getTenantContext, requirePermission } from '@/lib/tenant'
+import { getTenantContext } from '@/lib/tenant'
+import { hasPermission } from '@novastar/auth'
 import { z } from 'zod'
 import { logError } from '@/lib/logger'
 
@@ -65,10 +66,14 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    await requirePermission('library:book:create')
-    const { schoolId, tenantId } = await getTenantContext()
+    const { schoolId, tenantId, userId } = await getTenantContext()
     if (!schoolId) {
       return NextResponse.json({ error: 'No school assigned' }, { status: 400 })
+    }
+
+    // RBAC
+    if (!(await hasPermission(userId, 'library:book:create', tenantId, schoolId))) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
     const body = await req.json()

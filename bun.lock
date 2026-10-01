@@ -55,6 +55,7 @@
         "@hookform/resolvers": "^5.9.1",
         "@novastar/auth": "workspace:*",
         "@novastar/database": "workspace:*",
+        "@novastar/domain": "workspace:*",
         "@novastar/ghana-education": "workspace:*",
         "@novastar/notifications": "workspace:*",
         "@novastar/payments": "workspace:*",
@@ -156,6 +157,20 @@
         "@types/pg": "^8.18.0",
         "prisma": "^7.10.0",
         "typescript": "npm:@typescript/typescript6@^6.0.2",
+      },
+    },
+    "packages/domain": {
+      "name": "@novastar/domain",
+      "version": "0.0.0",
+      "dependencies": {
+        "@prisma/client": "^7.10.0",
+      },
+      "devDependencies": {
+        "typescript": "npm:@typescript/typescript6@^6.0.2",
+      },
+      "peerDependencies": {
+        "@novastar/database": "workspace:*",
+        "@novastar/shared-types": "workspace:*",
       },
     },
     "packages/ghana-education": {
@@ -823,6 +838,8 @@
     "@novastar/database": ["@novastar/database@workspace:packages/database"],
 
     "@novastar/db-mirror": ["@novastar/db-mirror@workspace:tools/db-mirror"],
+
+    "@novastar/domain": ["@novastar/domain@workspace:packages/domain"],
 
     "@novastar/ghana-education": ["@novastar/ghana-education@workspace:packages/ghana-education"],
 

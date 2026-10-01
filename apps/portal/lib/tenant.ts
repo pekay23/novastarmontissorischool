@@ -68,34 +68,6 @@ export class ServerConfigError extends Error {
   }
 }
 
-/**
- * Checks whether the current user has a given permission.
- * Permissions are resolved from the user's Role.permissions array.
- * @param permissionKey - the permission key to check (e.g., 'student:read')
- * @returns boolean
- */
-export async function checkPermission(permissionKey: string): Promise<boolean> {
-  const ctx = await getTenantContext()
-
-  // Live DB lookup — role is resolved from the database, not from the stale JWT session
-  const user = await prisma.user.findUnique({
-    where: { id: ctx.userId, tenantId: ctx.tenantId },
-    select: { role: { select: { permissions: true } }, school: { select: { tenantId: true } } },
-  })
-
-  if (!user) return false
-
-  const rolePermissions = user.role?.permissions ?? []
-  return rolePermissions.includes(permissionKey)
-}
-
-export async function requirePermission(permissionKey: string): Promise<void> {
-  const has = await checkPermission(permissionKey)
-  if (!has) {
-    throw new ForbiddenError(`Missing permission: ${permissionKey}`)
-  }
-}
-
 export class ForbiddenError extends Error {
   constructor(message: string) {
     super(message)

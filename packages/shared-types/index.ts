@@ -58,124 +58,39 @@ export const SchoolSchema = z.object({
 })
 
 // --- Config Entity Base ---
-export const ConfigEntityBaseSchema = z.object({
-  id: z.string().cuid(),
-  tenantId: z.string().cuid(),
-  schoolId: z.string().nullable().optional(),
-  createdAt: z.date(),
-  updatedAt: z.date(),
-})
+// Definitions now live in ./entity-schemas so entity-api-config.ts can consume
+// them without an import cycle. Re-exported here to keep the public surface of
+// this barrel identical for all existing importers.
+export {
+  ConfigEntityBaseSchema,
+  PhaseEnum,
+  AcademicYearSchema,
+  TermStatusEnum,
+  TermSchema,
+  ClassLevelSchema,
+  SubjectCategoryEnum,
+  SubjectSchema,
+  GradingLevelSchema,
+  GradingScaleSchema,
+  AssessmentTypeConfigSchema,
+  FeeCategorySchema,
+  PaymentMethodConfigSchema,
+  GenderEnum,
+  StaffStatusEnum,
+  StudentStatusEnum,
+  ContentStatusEnum,
+} from './entity-schemas'
+export type {
+  Phase,
+  TermStatus,
+  SubjectCategory,
+  Gender,
+  StaffStatus,
+  StudentStatus,
+  ContentStatus,
+} from './entity-schemas'
 
-// --- Academic Structure ---
-export const PhaseEnum = z.enum(['KINDERGARTEN', 'PRIMARY', 'JHS', 'SHS'])
-export type Phase = z.infer<typeof PhaseEnum>
-
-export const AcademicYearSchema = ConfigEntityBaseSchema.extend({
-  name: z.string(),
-  startDate: z.date(),
-  endDate: z.date(),
-  isCurrent: z.boolean().default(false),
-})
-
-export const TermStatusEnum = z.enum(['PLANNING', 'ACTIVE', 'ASSESSMENT', 'REPORTING', 'CLOSED'])
-export type TermStatus = z.infer<typeof TermStatusEnum>
-
-export const TermSchema = ConfigEntityBaseSchema.extend({
-  name: z.string(),
-  academicYearId: z.string(),
-  startDate: z.date(),
-  endDate: z.date(),
-  isCurrent: z.boolean().default(false),
-  status: TermStatusEnum.default('PLANNING'),
-  weeks: z.number().int().positive().default(14),
-})
-
-export const ClassLevelSchema = ConfigEntityBaseSchema.extend({
-  code: z.string(),
-  name: z.string(),
-  phase: PhaseEnum,
-  order: z.number().int().positive(),
-  ageMin: z.number().int().positive(),
-  ageMax: z.number().int().positive(),
-})
-
-export const SubjectCategoryEnum = z.enum([
-  'LANGUAGE',
-  'MATHEMATICS',
-  'SCIENCE',
-  'SOCIAL_STUDIES',
-  'CREATIVE_ARTS',
-  'PHYSICAL_EDUCATION',
-  'ICT',
-  'RELIGIOUS_MORAL',
-  'MONTESSORI_PRACTICAL',
-  'MONTESSORI_SENSORIAL',
-  'MONTESSORI_LANGUAGE',
-  'MONTESSORI_MATHEMATICS',
-  'MONTESSORI_CULTURAL',
-  'OTHER',
-])
-export type SubjectCategory = z.infer<typeof SubjectCategoryEnum>
-
-export const SubjectSchema = ConfigEntityBaseSchema.extend({
-  code: z.string(),
-  name: z.string(),
-  category: SubjectCategoryEnum,
-  isCore: z.boolean().default(true),
-  creditHours: z.number().int().positive().default(1),
-  description: z.string().nullable().optional(),
-  color: z.string().nullable().optional(),
-})
-
-// --- Grading (GradingLevel defined before GradingScale to avoid forward ref) ---
-export const GradingLevelSchema = z.object({
-  id: z.string().cuid(),
-  gradingScaleId: z.string(),
-  key: z.string(),
-  label: z.string(),
-  minScore: z.number().int().min(0).max(100),
-  maxScore: z.number().int().min(0).max(100),
-  color: z.string(),
-  description: z.string().nullable().optional(),
-  order: z.number().int(),
-})
-
-export const GradingScaleSchema = ConfigEntityBaseSchema.extend({
-  name: z.string(),
-  description: z.string().nullable().optional(),
-  isDefault: z.boolean().default(false),
-  appliesToLevels: z.array(z.string()),
-  levels: z.array(GradingLevelSchema).optional(),
-})
-
-// --- Assessment ---
-export const AssessmentTypeConfigSchema = ConfigEntityBaseSchema.extend({
-  code: z.string(),
-  name: z.string(),
-  description: z.string().nullable().optional(),
-  defaultWeight: z.number().min(0).max(1),
-  maxScore: z.number().int().positive().default(100),
-  appliesToLevels: z.array(z.string()),
-  isActive: z.boolean().default(true),
-})
-
-// --- Fees ---
-export const FeeCategorySchema = ConfigEntityBaseSchema.extend({
-  code: z.string(),
-  name: z.string(),
-  isRecurring: z.boolean().default(true),
-  defaultMandatory: z.boolean().default(true),
-  sortOrder: z.number().int().default(0),
-})
-
-export const PaymentMethodConfigSchema = ConfigEntityBaseSchema.extend({
-  code: z.string(),
-  name: z.string(),
-  instructions: z.string().nullable().optional(),
-  isEnabled: z.boolean().default(true),
-  sortOrder: z.number().int().default(0),
-  providerConfig: z.record(z.string(), z.unknown()).nullable().optional(),
-})
+import { ConfigEntityBaseSchema } from './entity-schemas'
 
 // --- Roles & Permissions (DelegationRule defined before Role) ---
 export const PermissionScopeEnum = z.enum(['all', 'own', 'class', 'department', 'custom'])
@@ -234,10 +149,9 @@ export const CreateDelegationInputSchema = DelegationSchema.omit({
 })
 
 // --- Users ---
-export const GenderEnum = z.enum(['MALE', 'FEMALE', 'OTHER'])
-export type Gender = z.infer<typeof GenderEnum>
-
-export type UserRole = z.infer<typeof UserRoleEnum>
+// GenderEnum, StaffStatusEnum, StudentStatusEnum and ContentStatusEnum moved to
+// ./entity-schemas (re-exported above) because entity-api-config.ts needs them.
+// UserRoleEnum is declared at the bottom of this file, next to NotificationType.
 
 // --- Permission, Role, Delegation types ---
 export type Permission = z.infer<typeof PermissionSchema>
@@ -283,3 +197,9 @@ export const UserRoleEnum = z.enum([
   'TEACHER',
   'STAFF',
 ])
+
+export type UserRole = z.infer<typeof UserRoleEnum>
+
+// Re-export entity API config (consolidated entity model map, schemas, and sets)
+export type { EntityApiConfig } from './entity-api-config'
+export { ENTITY_CONFIG_MAP, TENANT_ONLY_ENTITY_TYPES, SOFT_DELETE_ENTITY_TYPES } from './entity-api-config'

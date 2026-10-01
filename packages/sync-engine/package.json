@@ -5,10 +5,9 @@
   "main": "index.ts",
   "types": "index.ts",
   "scripts": {
-    "dev": "tsx watch index.ts",
-    "build": "tsc --noEmit",
     "lint": "eslint . --ext .ts",
     "test": "bun test --pass-with-no-tests",
+    "typecheck": "tsc --noEmit",
     "start": "tsx index.ts"
   },
   "dependencies": {

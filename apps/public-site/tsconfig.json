@@ -1,20 +1,13 @@
 {
+  "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "target": "ES2022",
     "lib": [
       "dom",
       "dom.iterable",
       "esnext"
     ],
     "allowJs": true,
-    "skipLibCheck": true,
-    "strict": true,
     "noEmit": true,
-    "esModuleInterop": true,
-    "module": "esnext",
-    "moduleResolution": "bundler",
-    "resolveJsonModule": true,
-    "isolatedModules": true,
     "types": [
       "node"
     ],
@@ -45,7 +38,6 @@
     "node_modules",
     ".next",
     "out",
-    "coverage",
-    "node_modules"
+    "coverage"
   ]
 }

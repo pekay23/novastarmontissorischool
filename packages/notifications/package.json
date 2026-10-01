@@ -5,16 +5,13 @@
   "main": "index.ts",
   "types": "index.ts",
   "scripts": {
-    "dev": "bun run index.ts",
     "lint": "eslint . --ext .ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "resend": "6.22.0"
-  },
-  "peerDependencies": {
     "@novastar/database": "workspace:*",
-    "@novastar/shared-types": "workspace:*"
+    "@novastar/shared-types": "workspace:*",
+    "resend": "6.22.0"
   },
   "devDependencies": {
     "typescript": "npm:@typescript/typescript6@^6.0.2"

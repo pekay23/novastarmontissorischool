@@ -110,12 +110,9 @@ export const authOptions: NextAuthOptions = {
     }),
   ],
 }
-
-// Tenant ID — in production, this would come from the session/JWT
-export const TENANT_ID = process.env.TENANT_ID
-export const SCHOOL_ID = process.env.SCHOOL_ID
-
+ 
 // The NextAuth request handler lives in app/api/auth/[...nextauth]/route.ts,
 // which must use the App Router signature: `export { handler as GET, handler as POST }`.
+
 
 

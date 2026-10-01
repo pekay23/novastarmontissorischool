@@ -5,16 +5,13 @@
   "main": "index.ts",
   "types": "index.ts",
   "scripts": {
-    "dev": "bun run index.ts",
     "lint": "eslint . --ext .ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "qrcode": "^1.5.4"
-  },
-  "peerDependencies": {
     "@novastar/database": "workspace:*",
-    "@novastar/notifications": "workspace:*"
+    "@novastar/notifications": "workspace:*",
+    "qrcode": "^1.5.4"
   },
   "devDependencies": {
     "typescript": "npm:@typescript/typescript6@^6.0.2"

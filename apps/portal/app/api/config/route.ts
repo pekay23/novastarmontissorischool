@@ -1,12 +1,18 @@
 ﻿import { NextResponse } from 'next/server'
 import { DEFAULT_ENTITY_REGISTRY } from '@novastar/shared-types'
-import { requirePermission } from '@/lib/tenant'
+import { hasPermission } from '@novastar/auth'
+import { getTenantContext } from '@/lib/tenant'
 import { logError } from '@/lib/logger'
 
-// GET /api/config â€” List all entity types with their definitions (requires auth)
+// GET /api/config — List all entity types with their definitions (requires auth)
 export async function GET() {
   try {
-    await requirePermission('config:read')
+    const { tenantId, schoolId, userId } = await getTenantContext()
+
+    // RBAC: use @novastar/auth hasPermission (handles delegations + role inheritance)
+    if (!(await hasPermission(userId, 'config:read', tenantId, schoolId ?? undefined))) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
 
     return NextResponse.json({
       entityTypes: DEFAULT_ENTITY_REGISTRY.map(e => ({

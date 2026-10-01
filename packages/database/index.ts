@@ -52,6 +52,7 @@ const prisma = new Proxy({} as PrismaClient, {
 }) as PrismaClient
 
 export { prisma, PrismaClient }
+export { Prisma } from '@prisma/client'
 
 export type {
   Tenant,

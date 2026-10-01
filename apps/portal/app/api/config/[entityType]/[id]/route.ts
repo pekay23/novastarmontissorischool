@@ -1,245 +1,36 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getServerSession } from 'next-auth'
 import { prisma } from '@/lib/prisma'
-import { z } from 'zod'
-import { authOptions } from '@/lib/auth'
-import { requirePermission } from '@/lib/tenant'
+import { ENTITY_CONFIG_MAP } from '@novastar/shared-types'
+import { hasPermission } from '@novastar/auth'
+import { getTenantContext } from '@/lib/tenant'
 import { logError } from '@/lib/logger'
 
-// Prisma model delegates are camelCase. entityModelMap maps URL segment to model name.
-// Dynamic access uses a typed delegate interface instead of `as any`.
-const entityModelMap: Record<string, string> = {
-  academic_year: 'academicYear',
-  term: 'term',
-  class_level: 'classLevel',
-  subject: 'subject',
-  grading_scale: 'gradingScale',
-  fee_category: 'feeCategory',
-  payment_method: 'paymentMethodConfig',
-  role: 'role',
-  assessment_type: 'assessmentTypeConfig',
-  grading_level: 'gradingLevel',
-  branding: 'branding',
-  news: 'news',
-  event: 'event',
-  department: 'department',
-  house: 'house',
-  class: 'class',
-  subject_level: 'subjectLevel',
-  fee_structure: 'feeStructure',
-  fee_line_item: 'feeLineItem',
-  staff: 'staff',
-  student: 'student',
-  parent: 'parent',
-}
-
-// Per-entity update schemas (omitting immutable fields)
-const entityUpdateSchemas: Record<string, z.ZodSchema> = {
-  academic_year: z.object({
-    name: z.string().optional(),
-    startDate: z.date().optional(),
-    endDate: z.date().optional(),
-    isCurrent: z.boolean().optional(),
-  }),
-  term: z.object({
-    name: z.string().optional(),
-    academicYearId: z.string().optional(),
-    startDate: z.date().optional(),
-    endDate: z.date().optional(),
-    isCurrent: z.boolean().optional(),
-    status: z.enum(['PLANNING', 'ACTIVE', 'ASSESSMENT', 'REPORTING', 'CLOSED']).optional(),
-    weeks: z.number().int().positive().optional(),
-  }),
-  class_level: z.object({
-    code: z.string().optional(),
-    name: z.string().optional(),
-    phase: z.enum(['KINDERGARTEN', 'PRIMARY', 'JHS', 'SHS']).optional(),
-    order: z.number().int().positive().optional(),
-    ageMin: z.number().int().positive().optional(),
-    ageMax: z.number().int().positive().optional(),
-  }),
-  subject: z.object({
-    code: z.string().optional(),
-    name: z.string().optional(),
-    category: z.enum(['LANGUAGE', 'MATHEMATICS', 'SCIENCE', 'SOCIAL_STUDIES', 'CREATIVE_ARTS', 'PHYSICAL_EDUCATION', 'ICT', 'RELIGIOUS_MORAL', 'MONTESSORI_PRACTICAL', 'MONTESSORI_SENSORIAL', 'MONTESSORI_LANGUAGE', 'MONTESSORI_MATHEMATICS', 'MONTESSORI_CULTURAL', 'OTHER']).optional(),
-    isCore: z.boolean().optional(),
-    creditHours: z.number().int().positive().optional(),
-    description: z.string().nullable().optional(),
-    color: z.string().nullable().optional(),
-  }),
-  grading_scale: z.object({
-    name: z.string().optional(),
-    description: z.string().nullable().optional(),
-    isDefault: z.boolean().optional(),
-    appliesToLevels: z.array(z.string()).optional(),
-  }),
-  fee_category: z.object({
-    code: z.string().optional(),
-    name: z.string().optional(),
-    isRecurring: z.boolean().optional(),
-    defaultMandatory: z.boolean().optional(),
-    sortOrder: z.number().int().optional(),
-  }),
-  payment_method: z.object({
-    code: z.string().optional(),
-    name: z.string().optional(),
-    instructions: z.string().nullable().optional(),
-    isEnabled: z.boolean().optional(),
-    sortOrder: z.number().int().optional(),
-    providerConfig: z.record(z.string(), z.unknown()).nullable().optional(),
-  }),
-    // Privilege-management fields (permissions, inheritsFrom, isSystem) are
-    // intentionally excluded from both create and update — they cannot be
-    // edited via the generic config endpoints. Use a dedicated admin endpoint.
-    role: z.object({
-     name: z.string().optional(),
-     description: z.string().nullable().optional(),
-   }),
-  assessment_type: z.object({
-    code: z.string().optional(),
-    name: z.string().optional(),
-    defaultWeight: z.number().min(0).max(1).optional(),
-    maxScore: z.number().int().positive().optional(),
-    isActive: z.boolean().optional(),
-    appliesToLevels: z.array(z.string()).optional(),
-  }),
-  grading_level: z.object({
-    gradingScaleId: z.string().optional(),
-    key: z.string().optional(),
-    label: z.string().optional(),
-    minScore: z.number().int().min(0).max(100).optional(),
-    maxScore: z.number().int().min(0).max(100).optional(),
-    color: z.string().optional(),
-    order: z.number().int().optional(),
-    description: z.string().nullable().optional(),
-  }),
-  branding: z.object({
-    name: z.string().optional(),
-    logoUrl: z.string().url().nullable().optional(),
-    primaryColor: z.string().optional(),
-    secondaryColor: z.string().optional(),
-    accentColor: z.string().optional(),
-    motto: z.string().nullable().optional(),
-    phone: z.string().optional(),
-    email: z.string().email().optional(),
-    address: z.string().optional(),
-    socialLinks: z.record(z.string(), z.unknown()).optional(),
-  }),
-  news: z.object({
-    title: z.string().optional(),
-    bodyEn: z.string().optional(),
-    bodyTw: z.string().optional(),
-    excerptEn: z.string().optional(),
-    excerptTw: z.string().optional(),
-    category: z.string().optional(),
-    featuredImage: z.string().url().nullable().optional(),
-    audience: z.array(z.string()).optional(),
-    status: z.enum(['DRAFT', 'PUBLISHED', 'ARCHIVED']).optional(),
-    publishedAt: z.date().nullable().optional(),
-  }),
-  event: z.object({
-    title: z.string().optional(),
-    descriptionEn: z.string().optional(),
-    descriptionTw: z.string().optional(),
-    startDate: z.date().optional(),
-    endDate: z.date().optional(),
-    location: z.string().optional(),
-    audience: z.array(z.string()).optional(),
-    isAllDay: z.boolean().optional(),
-    recurrence: z.string().optional(),
-    status: z.enum(['DRAFT', 'PUBLISHED', 'ARCHIVED', 'CANCELLED']).optional(),
-  }),
-  department: z.object({
-    name: z.string().optional(),
-    code: z.string().optional(),
-  }),
-  house: z.object({
-    name: z.string().optional(),
-    color: z.string().optional(),
-    motto: z.string().optional(),
-  }),
-  class: z.object({
-    name: z.string().optional(),
-    levelId: z.string().optional(),
-    stream: z.string().optional(),
-    capacity: z.number().int().positive().optional(),
-  }),
-  subject_level: z.object({
-    subjectId: z.string().optional(),
-    classLevelId: z.string().optional(),
-    isRequired: z.boolean().optional(),
-    periodsPerWeek: z.number().int().positive().optional(),
-  }),
-  fee_structure: z.object({
-    name: z.string().optional(),
-    academicYearId: z.string().optional(),
-    termId: z.string().optional(),
-    classLevelId: z.string().optional(),
-    isActive: z.boolean().optional(),
-  }),
-  fee_line_item: z.object({
-    feeStructureId: z.string().optional(),
-    categoryId: z.string().optional(),
-    amount: z.number().nonnegative().optional(),
-    isMandatory: z.boolean().optional(),
-    sortOrder: z.number().int().optional(),
-  }),
-  staff: z.object({
-    employeeId: z.string().optional(),
-    firstName: z.string().optional(),
-    lastName: z.string().optional(),
-    gender: z.enum(['MALE', 'FEMALE', 'OTHER']).optional(),
-    phone: z.string().optional(),
-    email: z.string().email().optional(),
-    hireDate: z.date().optional(),
-    status: z.enum(['ACTIVE', 'ON_LEAVE', 'TERMINATED']).optional(),
-    roleId: z.string().optional(),
-    departmentId: z.string().nullable().optional(),
-  }),
-  student: z.object({
-    admissionNumber: z.string().optional(),
-    firstName: z.string().optional(),
-    lastName: z.string().optional(),
-    gender: z.enum(['MALE', 'FEMALE', 'OTHER']).optional(),
-    dateOfBirth: z.date().optional(),
-    admissionDate: z.date().optional(),
-    status: z.enum(['ACTIVE', 'INACTIVE', 'GRADUATED', 'TRANSFERRED']).optional(),
-    classId: z.string().optional(),
-    houseId: z.string().nullable().optional(),
-    parentId: z.string().nullable().optional(),
-  }),
-  parent: z.object({
-    firstName: z.string().optional(),
-    lastName: z.string().optional(),
-    phone: z.string().optional(),
-    email: z.string().email().optional(),
-    address: z.string().optional(),
-    occupation: z.string().optional(),
-  }),
-}
-
-async function getSessionTenantSchool() {
-  const session = await getServerSession(authOptions)
-  if (!session?.user) {
-    return { tenantId: null, schoolId: null, role: null }
+/**
+ * Builds a Prisma `where` clause for a single entity lookup.
+ * Always includes `id` and `tenantId`. Only includes `schoolId` when the
+ * entity type is school-scoped (has a schoolId column in Prisma).
+ * Adds `isActive: true` for models that support soft-delete.
+ * This prevents 500 errors (Unknown argument) for tenant-only entities
+ * and prevents silent tenant-wide queries when schoolId is absent.
+ */
+function buildScopeWhere(
+  id: string,
+  tenantId: string,
+  schoolId: string | null,
+  schoolScoped: boolean,
+  includeActive: boolean
+): Record<string, unknown> {
+  const where: Record<string, unknown> = { id, tenantId }
+  if (schoolScoped) {
+    where.schoolId = schoolId
   }
-  const user = session.user as { id?: string; role?: string; schoolId?: string; tenantId?: string }
-  let tenantId = user.tenantId
-  if (!tenantId && user.schoolId) {
-    const school = await prisma.school.findUnique({
-      where: { id: user.schoolId },
-      select: { tenantId: true },
-    })
-    tenantId = school?.tenantId
-    if (!tenantId) {
-      return { tenantId: null, schoolId: null, role: null }
-    }
+  if (includeActive) {
+    where.isActive = true
   }
-  const schoolId = user.schoolId && user.schoolId.length > 0 ? user.schoolId : undefined
-  return { tenantId, schoolId, role: user.role ?? null }
+  return where
 }
 
-// Dynamic Prisma model access — entityModelMap is a closed, hardcoded set of
+// Dynamic Prisma model access — ENTITY_CONFIG_MAP is a closed, hardcoded set of
 // valid Prisma model names. We use a typed delegate interface instead of `as any`
 // to retain TypeScript safety on method signatures.
 interface PrismaDelegate {
@@ -258,22 +49,26 @@ export async function GET(
 ) {
   try {
     const { entityType, id } = await params
-    const modelName = entityModelMap[entityType]
+    const entityConfig = ENTITY_CONFIG_MAP[entityType]
 
-    if (!modelName) {
+    if (!entityConfig) {
       return NextResponse.json({ error: 'Unknown entity type' }, { status: 404 })
     }
 
-    await requirePermission('config:read')
+    const { tenantId, schoolId, userId } = await getTenantContext()
 
-    const { tenantId, schoolId } = await getSessionTenantSchool()
-    if (!tenantId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    // RBAC: use @novastar/auth hasPermission (handles delegations + role inheritance)
+    if (!(await hasPermission(userId, 'config:read', tenantId, schoolId ?? undefined))) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+    const schoolScoped = entityConfig.schoolScoped
+    if (schoolScoped && !schoolId) {
+      return NextResponse.json({ error: 'No school assigned' }, { status: 400 })
     }
 
-    const model = getModel(modelName)
+    const model = getModel(entityConfig.model)
     const entity = await model.findFirst({
-      where: { id, tenantId, schoolId },
+      where: buildScopeWhere(id, tenantId, schoolId, schoolScoped, entityConfig.softDelete),
     })
 
     if (!entity) {
@@ -303,22 +98,22 @@ export async function PATCH(
 ) {
   try {
     const { entityType, id } = await params
-    const modelName = entityModelMap[entityType]
-    const updateSchema = entityUpdateSchemas[entityType]
+    const entityConfig = ENTITY_CONFIG_MAP[entityType]
 
-    if (!modelName) {
+    if (!entityConfig) {
       return NextResponse.json({ error: 'Unknown entity type' }, { status: 404 })
     }
 
-    if (!updateSchema) {
-      return NextResponse.json({ error: 'No update schema for this entity type' }, { status: 500 })
+    const { tenantId, schoolId, userId } = await getTenantContext()
+
+    // RBAC: use @novastar/auth hasPermission (handles delegations + role inheritance)
+    if (!(await hasPermission(userId, 'config:write', tenantId, schoolId ?? undefined))) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
-    await requirePermission('config:write')
-
-    const { tenantId, schoolId } = await getSessionTenantSchool()
-    if (!tenantId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const schoolScoped = entityConfig.schoolScoped
+    if (schoolScoped && !schoolId) {
+      return NextResponse.json({ error: 'No school assigned' }, { status: 400 })
     }
 
     const body = await req.json()
@@ -326,20 +121,21 @@ export async function PATCH(
     // Remove immutable fields
     const { id: _id, tenantId: _tenantId, schoolId: _schoolId, createdAt: _createdAt, updatedAt: _updatedAt, ...data } = body
 
-    const validated = updateSchema.safeParse(data)
+    const validated = entityConfig.updateSchema.safeParse(data)
     if (!validated.success) {
       return NextResponse.json({ error: 'Validation failed', issues: validated.error.format() }, { status: 400 })
     }
 
     // Verify entity belongs to tenant/school before update
-    const model = getModel(modelName)
-    const existing = await model.findFirst({ where: { id, tenantId, schoolId } })
+    const model = getModel(entityConfig.model)
+    const scopeWhere = buildScopeWhere(id, tenantId, schoolId, schoolScoped, entityConfig.softDelete)
+    const existing = await model.findFirst({ where: scopeWhere })
     if (!existing) {
       return NextResponse.json({ error: 'Entity not found' }, { status: 404 })
     }
 
     const updated = await model.update({
-      where: { id, tenantId, schoolId },
+      where: scopeWhere,
       data: validated.data as Record<string, unknown>,
     })
 
@@ -366,22 +162,28 @@ export async function DELETE(
 ) {
   try {
     const { entityType, id } = await params
-    const modelName = entityModelMap[entityType]
+    const entityConfig = ENTITY_CONFIG_MAP[entityType]
 
-    if (!modelName) {
+    if (!entityConfig) {
       return NextResponse.json({ error: 'Unknown entity type' }, { status: 404 })
     }
 
-    await requirePermission('config:write')
+    const { tenantId, schoolId, userId } = await getTenantContext()
 
-    const { tenantId, schoolId } = await getSessionTenantSchool()
-    if (!tenantId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    // RBAC: use @novastar/auth hasPermission (handles delegations + role inheritance)
+    if (!(await hasPermission(userId, 'config:write', tenantId, schoolId ?? undefined))) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
+    const schoolScoped = entityConfig.schoolScoped
+    if (schoolScoped && !schoolId) {
+      return NextResponse.json({ error: 'No school assigned' }, { status: 400 })
     }
 
     // Check if entity exists and belongs to tenant/school
-    const model = getModel(modelName)
-    const entity = await model.findFirst({ where: { id, tenantId, schoolId } })
+    const model = getModel(entityConfig.model)
+    const scopeWhere = buildScopeWhere(id, tenantId, schoolId, schoolScoped, entityConfig.softDelete)
+    const entity = await model.findFirst({ where: scopeWhere })
     if (!entity) {
       return NextResponse.json({ error: 'Entity not found' }, { status: 404 })
     }
@@ -393,9 +195,20 @@ export async function DELETE(
       return NextResponse.json({ error: 'System entities cannot be deleted' }, { status: 403 })
     }
 
-    await model.delete({ where: { id, tenantId, schoolId } })
+    // Soft-delete: if the model has an `isActive` column, set it to false
+    // to preserve audit trail and referential integrity. Fall back to
+    // hard-delete only for models without an `isActive` column.
+    const hasActiveFlag = 'isActive' in entityRecord
+    if (hasActiveFlag) {
+      await model.update({
+        where: scopeWhere,
+        data: { isActive: false },
+      })
+    } else {
+      await model.delete({ where: scopeWhere })
+    }
 
-    return NextResponse.json({ success: true })
+    return NextResponse.json({ success: true, softDeleted: hasActiveFlag })
   } catch (error) {
     if (error instanceof Error && error.name === 'UnauthorizedError') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

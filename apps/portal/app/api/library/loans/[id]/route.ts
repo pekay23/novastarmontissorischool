@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { getTenantContext, requirePermission } from '@/lib/tenant'
+import { getTenantContext } from '@/lib/tenant'
+import { hasPermission } from '@novastar/auth'
 import { logError } from '@/lib/logger'
 
 export async function GET(req: NextRequest) {
@@ -38,8 +39,12 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    await requirePermission('library:loan:return')
-    const { tenantId } = await getTenantContext()
+    const { tenantId, userId } = await getTenantContext()
+
+    // RBAC
+    if (!(await hasPermission(userId, 'library:loan:return', tenantId, undefined))) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
 
     const { id } = await params
     const loan = await prisma.bookLoan.findFirst({

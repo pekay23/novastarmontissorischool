@@ -6,17 +6,30 @@ import type { NextConfig } from 'next'
  * Load the monorepo-root env files into process.env before Next boots.
  *
  * This repo keeps a single set of env files at the root (`.env`, `.env.local`,
- * both gitignored) and relies on Turbo's `globalEnv` to forward them. Next.js,
- * however, only auto-loads `.env*` from the directory that contains this config,
- * so running `next dev`/`next build` from inside apps/portal would otherwise
- * start with no DATABASE_URL / NEXTAUTH_SECRET / NEXTAUTH_URL — which surfaces
- * as NextAuth `NO_SECRET` errors and Prisma connection failures.
+ * both gitignored). Neither tool that could load them for us does:
+ *
+ * - Turborepo only hashes `.env*` through `globalDependencies`; it never loads
+ *   them into a task's runtime. See "Handling `.env` files" in the bundled docs
+ *   at node_modules/turbo/docs/crafting-your-repository/using-environment-variables.mdx.
+ * - Next.js only auto-loads `.env*` from the directory holding this config, and
+ *   exposes no option to point it elsewhere. See "Loading Environment Variables"
+ *   in the bundled docs at
+ *   node_modules/next/dist/docs/01-app/02-guides/environment-variables.md.
+ *
+ * Without this, running `next dev`/`next build` from inside apps/portal would
+ * otherwise start with no DATABASE_URL / NEXTAUTH_SECRET / NEXTAUTH_URL — which
+ * surfaces as NextAuth `NO_SECRET` errors and Prisma connection failures.
  *
  * Precedence (highest first): real environment > .env.local > .env.
  * Values already present in process.env are never overwritten.
  */
 const appDir = typeof __dirname !== 'undefined' ? __dirname : process.cwd()
 const repoRoot = path.resolve(appDir, '..', '..')
+
+// dotenv's line grammar: optional `export`, then a single-quoted, double-quoted
+// or bare value, then an optional `#` comment. The root env files hold no
+// multiline values, so those are not handled here.
+const ENV_LINE = /^\s*(?:export\s+)?([\w.-]+)\s*=\s*(?:'([^']*)'|"([^"]*)"|([^#\r\n]*?))\s*(?:#.*)?$/
 
 function loadRootEnv(): void {
   const merged = new Map<string, string>()
@@ -26,9 +39,15 @@ function loadRootEnv(): void {
     if (!fs.existsSync(filePath)) continue
 
     for (const rawLine of fs.readFileSync(filePath, 'utf8').split(/\r?\n/)) {
-      const match = /^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/.exec(rawLine)
+      const match = ENV_LINE.exec(rawLine)
       if (!match) continue
-      merged.set(match[1], match[2].trim().replace(/^["']|["']$/g, ''))
+      const [, key, singleQuoted, doubleQuoted, bare] = match
+      merged.set(
+        key,
+        doubleQuoted !== undefined
+          ? doubleQuoted.replace(/\\n/g, '\n').replace(/\\r/g, '\r')
+          : (singleQuoted ?? bare ?? '').trim(),
+      )
     }
   }
 

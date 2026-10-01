@@ -1,17 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { getTenantContext, requirePermission } from '@/lib/tenant'
+import { getTenantContext } from '@/lib/tenant'
+import { hasPermission } from '@novastar/auth'
 import { logError } from '@/lib/logger'
 
 // Delete a fee invoice (only if no payments recorded)
 export async function DELETE(req: NextRequest) {
   try {
-    const { schoolId, tenantId } = await getTenantContext()
+    const { schoolId, tenantId, userId } = await getTenantContext()
     if (!schoolId) {
       return NextResponse.json({ error: 'No school assigned' }, { status: 400 })
     }
 
-    await requirePermission('finance:invoice:delete')
+    // RBAC: use @novastar/auth hasPermission
+    if (!(await hasPermission(userId, 'finance:invoice:delete', tenantId, schoolId))) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
 
     const { pathname } = new URL(req.url)
     const id = pathname.split('/').pop()
