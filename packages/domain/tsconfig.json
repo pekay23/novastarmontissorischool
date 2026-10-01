@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["esnext"],
+    "noEmit": true,
+    "noUncheckedIndexedAccess": true,
+    "types": ["node"],
+    "paths": {
+      "@novastar/*": ["../../packages/*/index.ts"]
+    }
+  },
+  "include": ["index.ts", "src/**/*.ts"],
+  "exclude": ["node_modules"]
+}

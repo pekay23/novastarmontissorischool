@@ -1,0 +1,8 @@
+# Generated screenshots and per-run reports for the visual audit baseline.
+#
+# The tool's source code, its fixtures and findings.json ARE tracked. Only
+# regenerable output is ignored here. This replaces the old repository-root rule
+# that ignored this whole directory, which made the tool's source uncommittable
+# and put findings.json one `git clean -fdx` away from being lost.
+output/
+runs/

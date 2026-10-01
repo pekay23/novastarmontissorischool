@@ -1,0 +1,19 @@
+{
+  "name": "@novastar/domain",
+  "version": "0.0.0",
+  "private": true,
+  "main": "index.ts",
+  "types": "index.ts",
+  "scripts": {
+    "lint": "eslint . --ext .ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@novastar/database": "workspace:*",
+    "@novastar/shared-types": "workspace:*",
+    "@prisma/client": "^7.10.0"
+  },
+  "devDependencies": {
+    "typescript": "npm:@typescript/typescript6@^6.0.2"
+  }
+}

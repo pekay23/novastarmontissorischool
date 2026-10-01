@@ -1,0 +1,1028 @@
+[
+  {
+    "page": "home",
+    "viewport": "mobile",
+    "severity": "warning",
+    "message": "transparent block: <body class=\"min-h-screen bg-background font-sans text-foreground antiali\">"
+  },
+  {
+    "page": "home",
+    "viewport": "mobile",
+    "severity": "warning",
+    "message": "transparent block: <div class=\"min-h-screen flex flex-col\">"
+  },
+  {
+    "page": "home",
+    "viewport": "mobile",
+    "severity": "warning",
+    "message": "transparent block: <main class=\"flex-1\">"
+  },
+  {
+    "page": "home",
+    "viewport": "mobile",
+    "severity": "warning",
+    "message": "transparent block: <section class=\"relative min-h-screen flex items-center justify-center text-\">"
+  },
+  {
+    "page": "home",
+    "viewport": "mobile",
+    "severity": "warning",
+    "message": "transparent block: <div class=\"absolute inset-0 bg-gradient-to-br from-primary/20 via-trans\">"
+  },
+  {
+    "page": "home",
+    "viewport": "mobile",
+    "severity": "warning",
+    "message": "transparent block: <div class=\"relative z-10 max-w-4xl mx-auto\">"
+  },
+  {
+    "page": "home",
+    "viewport": "mobile",
+    "severity": "warning",
+    "message": "transparent block: <div class=\"flex flex-col sm:flex-row gap-4 justify-center\">"
+  },
+  {
+    "page": "about",
+    "viewport": "mobile",
+    "severity": "warning",
+    "message": "transparent block: <body class=\"min-h-screen bg-background font-sans text-foreground antiali\">"
+  },
+  {
+    "page": "about",
+    "viewport": "mobile",
+    "severity": "warning",
+    "message": "transparent block: <div class=\"min-h-screen flex flex-col\">"
+  },
+  {
+    "page": "about",
+    "viewport": "mobile",
+    "severity": "warning",
+    "message": "transparent block: <main class=\"flex-1\">"
+  },
+  {
+    "page": "about",
+    "viewport": "mobile",
+    "severity": "warning",
+    "message": "transparent block: <div class=\"min-h-screen\">"
+  },
+  {
+    "page": "about",
+    "viewport": "mobile",
+    "severity": "warning",
+    "message": "transparent block: <section class=\"bg-gradient-to-b from-primary/10 to-transparent py-16 md:py-\">"
+  },
+  {
+    "page": "about",
+    "viewport": "mobile",
+    "severity": "warning",
+    "message": "transparent block: <div class=\"container mx-auto px-4 sm:px-6 lg:px-8 text-center\">"
+  },
+  {
+    "page": "about",
+    "viewport": "mobile",
+    "severity": "warning",
+    "message": "transparent block: <p class=\"text-lg text-muted-foreground max-w-2xl mx-auto\">"
+  },
+  {
+    "page": "academics",
+    "viewport": "mobile",
+    "severity": "warning",
+    "message": "transparent block: <body class=\"min-h-screen bg-background font-sans text-foreground antiali\">"
+  },
+  {
+    "page": "academics",
+    "viewport": "mobile",
+    "severity": "warning",
+    "message": "transparent block: <div class=\"min-h-screen flex flex-col\">"
+  },
+  {
+    "page": "academics",
+    "viewport": "mobile",
+    "severity": "warning",
+    "message": "transparent block: <main class=\"flex-1\">"
+  },
+  {
+    "page": "academics",
+    "viewport": "mobile",
+    "severity": "warning",
+    "message": "transparent block: <div class=\"min-h-screen\">"
+  },
+  {
+    "page": "academics",
+    "viewport": "mobile",
+    "severity": "warning",
+    "message": "transparent block: <section class=\"bg-gradient-to-b from-primary/10 to-transparent py-16 md:py-\">"
+  },
+  {
+    "page": "academics",
+    "viewport": "mobile",
+    "severity": "warning",
+    "message": "transparent block: <div class=\"container mx-auto px-4 sm:px-6 lg:px-8\">"
+  },
+  {
+    "page": "academics",
+    "viewport": "mobile",
+    "severity": "warning",
+    "message": "transparent block: <p class=\"text-lg text-muted-foreground max-w-2xl\">"
+  },
+  {
+    "page": "admissions",
+    "viewport": "mobile",
+    "severity": "warning",
+    "message": "transparent block: <body class=\"min-h-screen bg-background font-sans text-foreground antiali\">"
+  },
+  {
+    "page": "admissions",
+    "viewport": "mobile",
+    "severity": "warning",
+    "message": "transparent block: <div class=\"min-h-screen flex flex-col\">"
+  },
+  {
+    "page": "admissions",
+    "viewport": "mobile",
+    "severity": "warning",
+    "message": "transparent block: <main class=\"flex-1\">"
+  },
+  {
+    "page": "admissions",
+    "viewport": "mobile",
+    "severity": "warning",
+    "message": "transparent block: <div class=\"min-h-screen\">"
+  },
+  {
+    "page": "admissions",
+    "viewport": "mobile",
+    "severity": "warning",
+    "message": "transparent block: <section class=\"bg-gradient-to-b from-primary/10 to-transparent py-16 md:py-\">"
+  },
+  {
+    "page": "admissions",
+    "viewport": "mobile",
+    "severity": "warning",
+    "message": "transparent block: <div class=\"container mx-auto px-4 sm:px-6 lg:px-8\">"
+  },
+  {
+    "page": "admissions",
+    "viewport": "mobile",
+    "severity": "warning",
+    "message": "transparent block: <p class=\"text-lg text-muted-foreground max-w-2xl\">"
+  },
+  {
+    "page": "admissions",
+    "viewport": "mobile",
+    "severity": "warning",
+    "message": "empty <title>"
+  },
+  {
+    "page": "fees",
+    "viewport": "mobile",
+    "severity": "warning",
+    "message": "transparent block: <body class=\"min-h-screen bg-background font-sans text-foreground antiali\">"
+  },
+  {
+    "page": "fees",
+    "viewport": "mobile",
+    "severity": "warning",
+    "message": "transparent block: <div class=\"min-h-screen flex flex-col\">"
+  },
+  {
+    "page": "fees",
+    "viewport": "mobile",
+    "severity": "warning",
+    "message": "transparent block: <main class=\"flex-1\">"
+  },
+  {
+    "page": "fees",
+    "viewport": "mobile",
+    "severity": "warning",
+    "message": "transparent block: <div class=\"min-h-screen\">"
+  },
+  {
+    "page": "fees",
+    "viewport": "mobile",
+    "severity": "warning",
+    "message": "transparent block: <section class=\"bg-gradient-to-b from-primary/10 to-transparent py-16 md:py-\">"
+  },
+  {
+    "page": "fees",
+    "viewport": "mobile",
+    "severity": "warning",
+    "message": "transparent block: <div class=\"container mx-auto px-4 sm:px-6 lg:px-8\">"
+  },
+  {
+    "page": "fees",
+    "viewport": "mobile",
+    "severity": "warning",
+    "message": "transparent block: <section class=\"py-12 md:py-16\">"
+  },
+  {
+    "page": "news",
+    "viewport": "mobile",
+    "severity": "warning",
+    "message": "transparent block: <body class=\"min-h-screen bg-background font-sans text-foreground antiali\">"
+  },
+  {
+    "page": "news",
+    "viewport": "mobile",
+    "severity": "warning",
+    "message": "transparent block: <div class=\"min-h-screen flex flex-col\">"
+  },
+  {
+    "page": "news",
+    "viewport": "mobile",
+    "severity": "warning",
+    "message": "transparent block: <main class=\"flex-1\">"
+  },
+  {
+    "page": "news",
+    "viewport": "mobile",
+    "severity": "warning",
+    "message": "transparent block: <div class=\"min-h-screen\">"
+  },
+  {
+    "page": "news",
+    "viewport": "mobile",
+    "severity": "warning",
+    "message": "transparent block: <section class=\"bg-gradient-to-b from-primary/10 to-transparent py-16 md:py-\">"
+  },
+  {
+    "page": "news",
+    "viewport": "mobile",
+    "severity": "warning",
+    "message": "transparent block: <div class=\"container mx-auto px-4 sm:px-6 lg:px-8\">"
+  },
+  {
+    "page": "news",
+    "viewport": "mobile",
+    "severity": "warning",
+    "message": "transparent block: <section class=\"py-12 md:py-16\">"
+  },
+  {
+    "page": "events",
+    "viewport": "mobile",
+    "severity": "warning",
+    "message": "transparent block: <body class=\"min-h-screen bg-background font-sans text-foreground antiali\">"
+  },
+  {
+    "page": "events",
+    "viewport": "mobile",
+    "severity": "warning",
+    "message": "transparent block: <div class=\"min-h-screen flex flex-col\">"
+  },
+  {
+    "page": "events",
+    "viewport": "mobile",
+    "severity": "warning",
+    "message": "transparent block: <main class=\"flex-1\">"
+  },
+  {
+    "page": "events",
+    "viewport": "mobile",
+    "severity": "warning",
+    "message": "transparent block: <div class=\"min-h-screen\">"
+  },
+  {
+    "page": "events",
+    "viewport": "mobile",
+    "severity": "warning",
+    "message": "transparent block: <section class=\"bg-gradient-to-b from-primary/10 to-transparent py-16 md:py-\">"
+  },
+  {
+    "page": "events",
+    "viewport": "mobile",
+    "severity": "warning",
+    "message": "transparent block: <div class=\"container mx-auto px-4 sm:px-6 lg:px-8\">"
+  },
+  {
+    "page": "events",
+    "viewport": "mobile",
+    "severity": "warning",
+    "message": "transparent block: <p class=\"text-lg text-muted-foreground max-w-2xl\">"
+  },
+  {
+    "page": "contact",
+    "viewport": "mobile",
+    "severity": "warning",
+    "message": "transparent block: <body class=\"min-h-screen bg-background font-sans text-foreground antiali\">"
+  },
+  {
+    "page": "contact",
+    "viewport": "mobile",
+    "severity": "warning",
+    "message": "transparent block: <div class=\"min-h-screen flex flex-col\">"
+  },
+  {
+    "page": "contact",
+    "viewport": "mobile",
+    "severity": "warning",
+    "message": "transparent block: <main class=\"flex-1\">"
+  },
+  {
+    "page": "contact",
+    "viewport": "mobile",
+    "severity": "warning",
+    "message": "transparent block: <div class=\"min-h-screen\">"
+  },
+  {
+    "page": "contact",
+    "viewport": "mobile",
+    "severity": "warning",
+    "message": "transparent block: <section class=\"bg-gradient-to-b from-primary/10 to-transparent py-16 md:py-\">"
+  },
+  {
+    "page": "contact",
+    "viewport": "mobile",
+    "severity": "warning",
+    "message": "transparent block: <div class=\"container mx-auto px-4 sm:px-6 lg:px-8 text-center\">"
+  },
+  {
+    "page": "contact",
+    "viewport": "mobile",
+    "severity": "warning",
+    "message": "transparent block: <section class=\"py-12 md:py-16\">"
+  },
+  {
+    "page": "home",
+    "viewport": "tablet",
+    "severity": "warning",
+    "message": "transparent block: <body class=\"min-h-screen bg-background font-sans text-foreground antiali\">"
+  },
+  {
+    "page": "home",
+    "viewport": "tablet",
+    "severity": "warning",
+    "message": "transparent block: <div class=\"min-h-screen flex flex-col\">"
+  },
+  {
+    "page": "home",
+    "viewport": "tablet",
+    "severity": "warning",
+    "message": "transparent block: <main class=\"flex-1\">"
+  },
+  {
+    "page": "home",
+    "viewport": "tablet",
+    "severity": "warning",
+    "message": "transparent block: <section class=\"relative min-h-screen flex items-center justify-center text-\">"
+  },
+  {
+    "page": "home",
+    "viewport": "tablet",
+    "severity": "warning",
+    "message": "transparent block: <div class=\"absolute inset-0 bg-gradient-to-br from-primary/20 via-trans\">"
+  },
+  {
+    "page": "home",
+    "viewport": "tablet",
+    "severity": "warning",
+    "message": "transparent block: <div class=\"relative z-10 max-w-4xl mx-auto\">"
+  },
+  {
+    "page": "home",
+    "viewport": "tablet",
+    "severity": "warning",
+    "message": "transparent block: <section class=\"py-12 md:py-16 bg-muted/30\">"
+  },
+  {
+    "page": "about",
+    "viewport": "tablet",
+    "severity": "warning",
+    "message": "transparent block: <body class=\"min-h-screen bg-background font-sans text-foreground antiali\">"
+  },
+  {
+    "page": "about",
+    "viewport": "tablet",
+    "severity": "warning",
+    "message": "transparent block: <div class=\"min-h-screen flex flex-col\">"
+  },
+  {
+    "page": "about",
+    "viewport": "tablet",
+    "severity": "warning",
+    "message": "transparent block: <main class=\"flex-1\">"
+  },
+  {
+    "page": "about",
+    "viewport": "tablet",
+    "severity": "warning",
+    "message": "transparent block: <div class=\"min-h-screen\">"
+  },
+  {
+    "page": "about",
+    "viewport": "tablet",
+    "severity": "warning",
+    "message": "transparent block: <section class=\"bg-gradient-to-b from-primary/10 to-transparent py-16 md:py-\">"
+  },
+  {
+    "page": "about",
+    "viewport": "tablet",
+    "severity": "warning",
+    "message": "transparent block: <div class=\"container mx-auto px-4 sm:px-6 lg:px-8 text-center\">"
+  },
+  {
+    "page": "about",
+    "viewport": "tablet",
+    "severity": "warning",
+    "message": "transparent block: <p class=\"text-lg text-muted-foreground max-w-2xl mx-auto\">"
+  },
+  {
+    "page": "academics",
+    "viewport": "tablet",
+    "severity": "warning",
+    "message": "transparent block: <body class=\"min-h-screen bg-background font-sans text-foreground antiali\">"
+  },
+  {
+    "page": "academics",
+    "viewport": "tablet",
+    "severity": "warning",
+    "message": "transparent block: <div class=\"min-h-screen flex flex-col\">"
+  },
+  {
+    "page": "academics",
+    "viewport": "tablet",
+    "severity": "warning",
+    "message": "transparent block: <main class=\"flex-1\">"
+  },
+  {
+    "page": "academics",
+    "viewport": "tablet",
+    "severity": "warning",
+    "message": "transparent block: <div class=\"min-h-screen\">"
+  },
+  {
+    "page": "academics",
+    "viewport": "tablet",
+    "severity": "warning",
+    "message": "transparent block: <section class=\"bg-gradient-to-b from-primary/10 to-transparent py-16 md:py-\">"
+  },
+  {
+    "page": "academics",
+    "viewport": "tablet",
+    "severity": "warning",
+    "message": "transparent block: <div class=\"container mx-auto px-4 sm:px-6 lg:px-8\">"
+  },
+  {
+    "page": "academics",
+    "viewport": "tablet",
+    "severity": "warning",
+    "message": "transparent block: <section class=\"py-12 md:py-16\">"
+  },
+  {
+    "page": "admissions",
+    "viewport": "tablet",
+    "severity": "warning",
+    "message": "transparent block: <body class=\"min-h-screen bg-background font-sans text-foreground antiali\">"
+  },
+  {
+    "page": "admissions",
+    "viewport": "tablet",
+    "severity": "warning",
+    "message": "transparent block: <div class=\"min-h-screen flex flex-col\">"
+  },
+  {
+    "page": "admissions",
+    "viewport": "tablet",
+    "severity": "warning",
+    "message": "transparent block: <main class=\"flex-1\">"
+  },
+  {
+    "page": "admissions",
+    "viewport": "tablet",
+    "severity": "warning",
+    "message": "transparent block: <div class=\"min-h-screen\">"
+  },
+  {
+    "page": "admissions",
+    "viewport": "tablet",
+    "severity": "warning",
+    "message": "transparent block: <section class=\"bg-gradient-to-b from-primary/10 to-transparent py-16 md:py-\">"
+  },
+  {
+    "page": "admissions",
+    "viewport": "tablet",
+    "severity": "warning",
+    "message": "transparent block: <div class=\"container mx-auto px-4 sm:px-6 lg:px-8\">"
+  },
+  {
+    "page": "admissions",
+    "viewport": "tablet",
+    "severity": "warning",
+    "message": "transparent block: <section class=\"py-12 md:py-16\">"
+  },
+  {
+    "page": "admissions",
+    "viewport": "tablet",
+    "severity": "warning",
+    "message": "empty <title>"
+  },
+  {
+    "page": "fees",
+    "viewport": "tablet",
+    "severity": "warning",
+    "message": "transparent block: <body class=\"min-h-screen bg-background font-sans text-foreground antiali\">"
+  },
+  {
+    "page": "fees",
+    "viewport": "tablet",
+    "severity": "warning",
+    "message": "transparent block: <div class=\"min-h-screen flex flex-col\">"
+  },
+  {
+    "page": "fees",
+    "viewport": "tablet",
+    "severity": "warning",
+    "message": "transparent block: <main class=\"flex-1\">"
+  },
+  {
+    "page": "fees",
+    "viewport": "tablet",
+    "severity": "warning",
+    "message": "transparent block: <div class=\"min-h-screen\">"
+  },
+  {
+    "page": "fees",
+    "viewport": "tablet",
+    "severity": "warning",
+    "message": "transparent block: <section class=\"bg-gradient-to-b from-primary/10 to-transparent py-16 md:py-\">"
+  },
+  {
+    "page": "fees",
+    "viewport": "tablet",
+    "severity": "warning",
+    "message": "transparent block: <div class=\"container mx-auto px-4 sm:px-6 lg:px-8\">"
+  },
+  {
+    "page": "fees",
+    "viewport": "tablet",
+    "severity": "warning",
+    "message": "transparent block: <section class=\"py-12 md:py-16\">"
+  },
+  {
+    "page": "news",
+    "viewport": "tablet",
+    "severity": "warning",
+    "message": "transparent block: <body class=\"min-h-screen bg-background font-sans text-foreground antiali\">"
+  },
+  {
+    "page": "news",
+    "viewport": "tablet",
+    "severity": "warning",
+    "message": "transparent block: <div class=\"min-h-screen flex flex-col\">"
+  },
+  {
+    "page": "news",
+    "viewport": "tablet",
+    "severity": "warning",
+    "message": "transparent block: <main class=\"flex-1\">"
+  },
+  {
+    "page": "news",
+    "viewport": "tablet",
+    "severity": "warning",
+    "message": "transparent block: <div class=\"min-h-screen\">"
+  },
+  {
+    "page": "news",
+    "viewport": "tablet",
+    "severity": "warning",
+    "message": "transparent block: <section class=\"bg-gradient-to-b from-primary/10 to-transparent py-16 md:py-\">"
+  },
+  {
+    "page": "news",
+    "viewport": "tablet",
+    "severity": "warning",
+    "message": "transparent block: <div class=\"container mx-auto px-4 sm:px-6 lg:px-8\">"
+  },
+  {
+    "page": "news",
+    "viewport": "tablet",
+    "severity": "warning",
+    "message": "transparent block: <section class=\"py-12 md:py-16\">"
+  },
+  {
+    "page": "events",
+    "viewport": "tablet",
+    "severity": "warning",
+    "message": "transparent block: <body class=\"min-h-screen bg-background font-sans text-foreground antiali\">"
+  },
+  {
+    "page": "events",
+    "viewport": "tablet",
+    "severity": "warning",
+    "message": "transparent block: <div class=\"min-h-screen flex flex-col\">"
+  },
+  {
+    "page": "events",
+    "viewport": "tablet",
+    "severity": "warning",
+    "message": "transparent block: <main class=\"flex-1\">"
+  },
+  {
+    "page": "events",
+    "viewport": "tablet",
+    "severity": "warning",
+    "message": "transparent block: <div class=\"min-h-screen\">"
+  },
+  {
+    "page": "events",
+    "viewport": "tablet",
+    "severity": "warning",
+    "message": "transparent block: <section class=\"bg-gradient-to-b from-primary/10 to-transparent py-16 md:py-\">"
+  },
+  {
+    "page": "events",
+    "viewport": "tablet",
+    "severity": "warning",
+    "message": "transparent block: <div class=\"container mx-auto px-4 sm:px-6 lg:px-8\">"
+  },
+  {
+    "page": "events",
+    "viewport": "tablet",
+    "severity": "warning",
+    "message": "transparent block: <section class=\"py-12 md:py-16\">"
+  },
+  {
+    "page": "contact",
+    "viewport": "tablet",
+    "severity": "warning",
+    "message": "transparent block: <body class=\"min-h-screen bg-background font-sans text-foreground antiali\">"
+  },
+  {
+    "page": "contact",
+    "viewport": "tablet",
+    "severity": "warning",
+    "message": "transparent block: <div class=\"min-h-screen flex flex-col\">"
+  },
+  {
+    "page": "contact",
+    "viewport": "tablet",
+    "severity": "warning",
+    "message": "transparent block: <main class=\"flex-1\">"
+  },
+  {
+    "page": "contact",
+    "viewport": "tablet",
+    "severity": "warning",
+    "message": "transparent block: <div class=\"min-h-screen\">"
+  },
+  {
+    "page": "contact",
+    "viewport": "tablet",
+    "severity": "warning",
+    "message": "transparent block: <section class=\"bg-gradient-to-b from-primary/10 to-transparent py-16 md:py-\">"
+  },
+  {
+    "page": "contact",
+    "viewport": "tablet",
+    "severity": "warning",
+    "message": "transparent block: <div class=\"container mx-auto px-4 sm:px-6 lg:px-8 text-center\">"
+  },
+  {
+    "page": "contact",
+    "viewport": "tablet",
+    "severity": "warning",
+    "message": "transparent block: <section class=\"py-12 md:py-16\">"
+  },
+  {
+    "page": "home",
+    "viewport": "desktop",
+    "severity": "warning",
+    "message": "transparent block: <body class=\"min-h-screen bg-background font-sans text-foreground antiali\">"
+  },
+  {
+    "page": "home",
+    "viewport": "desktop",
+    "severity": "warning",
+    "message": "transparent block: <div class=\"min-h-screen flex flex-col\">"
+  },
+  {
+    "page": "home",
+    "viewport": "desktop",
+    "severity": "warning",
+    "message": "transparent block: <main class=\"flex-1\">"
+  },
+  {
+    "page": "home",
+    "viewport": "desktop",
+    "severity": "warning",
+    "message": "transparent block: <section class=\"relative min-h-screen flex items-center justify-center text-\">"
+  },
+  {
+    "page": "home",
+    "viewport": "desktop",
+    "severity": "warning",
+    "message": "transparent block: <div class=\"absolute inset-0 bg-gradient-to-br from-primary/20 via-trans\">"
+  },
+  {
+    "page": "home",
+    "viewport": "desktop",
+    "severity": "warning",
+    "message": "transparent block: <div class=\"relative z-10 max-w-4xl mx-auto\">"
+  },
+  {
+    "page": "home",
+    "viewport": "desktop",
+    "severity": "warning",
+    "message": "transparent block: <section class=\"py-12 md:py-16 bg-muted/30\">"
+  },
+  {
+    "page": "about",
+    "viewport": "desktop",
+    "severity": "warning",
+    "message": "transparent block: <body class=\"min-h-screen bg-background font-sans text-foreground antiali\">"
+  },
+  {
+    "page": "about",
+    "viewport": "desktop",
+    "severity": "warning",
+    "message": "transparent block: <div class=\"min-h-screen flex flex-col\">"
+  },
+  {
+    "page": "about",
+    "viewport": "desktop",
+    "severity": "warning",
+    "message": "transparent block: <main class=\"flex-1\">"
+  },
+  {
+    "page": "about",
+    "viewport": "desktop",
+    "severity": "warning",
+    "message": "transparent block: <div class=\"min-h-screen\">"
+  },
+  {
+    "page": "about",
+    "viewport": "desktop",
+    "severity": "warning",
+    "message": "transparent block: <section class=\"bg-gradient-to-b from-primary/10 to-transparent py-16 md:py-\">"
+  },
+  {
+    "page": "about",
+    "viewport": "desktop",
+    "severity": "warning",
+    "message": "transparent block: <div class=\"container mx-auto px-4 sm:px-6 lg:px-8 text-center\">"
+  },
+  {
+    "page": "about",
+    "viewport": "desktop",
+    "severity": "warning",
+    "message": "transparent block: <p class=\"text-lg text-muted-foreground max-w-2xl mx-auto\">"
+  },
+  {
+    "page": "academics",
+    "viewport": "desktop",
+    "severity": "warning",
+    "message": "transparent block: <body class=\"min-h-screen bg-background font-sans text-foreground antiali\">"
+  },
+  {
+    "page": "academics",
+    "viewport": "desktop",
+    "severity": "warning",
+    "message": "transparent block: <div class=\"min-h-screen flex flex-col\">"
+  },
+  {
+    "page": "academics",
+    "viewport": "desktop",
+    "severity": "warning",
+    "message": "transparent block: <main class=\"flex-1\">"
+  },
+  {
+    "page": "academics",
+    "viewport": "desktop",
+    "severity": "warning",
+    "message": "transparent block: <div class=\"min-h-screen\">"
+  },
+  {
+    "page": "academics",
+    "viewport": "desktop",
+    "severity": "warning",
+    "message": "transparent block: <section class=\"bg-gradient-to-b from-primary/10 to-transparent py-16 md:py-\">"
+  },
+  {
+    "page": "academics",
+    "viewport": "desktop",
+    "severity": "warning",
+    "message": "transparent block: <div class=\"container mx-auto px-4 sm:px-6 lg:px-8\">"
+  },
+  {
+    "page": "academics",
+    "viewport": "desktop",
+    "severity": "warning",
+    "message": "transparent block: <section class=\"py-12 md:py-16\">"
+  },
+  {
+    "page": "admissions",
+    "viewport": "desktop",
+    "severity": "warning",
+    "message": "transparent block: <body class=\"min-h-screen bg-background font-sans text-foreground antiali\">"
+  },
+  {
+    "page": "admissions",
+    "viewport": "desktop",
+    "severity": "warning",
+    "message": "transparent block: <div class=\"min-h-screen flex flex-col\">"
+  },
+  {
+    "page": "admissions",
+    "viewport": "desktop",
+    "severity": "warning",
+    "message": "transparent block: <main class=\"flex-1\">"
+  },
+  {
+    "page": "admissions",
+    "viewport": "desktop",
+    "severity": "warning",
+    "message": "transparent block: <div class=\"min-h-screen\">"
+  },
+  {
+    "page": "admissions",
+    "viewport": "desktop",
+    "severity": "warning",
+    "message": "transparent block: <section class=\"bg-gradient-to-b from-primary/10 to-transparent py-16 md:py-\">"
+  },
+  {
+    "page": "admissions",
+    "viewport": "desktop",
+    "severity": "warning",
+    "message": "transparent block: <div class=\"container mx-auto px-4 sm:px-6 lg:px-8\">"
+  },
+  {
+    "page": "admissions",
+    "viewport": "desktop",
+    "severity": "warning",
+    "message": "transparent block: <section class=\"py-12 md:py-16\">"
+  },
+  {
+    "page": "admissions",
+    "viewport": "desktop",
+    "severity": "warning",
+    "message": "empty <title>"
+  },
+  {
+    "page": "fees",
+    "viewport": "desktop",
+    "severity": "warning",
+    "message": "transparent block: <body class=\"min-h-screen bg-background font-sans text-foreground antiali\">"
+  },
+  {
+    "page": "fees",
+    "viewport": "desktop",
+    "severity": "warning",
+    "message": "transparent block: <div class=\"min-h-screen flex flex-col\">"
+  },
+  {
+    "page": "fees",
+    "viewport": "desktop",
+    "severity": "warning",
+    "message": "transparent block: <main class=\"flex-1\">"
+  },
+  {
+    "page": "fees",
+    "viewport": "desktop",
+    "severity": "warning",
+    "message": "transparent block: <div class=\"min-h-screen\">"
+  },
+  {
+    "page": "fees",
+    "viewport": "desktop",
+    "severity": "warning",
+    "message": "transparent block: <section class=\"bg-gradient-to-b from-primary/10 to-transparent py-16 md:py-\">"
+  },
+  {
+    "page": "fees",
+    "viewport": "desktop",
+    "severity": "warning",
+    "message": "transparent block: <div class=\"container mx-auto px-4 sm:px-6 lg:px-8\">"
+  },
+  {
+    "page": "fees",
+    "viewport": "desktop",
+    "severity": "warning",
+    "message": "transparent block: <section class=\"py-12 md:py-16\">"
+  },
+  {
+    "page": "news",
+    "viewport": "desktop",
+    "severity": "warning",
+    "message": "transparent block: <body class=\"min-h-screen bg-background font-sans text-foreground antiali\">"
+  },
+  {
+    "page": "news",
+    "viewport": "desktop",
+    "severity": "warning",
+    "message": "transparent block: <div class=\"min-h-screen flex flex-col\">"
+  },
+  {
+    "page": "news",
+    "viewport": "desktop",
+    "severity": "warning",
+    "message": "transparent block: <main class=\"flex-1\">"
+  },
+  {
+    "page": "news",
+    "viewport": "desktop",
+    "severity": "warning",
+    "message": "transparent block: <div class=\"min-h-screen\">"
+  },
+  {
+    "page": "news",
+    "viewport": "desktop",
+    "severity": "warning",
+    "message": "transparent block: <section class=\"bg-gradient-to-b from-primary/10 to-transparent py-16 md:py-\">"
+  },
+  {
+    "page": "news",
+    "viewport": "desktop",
+    "severity": "warning",
+    "message": "transparent block: <div class=\"container mx-auto px-4 sm:px-6 lg:px-8\">"
+  },
+  {
+    "page": "news",
+    "viewport": "desktop",
+    "severity": "warning",
+    "message": "transparent block: <section class=\"py-12 md:py-16\">"
+  },
+  {
+    "page": "events",
+    "viewport": "desktop",
+    "severity": "warning",
+    "message": "transparent block: <body class=\"min-h-screen bg-background font-sans text-foreground antiali\">"
+  },
+  {
+    "page": "events",
+    "viewport": "desktop",
+    "severity": "warning",
+    "message": "transparent block: <div class=\"min-h-screen flex flex-col\">"
+  },
+  {
+    "page": "events",
+    "viewport": "desktop",
+    "severity": "warning",
+    "message": "transparent block: <main class=\"flex-1\">"
+  },
+  {
+    "page": "events",
+    "viewport": "desktop",
+    "severity": "warning",
+    "message": "transparent block: <div class=\"min-h-screen\">"
+  },
+  {
+    "page": "events",
+    "viewport": "desktop",
+    "severity": "warning",
+    "message": "transparent block: <section class=\"bg-gradient-to-b from-primary/10 to-transparent py-16 md:py-\">"
+  },
+  {
+    "page": "events",
+    "viewport": "desktop",
+    "severity": "warning",
+    "message": "transparent block: <div class=\"container mx-auto px-4 sm:px-6 lg:px-8\">"
+  },
+  {
+    "page": "events",
+    "viewport": "desktop",
+    "severity": "warning",
+    "message": "transparent block: <section class=\"py-12 md:py-16\">"
+  },
+  {
+    "page": "contact",
+    "viewport": "desktop",
+    "severity": "warning",
+    "message": "transparent block: <body class=\"min-h-screen bg-background font-sans text-foreground antiali\">"
+  },
+  {
+    "page": "contact",
+    "viewport": "desktop",
+    "severity": "warning",
+    "message": "transparent block: <div class=\"min-h-screen flex flex-col\">"
+  },
+  {
+    "page": "contact",
+    "viewport": "desktop",
+    "severity": "warning",
+    "message": "transparent block: <main class=\"flex-1\">"
+  },
+  {
+    "page": "contact",
+    "viewport": "desktop",
+    "severity": "warning",
+    "message": "transparent block: <div class=\"min-h-screen\">"
+  },
+  {
+    "page": "contact",
+    "viewport": "desktop",
+    "severity": "warning",
+    "message": "transparent block: <section class=\"bg-gradient-to-b from-primary/10 to-transparent py-16 md:py-\">"
+  },
+  {
+    "page": "contact",
+    "viewport": "desktop",
+    "severity": "warning",
+    "message": "transparent block: <div class=\"container mx-auto px-4 sm:px-6 lg:px-8 text-center\">"
+  },
+  {
+    "page": "contact",
+    "viewport": "desktop",
+    "severity": "warning",
+    "message": "transparent block: <section class=\"py-12 md:py-16\">"
+  }
+]
