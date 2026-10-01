@@ -73,7 +73,7 @@ export default function AboutPage() {
             <p className="text-muted-foreground mb-6">
               {SCHOOL_INFO.location}
             </p>
-            <div className="aspect-video bg-gray-200 dark:bg-gray-700 rounded-lg max-w-4xl mx-auto">
+            <div className="aspect-video bg-muted rounded-lg max-w-4xl mx-auto">
               <div className="w-full h-full flex items-center justify-center text-muted-foreground">
                 Map will be embedded here
               </div>

@@ -231,7 +231,7 @@ export default function CalendarPage() {
   const past = events.filter((e) => e.startDate && new Date(e.startDate) < today)
 
   const statusColors: Record<ContentStatus, string> = {
-    DRAFT: 'bg-gray-100 text-gray-800',
+    DRAFT: 'bg-muted text-muted-foreground',
     PUBLISHED: 'bg-green-100 text-green-800',
     ARCHIVED: 'bg-blue-100 text-blue-800',
   }
@@ -287,7 +287,7 @@ export default function CalendarPage() {
                       <p className="font-medium">{e.title}</p>
                       <Badge
                         variant="outline"
-                        className={statusColors[e.status] ?? 'bg-gray-100 text-gray-800'}
+                        className={statusColors[e.status] ?? 'bg-muted text-muted-foreground'}
                       >
                         {e.status}
                       </Badge>
@@ -313,7 +313,7 @@ export default function CalendarPage() {
                       <DropdownMenuSeparator />
                       <DropdownMenuItem
                         onClick={() => handleDelete(e)}
-                        className="text-red-600 focus:text-red-600"
+                        className="text-destructive"
                       >
                         <Trash2 className="h-4 w-4 mr-2" />
                         Delete
@@ -342,7 +342,7 @@ export default function CalendarPage() {
                     <p className="font-medium">{e.title}</p>
                     <Badge
                       variant="outline"
-                      className={statusColors[e.status] ?? 'bg-gray-100 text-gray-800'}
+                      className={statusColors[e.status] ?? 'bg-muted text-muted-foreground'}
                     >
                       {e.status}
                     </Badge>

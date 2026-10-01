@@ -288,7 +288,7 @@ export default function AnnouncementsPage() {
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
                               onClick={() => handleDelete(a)}
-                              className="text-red-600 focus:text-red-600"
+                               className="text-destructive"
                             >
                               <Trash2 className="h-4 w-4 mr-2" />
                               Delete
