@@ -13,6 +13,14 @@ export interface ExtendedUser {
   schoolId?: string
   schoolName?: string
   mustChangePassword?: boolean
+  /**
+   * Set by the `jwt` callback and copied to the session, so `getServerSession`
+   * can name the tenant a request belonged to without a database round-trip.
+   * The platform error logger reads it precisely when the database is the thing
+   * that is failing — otherwise an outage in the user lookup cannot be
+   * recorded anywhere.
+   */
+  tenantId?: string
 }
 
 /**
@@ -106,6 +114,7 @@ export const authOptions: NextAuthOptions = {
         extendedToken.role = extendedUser.role
         extendedToken.schoolId = extendedUser.schoolId
         extendedToken.schoolName = extendedUser.schoolName
+        extendedToken.tenantId = extendedUser.tenantId
         extendedToken.mustChangePassword = extendedUser.mustChangePassword
         extendedToken.issuedAt = Date.now()
       }
@@ -170,6 +179,11 @@ export const authOptions: NextAuthOptions = {
         extendedSession.user.role = extendedToken.role as string
         extendedSession.user.schoolId = extendedToken.schoolId as string
         extendedSession.user.schoolName = extendedToken.schoolName as string
+        // The token claim is only useful if it survives into the session:
+        // `getServerSession` returns the session, and every reader of the claim
+        // (session-context, the platform error logger's attribution fallback)
+        // goes through it.
+        extendedSession.user.tenantId = extendedToken.tenantId
         extendedSession.user.mustChangePassword = extendedToken.mustChangePassword as boolean
       }
       return session
@@ -255,6 +269,7 @@ export const authOptions: NextAuthOptions = {
             role: user.role?.name ?? null,
             schoolId: user.schoolId,
             schoolName: user.school?.name ?? undefined,
+            tenantId: user.tenantId,
             mustChangePassword: user.mustChangePassword && !user.passwordChangedAt,
           }
         }
@@ -327,6 +342,7 @@ export const authOptions: NextAuthOptions = {
             role: user.role?.name ?? null,
             schoolId: user.schoolId,
             schoolName: user.school?.name ?? undefined,
+            tenantId: user.tenantId,
             mustChangePassword: user.mustChangePassword && !user.passwordChangedAt,
           }
         }
@@ -426,6 +442,7 @@ export const authOptions: NextAuthOptions = {
           role: user.role?.name ?? null,
           schoolId: user.schoolId,
           schoolName: user.school?.name ?? undefined,
+          tenantId: user.tenantId,
           mustChangePassword: user.mustChangePassword && !user.passwordChangedAt,
         }
       },

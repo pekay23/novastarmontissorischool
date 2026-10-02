@@ -48,6 +48,8 @@ model Tenant {
   houses                House[]
   brandings             Branding[]
   configEntities        ConfigEntity[]
+  systemConfigs         SystemConfig[]
+  systemErrors          SystemError[]
 }
 
 model School {
@@ -1404,6 +1406,7 @@ model PasskeyChallenge {
 model SystemConfig {
   id          String   @id @default(cuid())
   tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
   key         String
   value       Json
   description String?
@@ -1420,6 +1423,7 @@ model SystemConfig {
 model SystemError {
   id        String         @id @default(cuid())
   tenantId  String
+  tenant    Tenant         @relation(fields: [tenantId], references: [id])
   errorType String
   message   String
   stack     String?
