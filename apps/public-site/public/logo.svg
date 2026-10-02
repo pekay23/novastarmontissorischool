@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 340 80" width="340" height="80">
+  <defs>
+    <linearGradient id="brand" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#5F1989"/>
+      <stop offset="100%" stop-color="#772D42"/>
+    </linearGradient>
+  </defs>
+  <circle cx="28" cy="40" r="18" fill="#5F1989"/>
+  <path d="M28 18 L14 40 L42 40 Z" fill="none" stroke="#B94C25" stroke-width="2.5" stroke-linejoin="round"/>
+  <text x="60" y="46" font-family="Georgia, serif" font-size="30" font-weight="600" fill="#5F1989">Novastar</text>
+  <text x="60" y="62" font-family="Arial, sans-serif" font-size="14" letter-spacing="0.08em" fill="#B94C25">MONTESSORI SCHOOL</text>
+</svg>

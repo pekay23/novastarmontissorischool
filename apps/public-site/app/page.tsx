@@ -4,16 +4,9 @@ import { ArrowRight, CalendarDays, MessageCircle, ShieldCheck, Sprout, Users } f
 import { getBranding, getHomeStats, getHeroContent, getFeatures, getTestimonials, getCTAContent, getAcademicPrograms } from '@/lib/data'
 import { ProgramCard } from '@/components/program-card'
 import { Button } from '@novastar/shared-ui'
-import { metadata } from '@/lib/metadata'
+import { SCHOOL_INFO, generateHomeMetadata } from '@/lib/metadata'
 
-export { metadata }
-
-const SCHOOL = {
-  phone: '+233 24 493 5251',
-  phoneHref: 'tel:+233244935251',
-  whatsapp: '233244935251',
-  email: 'info@novastarmontissorischool.com',
-} as const
+export const metadata = generateHomeMetadata()
 
 export default async function HomePage() {
   const [branding, stats, hero, features, testimonials, cta, programs] = await Promise.all([
@@ -33,7 +26,7 @@ export default async function HomePage() {
   const ctaSubtitle = cta?.subtitle || 'Give your child the foundation for a lifetime of learning through authentic Montessori education'
   const ctaButton = cta?.cta || 'Apply now'
 
-  const whatsappHref = `https://wa.me/${SCHOOL.whatsapp}?text=${encodeURIComponent(
+  const whatsappHref = `https://wa.me/${SCHOOL_INFO.whatsapp}?text=${encodeURIComponent(
     `Hello ${schoolName}, I would like to enquire about admissions for my child.`,
   )}`
 
@@ -82,7 +75,7 @@ export default async function HomePage() {
                 </Link>
               </Button>
               <Button size="lg" variant="outline" asChild>
-                <a href={SCHOOL.phoneHref}>Book a visit</a>
+                <a href={`tel:${SCHOOL_INFO.phoneHref}`}>Book a visit</a>
               </Button>
             </div>
 
@@ -270,7 +263,13 @@ function TestimonialCard({
 }) {
   return (
     <figure className="rounded-xl border border-border bg-surface p-7">
-      <div className="mb-4 flex gap-0.5 text-secondary" aria-label="Five out of five">
+      {/* role="img" is required: a plain div resolves to role="generic", which
+          prohibits naming, so the rating was silently dropped. */}
+      <div
+        className="mb-4 flex gap-0.5 text-secondary"
+        role="img"
+        aria-label="Rated five out of five"
+      >
         {[0, 1, 2, 3, 4].map((i) => (
           <svg key={i} viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4" aria-hidden="true">
             <path d="M9.05 2.93c.3-.92 1.6-.92 1.9 0l1.36 4.18a1 1 0 0 0 .95.69h4.4c.97 0 1.37 1.24.59 1.81l-3.56 2.58a1 1 0 0 0-.36 1.11l1.36 4.18c.3.92-.76 1.69-1.54 1.11l-3.56-2.58a1 1 0 0 0-1.18 0l-3.56 2.58c-.78.58-1.84-.19-1.54-1.11l1.36-4.18a1 1 0 0 0-.36-1.11L1.74 9.61C.96 9.04 1.36 7.8 2.33 7.8h4.4a1 1 0 0 0 .95-.69L9.05 2.93Z" />

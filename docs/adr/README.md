@@ -41,11 +41,19 @@ What becomes easier or more difficult to do because of this change?
 
 ---
 
+## ADR Index
+
+| ID | Title | Phase | Status |
+|----|-------|-------|--------|
+| ADR-001 | Monorepo Structure: Turborepo + Bun Workspaces | 0 | Accepted |
+| ADR-016 | Packages Consumed as TypeScript Source | 0 | Accepted |
+| ADR-017 | Fork Portal to SchoolPortalSystem (Reusable SaaS) | 0 | Proposed |
+| ADR-022 | Adopt Aerojet Academy Passkey & Security/Auth Patterns | 1 | Proposed |
+
 ## Planned ADRs (To Be Created During Implementation)
 
 | ID | Title | Phase | Status |
 |----|-------|-------|--------|
-| ADR-001 | Monorepo Structure: Turborepo + Bun Workspaces | 0 | Planned |
 | ADR-002 | Multi-Tenancy: Shared DB with RLS vs Schema-per-Tenant | 0 | Planned |
 | ADR-003 | Configuration-First: Dynamic Entities vs Hardcoded Enums | 1 | Planned |
 | ADR-004 | Database: Neon Primary + Supabase Mirror via pg_cron | 0 | Planned |
@@ -60,6 +68,10 @@ What becomes easier or more difficult to do because of this change?
 | ADR-013 | File Storage: MinIO Local + Supabase Cloud | 0 | Planned |
 | ADR-014 | Real-time: Supabase Realtime vs Custom WebSocket | 7 | Planned |
 | ADR-015 | Testing: Vitest Unit + Playwright E2E + MSW Mocking | 0 | Planned |
+| ADR-018 | Subscription Gating: Middleware Layer vs Per-Endpoint Checks | 1 | Planned |
+| ADR-019 | Tenant Routing: Subdomain + Custom Domain + Query Param Resolution | 1 | Planned |
+| ADR-020 | AI Gateway: Per-Tenant API Keys with Global Fallback | 2 | Planned |
+| ADR-021 | Billing: Stripe + Provider Abstraction for Local Payments | 2 | Planned |
 
 ---
 

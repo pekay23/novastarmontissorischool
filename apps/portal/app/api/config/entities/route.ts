@@ -1,11 +1,11 @@
-﻿import { NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { DEFAULT_ENTITY_REGISTRY } from '@novastar/shared-types'
 import { hasPermission } from '@novastar/auth'
 import { getTenantContext } from '@/lib/tenant'
 import { logError } from '@/lib/logger'
 
-// GET /api/config/entities â€” List all entity definitions
+// GET /api/config/entities — List all entity definitions
 // Merges DEFAULT_ENTITY_REGISTRY with any admin overrides stored in ConfigEntity table
 export async function GET() {
   try {

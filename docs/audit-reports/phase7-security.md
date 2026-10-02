@@ -951,3 +951,26 @@ This concludes the Phase 7 comprehensive security audit. The codebase has a soli
 - **SEC-03 (Critical):** Skipped per user directive (no production secrets leaked in this repo).
 
 **Remaining open:** SEC-08 (payment verification) only — all other findings resolved or mitigated.
+
+---
+
+## Addendum: Aerojet Academy Security Patterns (2026-10-02)
+
+A review of the sibling project Aerojet Academy (`C:\Projects\aerojet-academy`)
+identified additional security patterns not yet present in Novastar that should
+be adopted:
+
+| Feature | Status | Reference |
+|---|---|---|
+| Passkeys (WebAuthn) | Not in Novastar — planned via ADR-022 | `lib/auth/passkey-config.ts` (Aerojet) |
+| TOTP 2FA | Not in Novastar — planned via ADR-022 | `lib/auth/totp.ts` (Aerojet) |
+| Account lockout | Not in Novastar — planned via ADR-022 | `lib/auth/auth-options.ts:154` (Aerojet) |
+| Session revalidation (5-min) | Partial — no 5-min DB revalidation | `lib/auth/auth-options.ts:251` (Aerojet) |
+| Audit logging on auth events | Partial — no login/logout audit | `lib/auth/auth-options.ts:199` (Aerojet) |
+| Account status checks (SUSPENDED/ARCHIVED/DELETED) | Not in Novastar | `lib/auth/auth-options.ts:52` (Aerojet) |
+| Password change enforcement | Not in Novastar | `lib/auth/auth-options.ts:103` (Aerojet) |
+
+**Action:** See [ADR-022](docs/adr/ADR-022-adopt-aerojet-security-patterns.md) and
+[NMS Super-Admin Build Plan](docs/technical/2026-10-02-build-plan-nms-super-admin.md).
+These patterns are being adopted for both Novastar and its SchoolPortalSystem
+fork.

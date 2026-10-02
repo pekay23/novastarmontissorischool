@@ -1,45 +1,27 @@
-import Link from 'next/link'
 import { Card, CardContent, CardHeader, CardTitle } from '@novastar/shared-ui'
 import { formatDate } from '@novastar/shared-utils'
-import { metadata } from '@/lib/metadata'
+import type { News } from '@prisma/client'
+import { getPublishedNews } from '@/lib/data'
+import { generateNewsMetadata } from '@/lib/metadata'
 
-export { metadata }
+export const metadata = generateNewsMetadata()
 
-// Placeholder news data (will be replaced by CMS content from portal)
-const NEWS_ITEMS = [
-  {
-    id: '1',
-    title: 'Novastar Achieves 100% Grade 1 in BECE Science 2021',
-    slug: 'bece-science-success',
-    excerpt: 'We are proud to announce that 100% of our JHS 3 students achieved Grade 1 in the BECE Science examination...',
-    date: '2021-08-15',
-    category: 'Achievement',
-    image: '/news/bece-success.jpg',
-  },
-  {
-    id: '2',
-    title: 'New Science Lab Inaugurated',
-    slug: 'new-science-lab',
-    excerpt: 'Our brand-new science laboratory was inaugurated this week, equipped with modern equipment for hands-on learning...',
-    date: '2026-06-10',
-    category: 'Facilities',
-    image: '/news/science-lab.jpg',
-  },
-  {
-    id: '3',
-    title: 'Montessori Parent Workshop',
-    slug: 'montessori-parent-workshop',
-    excerpt: 'Join us for a workshop on supporting Montessori learning at home. This event is open to all parents...',
-    date: '2026-05-20',
-    category: 'Events',
-    image: '/news/parent-workshop.jpg',
-  },
-]
+/*
+ * Content comes from the database. This page previously rendered three
+ * hardcoded items — a "new science lab inaugurated", a "parent workshop", and a
+ * 2021 BECE claim — as though they were real news, and each card linked to a
+ * `/news/[slug]` route that does not exist, so all three 404'd. On a live
+ * school site that is worse than an empty page: a parent could act on an event
+ * that was never going to happen.
+ *
+ * `getPublishedNews` returns `[]` when there is no database at build time, so
+ * the empty state below is what ships until real content is published.
+ */
+export default async function NewsPage() {
+  const news = await getPublishedNews()
 
-export default function NewsPage() {
   return (
     <div className="min-h-screen">
-      {/* Hero */}
       <section className="bg-gradient-to-b from-primary/10 to-transparent py-16 md:py-20">
         <div className="container mx-auto px-4 sm:px-6 lg:px-8">
           <h1 className="text-responsive-h1 font-heading text-primary mb-4">Latest News</h1>
@@ -49,45 +31,49 @@ export default function NewsPage() {
         </div>
       </section>
 
-      {/* News Grid */}
-      <section className="py-12 md:py-16">
+      <section className="section-y">
         <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {NEWS_ITEMS.map((item) => (
-              <NewsCard key={item.id} item={item} />
-            ))}
-          </div>
+          {news.length === 0 ? (
+            <div className="mx-auto max-w-2xl rounded-xl border border-border bg-surface p-10 text-center">
+              <h2 className="mb-2 font-heading text-xl font-semibold text-primary">
+                No news posted yet
+              </h2>
+              <p className="text-muted-foreground">
+                We publish school news and term dates here as they happen. In the
+                meantime, call or message the school office for anything you need.
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+              {news.map((item) => (
+                <NewsCard key={item.id} item={item} />
+              ))}
+            </div>
+          )}
         </div>
       </section>
     </div>
   )
 }
 
-function NewsCard({ item }: { item: typeof NEWS_ITEMS[0] }) {
+function NewsCard({ item }: { item: News }) {
   return (
-    <Link href={`/news/${item.slug}`} className="group">
-      <Card className="h-full transition-transform group-hover:shadow-lg">
-        <div className="aspect-video bg-gray-200 dark:bg-gray-700 rounded-t-lg overflow-hidden">
-          <div className="w-full h-full flex items-center justify-center text-muted-foreground">
-            Image
-          </div>
-        </div>
-        <CardHeader>
-          <div className="flex justify-between items-start">
-            <div>
-              <CardTitle className="text-xl group-hover:text-primary transition-colors">
-                {item.title}
-              </CardTitle>
-              <p className="text-sm text-muted-foreground mt-1">
-                {formatDate(item.date)} • {item.category}
-              </p>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <p className="text-foreground/80">{item.excerpt}</p>
-        </CardContent>
-      </Card>
-    </Link>
+    /*
+      Not a link. There is no /news/[slug] route, so wrapping this in <Link>
+      produced a card that navigated to a 404. Add the route before making
+      these clickable again.
+    */
+    <Card className="h-full">
+      <CardHeader>
+        <CardTitle className="text-xl">{item.title}</CardTitle>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {item.publishedAt ? formatDate(item.publishedAt) : null}
+          {item.category ? ` • ${item.category}` : null}
+        </p>
+      </CardHeader>
+      <CardContent>
+        <p className="text-foreground/80">{item.excerptEn ?? item.bodyEn.slice(0, 180)}</p>
+      </CardContent>
+    </Card>
   )
 }

@@ -1,8 +1,18 @@
-import { getAcademicPrograms } from '@/lib/data'
 import { cn } from '@novastar/shared-ui'
-import { metadata } from '@/lib/metadata'
+import { getAcademicPrograms } from '@/lib/data'
+import { ageRange, phaseBadge, PhaseIcon, programSlug } from '@/lib/programs'
+import { generateAcademicsMetadata } from '@/lib/metadata'
 
-export { metadata }
+/*
+ * Note the export shape: a plain object call, not
+ * `export { generateAcademicsMetadata as metadata }`. Aliasing a *function* to
+ * the name `metadata` makes Next treat it as the dynamic `generateMetadata` API
+ * and call it during prerendering, which fails the static export with
+ * `Cannot read properties of undefined (reading '$$typeof')`.
+ */
+export const metadata = generateAcademicsMetadata()
+
+type Program = Awaited<ReturnType<typeof getAcademicPrograms>>[number]
 
 export default async function AcademicsPage() {
   const programs = await getAcademicPrograms()
@@ -20,10 +30,10 @@ export default async function AcademicsPage() {
         </div>
       </section>
 
-      {/* Phase Overview */}
+      {/* Phase overview. Each section is anchored so the footer can deep-link. */}
       <section className="py-12 md:py-16">
         <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="space-y-12">
+          <div className="space-y-6">
             {programs.map((program) => (
               <ProgramSection key={program.id} program={program} />
             ))}
@@ -35,29 +45,26 @@ export default async function AcademicsPage() {
       <section className="py-12 md:py-16 bg-muted/30">
         <div className="container mx-auto px-4 sm:px-6 lg:px-8">
           <div className="max-w-3xl mx-auto text-center">
-            <h2 className="text-responsive-h2 font-heading text-primary mb-4">GES & NaCCA Aligned</h2>
+            <h2 className="text-responsive-h2 font-heading text-primary mb-4">GES &amp; NaCCA Aligned</h2>
             <p className="text-muted-foreground mb-6">
               Our curriculum follows the Ghana Education Service standards and is
               approved by the National Council for Curriculum and Assessment (NaCCA).
             </p>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
-              <div>
-                <div className="text-2xl font-bold text-primary">{programs.length}</div>
-                <div className="text-sm text-muted-foreground">Key Phases</div>
-              </div>
-              <div>
-                <div className="text-2xl font-bold text-primary">3</div>
-                <div className="text-sm text-muted-foreground">Terms Per Year</div>
-              </div>
-              <div>
-                <div className="text-2xl font-bold text-primary">3</div>
-                <div className="text-sm text-muted-foreground">Term Assessments</div>
-              </div>
-              <div>
-                <div className="text-2xl font-bold text-primary">100%</div>
-                <div className="text-sm text-muted-foreground">BECE Sci (2021)</div>
-              </div>
-            </div>
+            <dl className="grid grid-cols-2 gap-4 text-center md:grid-cols-4">
+              {[
+                { term: 'Academic Programs', value: programs.length },
+                { term: 'Terms Per Year', value: 3 },
+                { term: 'Term Assessments', value: 3 },
+                { term: 'BECE Sci (2021)', value: '100%' },
+              ].map((stat) => (
+                /* dt must precede dd, or assistive tech announces the value
+                   before the label ("3 Terms Per Year" -> "3, Terms"). */
+                <div key={stat.term}>
+                  <dt className="text-sm text-muted-foreground">{stat.term}</dt>
+                  <dd className="text-2xl font-bold text-primary">{stat.value}</dd>
+                </div>
+              ))}
+            </dl>
           </div>
         </div>
       </section>
@@ -65,46 +72,52 @@ export default async function AcademicsPage() {
   )
 }
 
-function ProgramSection({ program }: { program: Awaited<ReturnType<typeof getAcademicPrograms>>[0] }) {
-  const phaseColor = {
-    KINDERGARTEN: 'bg-green-100 text-green-800',
-    PRIMARY: 'bg-blue-100 text-blue-800',
-    JHS: 'bg-purple-100 text-purple-800',
-    SHS: 'bg-orange-100 text-orange-800',
-  }[program.phase] || 'bg-gray-100 text-gray-800'
-
+function ProgramSection({ program }: { program: Program }) {
   return (
-    <div className="border border-border rounded-lg p-4 md:p-6">
-      <div className="flex items-center gap-4 mb-4">
-        <div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center text-primary">
-          <span className="text-xl">★</span>
-        </div>
-        <div>
-          <h2 className="text-2xl font-heading font-semibold text-primary">{program.name}</h2>
-          <p className="text-sm text-muted-foreground">
-            {program.ageMin && program.ageMax ? `${program.ageMin}-${program.ageMax} months` : 'All ages'}
-          </p>
-          <span className={cn('inline-block mt-1 px-2 py-1 text-xs font-medium rounded-full', phaseColor)}>
-            {program.phase}
+    <article
+      id={programSlug(program.name)}
+      className="scroll-mt-24 rounded-xl border border-border bg-card p-6"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex items-center gap-4">
+          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-primary-soft">
+            <PhaseIcon phase={program.phase} className="h-6 w-6 text-primary" />
           </span>
+          <div>
+            <h2 className="font-heading text-2xl font-semibold text-primary">
+              {program.name}
+            </h2>
+            <p className="text-sm text-muted-foreground">
+              {ageRange(program.ageMin, program.ageMax)}
+            </p>
+          </div>
         </div>
+        <span
+          className={cn(
+            'inline-block rounded-full px-2 py-1 text-xs font-medium',
+            phaseBadge(program.phase)
+          )}
+        >
+          {program.phase}
+        </span>
       </div>
-      <p className="text-foreground/80 mb-4">Authentic Montessori education integrated with GES/NaCCA curriculum standards.</p>
 
-      {/* Subjects for this program */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
-        {program.subjects.slice(0, 8).map((subject: { name: string; id: string }) => (
-          <SubjectBadge key={subject.id} subject={subject.name} />
-        ))}
-      </div>
-    </div>
-  )
-}
+      <p className="mt-4 text-foreground/80">
+        Authentic Montessori education integrated with GES/NaCCA curriculum standards.
+      </p>
 
-function SubjectBadge({ subject }: { subject: string }) {
-  return (
-    <div className="bg-muted/50 px-3 py-1 rounded-md text-center">
-      {subject}
-    </div>
+      {program.subjects.length > 0 && (
+        <ul className="mt-4 flex flex-wrap gap-2">
+          {program.subjects.slice(0, 8).map((subject) => (
+            <li
+              key={subject.id}
+              className="rounded-md bg-muted px-3 py-1 text-sm text-foreground/80"
+            >
+              {subject.name}
+            </li>
+          ))}
+        </ul>
+      )}
+    </article>
   )
 }

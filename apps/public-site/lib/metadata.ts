@@ -1,11 +1,45 @@
 import { type Metadata } from 'next'
 
-export const metadata: Metadata = {
+export const SCHOOL_INFO = {
+  name: 'Novastar Montessori School',
+  shortName: 'Novastar',
+  location: 'Ayeduase New Site, K-5 Junction, Ayeduase Road, Kumasi, Ashanti Region, Ghana',
+  phone: '+233 24 493 5251',
+  /** Digits only, for tel: and wa.me links. */
+  phoneHref: '+233244935251',
+  whatsapp: '233244935251',
+  email: 'info@novastarmontissorischool.com',
+  established: 2016,
+  website: 'https://novastarmontissorischool.com',
+  description: 'Bringing quality care and experience to learning through authentic Montessori education that nurtures each child\'s natural curiosity, independence, and love for discovery.',
+  motto: 'Learning Through Discovery',
+  /**
+   * Single source of truth for opening hours. Pages must not restate these —
+   * a parent calling at the wrong hour because two sections disagreed is a
+   * worse failure than the duplication that caused it.
+   */
+  hours: [
+    { days: 'Monday – Friday', time: '7:30 AM – 5:30 PM' },
+    { days: 'Saturday', time: '9:00 AM – 1:00 PM' },
+    { days: 'Sunday', time: 'Closed' },
+  ],
+  /** Google Maps keyless embed. `output=embed` needs no API key. */
+  mapEmbedUrl:
+    'https://www.google.com/maps?q=Ayeduase+New+Site%2C+K-5+Junction%2C+Ayeduase+Road%2C+Kumasi%2C+Ashanti+Region%2C+Ghana&output=embed',
+  mapLinkUrl:
+    'https://www.google.com/maps/search/?api=1&query=Ayeduase+New+Site%2C+K-5+Junction%2C+Ayeduase+Road%2C+Kumasi%2C+Ashanti+Region%2C+Ghana',
+} as const
+
+export const baseMetadata: Metadata = {
+  /* Required so relative Open Graph / Twitter image URLs (e.g. `/og-image.png`)
+     resolve to absolute URLs. Without it Next falls back to
+     `http://localhost:3000` and every social share renders broken. */
+  metadataBase: new URL(SCHOOL_INFO.website),
   title: {
-    default: 'Novastar Montessori School — Quality Montessori Education in Kumasi, Ghana',
-    template: `%s | Novastar Montessori School`,
+    default: 'Novastar Montessori School — Authentic Montessori Education in Kumasi, Ghana',
+    template: '%s | Novastar Montessori School',
   },
-  description: 'Novastar Montessori School in Kumasi offers authentic Montessori education from Creche to JHS. Ghanaian curriculum + Montessori method. Apply online now.',
+  description: 'Novastar Montessori School in Kumasi offers authentic Montessori education from Crèche to Junior High. Ghanaian curriculum + Montessori method. Book a visit or apply online.',
   keywords: [
     'Montessori school',
     'Kumasi',
@@ -26,14 +60,16 @@ export const metadata: Metadata = {
   openGraph: {
     type: 'website',
     locale: 'en_GH',
-    url: 'https://novastarmontissorischool.com',
-    siteName: 'Novastar Montessori School',
+    url: SCHOOL_INFO.website,
+    siteName: SCHOOL_INFO.name,
     images: [
       {
-        url: '/og-image.jpg',
+        // PNG, not SVG: Facebook, X and LinkedIn do not render SVG previews, so
+        // the SVG version this replaced showed up as a blank card in every share.
+        url: '/og-image.png',
         width: 1200,
         height: 630,
-        alt: 'Novastar Montessori School',
+        alt: 'Novastar Montessori School — Campus and Classrooms',
       },
     ],
   },
@@ -47,73 +83,70 @@ export const metadata: Metadata = {
     telephone: false,
   },
   alternates: {
-    canonical: 'https://novastarmontissorischool.com',
+    canonical: SCHOOL_INFO.website,
   },
 }
 
-// School metadata from branding config
-export const SCHOOL_INFO = {
-  name: 'Novastar Montessori School',
-  location: 'Ayeduase New Site, K-5 Junction, Ayeduase Road, Kumasi, Ashanti Region, Ghana',
-  phone: '+233 24 493 5251',
-  email: 'info@novastarmontissorischool.com',
-  established: 2016,
-  website: 'https://novastarmontissorischool.com',
-  description: 'Bringing quality care and experience to learning through authentic Montessori education that nurtures each child\'s natural curiosity, independence, and love for discovery.',
-  motto: 'Learning Through Discovery',
-} as const
+export function generateHomeMetadata(): Metadata {
+  return {
+    ...baseMetadata,
+    title: 'Authentic Montessori Education — Crèche to Junior High',
+    description: 'Novastar Montessori School in Kumasi: mixed-age classrooms, 3-hour work cycles, GES-aligned curriculum. Book a classroom visit today.',
+  }
+}
 
-// Programs
-export const PROGRAMS = [
-  {
-    id: 'creche',
-    name: 'Creche & Nursery',
-    age: '6 months – 3 years',
-    description: 'A nurturing Montessori toddler environment designed to support separation anxiety and independence.',
-    icon: 'baby-carriage',
-  },
-  {
-    id: 'kindergarten',
-    name: 'Kindergarten',
-    age: '4-5 years (KG1, KG2)',
-    description: 'Practical life, sensorial, language, math, and cultural activities following Montessori principles.',
-    icon: 'book-open',
-  },
-  {
-    id: 'lower-primary',
-    name: 'Lower Primary',
-    age: '6-8 years (B1, B2, B3)',
-    description: 'Montessori materials integrated with Ghana Education Service standards for a strong foundation.',
-    icon: 'graduation-cap',
-  },
-  {
-    id: 'upper-primary',
-    name: 'Upper Primary',
-    age: '9-11 years (B4, B5, B6)',
-    description: 'Advanced Montessori materials with NaCCA standards, including BECE preparation.',
-    icon: 'school',
-  },
-  {
-    id: 'jhs',
-    name: 'Junior High School',
-    age: '12-15 years (JHS 1-3)',
-    description: 'Common Core Programme with BECE preparation, combining academic excellence with Montessori values.',
-    icon: 'award',
-  },
-] as const
+export function generateAboutMetadata(): Metadata {
+  return {
+    ...baseMetadata,
+    title: 'About Novastar Montessori',
+    description: 'Learn about Novastar Montessori School\'s history, philosophy, and approach to authentic Montessori education in Kumasi, Ghana.',
+  }
+}
 
-export type Program = (typeof PROGRAMS)[number]
+export function generateAcademicsMetadata(): Metadata {
+  return {
+    ...baseMetadata,
+    title: 'Academic Programs — Crèche to JHS',
+    description: 'Explore Novastar\'s Montessori programs: Crèche & Nursery, Kindergarten, Lower Primary, Upper Primary, and Junior High School. GES and NaCCA aligned.',
+  }
+}
 
-// Testimonials (placeholder until real ones provided)
-export const TESTIMONIALS = [
-  {
-    name: 'Parent of KG2 Student',
-    quote: 'Since starting at Novastar, my daughter has become so much more independent and confident. The teachers are amazing!',
-    relation: 'Parent',
-  },
-  {
-    name: 'Parent of B3 Student',
-    quote: 'The blend of Montessori and Ghanaian curriculum gives our children the best of both worlds. Practical learning through play is truly effective.',
-    relation: 'Parent',
-  },
-] as const
+export function generateAdmissionsMetadata(): Metadata {
+  return {
+    ...baseMetadata,
+    title: 'Admissions — Apply Online',
+    description: 'Apply to Novastar Montessori School. Simple online application for Crèche through Junior High. Admissions open for 2026/27 academic year.',
+  }
+}
+
+export function generateFeesMetadata(): Metadata {
+  return {
+    ...baseMetadata,
+    title: 'Fee Structure — Tuition & Payment Options',
+    description: 'Transparent fee structure for all Novastar Montessori programs. Term-based tuition, payment plans, and sibling discounts available.',
+  }
+}
+
+export function generateNewsMetadata(): Metadata {
+  return {
+    ...baseMetadata,
+    title: 'News & Updates',
+    description: 'Latest news, announcements, and updates from Novastar Montessori School. Term dates, events, and school achievements.',
+  }
+}
+
+export function generateEventsMetadata(): Metadata {
+  return {
+    ...baseMetadata,
+    title: 'Events & Calendar',
+    description: 'Upcoming events at Novastar Montessori: open mornings, parent workshops, school performances, and academic calendar dates.',
+  }
+}
+
+export function generateContactMetadata(): Metadata {
+  return {
+    ...baseMetadata,
+    title: 'Contact Us — Visit or Get in Touch',
+    description: 'Contact Novastar Montessori School. Phone, WhatsApp, email, and address. Schedule a visit Monday–Friday, 7:30am–5:30pm.',
+  }
+}

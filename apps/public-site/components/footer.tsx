@@ -1,94 +1,152 @@
-import { Button } from '@novastar/shared-ui'
+import Link from 'next/link'
+import { Clock, Mail, MapPin, Phone } from 'lucide-react'
+import { getAcademicPrograms, getContactInfo } from '@/lib/data'
+import { SCHOOL_INFO } from '@/lib/metadata'
+import { programSlug } from '@/lib/programs'
 
+/*
+ * Rendered from the server layout with no props, so it loads its own data.
+ * `getContactInfo` returns null when the branding row is missing (no DB at
+ * build time), hence the fallback — the footer must never blank out the
+ * contact details people rely on. The fallback mirrors SCHOOL_INFO so a
+ * parent never sees two different phone numbers on one page.
+ */
 
-interface FooterProps {
-  school: {
-    name: string
-    address: string
-    phone: string
-    email: string
-    hours: string
-  }
+const FALLBACK = {
+  name: SCHOOL_INFO.name,
+  address: SCHOOL_INFO.location,
+  phone: SCHOOL_INFO.phone,
+  email: SCHOOL_INFO.email,
+  hours: SCHOOL_INFO.hours
+    .map((entry) => `${entry.days}: ${entry.time}`)
+    .join(' · '),
 }
 
-export function Footer({ school }: FooterProps) {
+const QUICK_LINKS = [
+  { href: '/about', label: 'About Us' },
+  { href: '/academics', label: 'Academic Programs' },
+  { href: '/admissions', label: 'Admissions' },
+  { href: '/fees', label: 'Fee Structure' },
+  { href: '/news', label: 'News' },
+  { href: '/contact', label: 'Contact Us' },
+]
+
+export async function Footer() {
+  const [contact, programs] = await Promise.all([
+    getContactInfo(),
+    getAcademicPrograms(),
+  ])
+
+  const school = contact ?? FALLBACK
   const currentYear = new Date().getFullYear()
 
   return (
-    <footer className="bg-slate-900 text-slate-100 py-12">
+    <footer className="bg-primary-dark py-12 text-primary-soft">
       <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-8">
-          {/* School Info */}
+        <div className="mb-8 grid grid-cols-1 gap-8 md:grid-cols-4">
           <div>
-            <h3 className="font-heading text-xl font-bold text-white mb-4">
+            <h2 className="mb-4 font-heading text-xl font-bold text-primary-soft">
               {school.name}
-            </h3>
-            <p className="text-slate-300 text-sm mb-4">{school.address}</p>
-            <div className="text-slate-300 text-sm">
-              <p>📞 {school.phone}</p>
-              <p>📧 {school.email}</p>
-              <p>🕒 {school.hours}</p>
-            </div>
-          </div>
-
-          {/* Quick Links */}
-          <div>
-            <h4 className="font-semibold text-white mb-4">Quick Links</h4>
+            </h2>
+            {school.address && (
+              <p className="mb-4 flex items-start gap-2 text-sm">
+                <MapPin className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                <span>{school.address}</span>
+              </p>
+            )}
             <ul className="space-y-2 text-sm">
-              <FooterLink href="/about">About Us</FooterLink>
-              <FooterLink href="/academics">Academic Programs</FooterLink>
-              <FooterLink href="/admissions">Admissions</FooterLink>
-              <FooterLink href="/fees">Fee Structure</FooterLink>
-              <FooterLink href="/contact">Contact Us</FooterLink>
+              {school.phone && (
+                <li className="flex items-center gap-2">
+                  <Phone className="h-4 w-4 shrink-0" aria-hidden="true" />
+                  <a href={`tel:${school.phone.replace(/[^\d+]/g, '')}`} className="hover:text-primary-soft">
+                    {school.phone}
+                  </a>
+                </li>
+              )}
+              {school.email && (
+                <li className="flex items-center gap-2">
+                  <Mail className="h-4 w-4 shrink-0" aria-hidden="true" />
+                  <a href={`mailto:${school.email}`} className="hover:text-primary-soft">
+                    {school.email}
+                  </a>
+                </li>
+              )}
+              <li className="flex items-center gap-2">
+                <Clock className="h-4 w-4 shrink-0" aria-hidden="true" />
+                <span>{school.hours}</span>
+              </li>
             </ul>
           </div>
 
-          {/* Programs */}
-          <div>
-            <h4 className="font-semibold text-white mb-4">Programs</h4>
+          <nav aria-label="Footer">
+            <h2 className="mb-4 font-heading text-base font-semibold text-primary-soft">
+              Quick Links
+            </h2>
             <ul className="space-y-2 text-sm">
-              <FooterLink href="/academics/creche">Creche & Nursery</FooterLink>
-              <FooterLink href="/academics/kindergarten">Kindergarten</FooterLink>
-              <FooterLink href="/academics/lower-primary">Lower Primary</FooterLink>
-              <FooterLink href="/academics/upper-primary">Upper Primary</FooterLink>
-              <FooterLink href="/academics/jhs">Junior High School</FooterLink>
+              {QUICK_LINKS.map((link) => (
+                <li key={link.href}>
+                  <Link href={link.href} className="hover:text-primary-soft">
+                    {link.label}
+                  </Link>
+                </li>
+              ))}
             </ul>
-          </div>
+          </nav>
 
-          {/* Newsletter */}
+          {/*
+            Anchors into the single /academics page rather than per-program
+            routes, which do not exist. Both sides derive the slug from the
+            program name via `programSlug`, so the links stay in step with the
+            data.
+          */}
+          <nav aria-label="Programs">
+            <h2 className="mb-4 font-heading text-base font-semibold text-primary-soft">
+              Programs
+            </h2>
+            <ul className="space-y-2 text-sm">
+              {programs.length > 0 ? (
+                programs.map((program) => (
+                  <li key={program.id}>
+                    <Link
+                      href={`/academics#${programSlug(program.name)}`}
+                      className="hover:text-primary-soft"
+                    >
+                      {program.name}
+                    </Link>
+                  </li>
+                ))
+              ) : (
+                <li>
+                  <Link href="/academics" className="hover:text-primary-soft">
+                    Academic Programs
+                  </Link>
+                </li>
+              )}
+            </ul>
+          </nav>
+
           <div>
-            <h4 className="font-semibold text-white mb-4">Stay Updated</h4>
-            <p className="text-slate-300 text-sm mb-3">
-              Subscribe for news and updates
+            <h2 className="mb-4 font-heading text-base font-semibold text-primary-soft">
+              Stay Updated
+            </h2>
+            <p className="mb-4 text-sm">
+              School news, term dates and events as they happen.
             </p>
-            <form className="space-y-2">
-              <input
-                type="email"
-                placeholder="Enter your email"
-                className="w-full px-3 py-2 rounded-md bg-slate-800 border border-slate-700 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-primary"
-              />
-              <Button size="sm" className="w-full">Subscribe</Button>
-            </form>
+            <Link
+              href="/news"
+              className="inline-flex rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+            >
+              Read the latest news
+            </Link>
           </div>
         </div>
 
-        <div className="border-t border-slate-800 pt-6 text-center text-sm text-slate-400">
-          <p>&copy; {currentYear} {school.name}. All rights reserved.</p>
+        <div className="border-t border-primary-soft/20 pt-6 text-center text-sm">
+          <p>
+            &copy; {currentYear} {school.name}. All rights reserved.
+          </p>
         </div>
       </div>
     </footer>
-  )
-}
-
-function FooterLink({ href, children }: { href: string; children: React.ReactNode }) {
-  return (
-    <li>
-      <a
-        href={href}
-        className="text-slate-300 hover:text-white transition-colors"
-      >
-        {children}
-      </a>
-    </li>
   )
 }

@@ -3,56 +3,133 @@
 /*
  * Design tokens.
  *
- * These were previously declared as bare HSL channels, for example
- * `--color-primary: 107 91% 18%`. Tailwind v4 compiles `bg-primary` to
- * `background-color: var(--color-primary)`, and `107 91% 18%` is not a colour,
- * so every declaration using one was dropped by the browser and the whole
- * palette rendered as nothing. Measured before this change: body, headings and
- * all block backgrounds computed to transparent, and the only font in use was
- * the system fallback, because Poppins and Inter were named in the stacks but
- * never loaded.
+ * Namespace: Tailwind v4 requires `--color-*` for utilities like `bg-primary`.
+ * Values below are hex for brand colors, oklch for neutrals. Hex is simpler
+ * and more maintainable than oklch for brand colors.
  *
- * Values are oklch() so they are valid standalone colours, with hex listed for
- * reference. Contrast ratios against their intended pairings are recorded in
- * the report and verified by tools/measure-design.ts.
+ * Brand colors (from the school flier + concept designs):
+ * - Primary: #5F1989 (purple) — logo, headlines, primary buttons
+ * - Secondary: #44547C (slate) — icons, alternate details  
+ * - Wine: #772D42 — dividers, quote frames, small accents
+ * - Accent warm: #B94C25 (rust) — main CTA color, hover states
+ * - Accent earth: #9D953C (olive) — tags, tiny details
+ *
+ * Neutrals (oklch for perceptual uniformity):
+ * - Background: #FFF9FC (tinted toward purple)
+ * - Surface: #F6ECF3 (card backgrounds)
+ * - Foreground: #2A1B30 (body text)
+ * - Border: #E4D4E0 (hairlines)
+ *
+ * Dark mode: Primary shifts to a lighter purple for contrast.
  */
 @theme {
-  /* Brand: deep forest green, calm and growth-oriented, legible in white */
-  --color-primary: oklch(0.33 0.07 158);
-  --color-primary-foreground: oklch(0.99 0 0);
-  --color-primary-soft: oklch(0.95 0.03 158);
-  --color-primary-dark: oklch(0.26 0.06 158);
+  /* Brand: from the school flier, via concept color system */
+  --color-primary:      #5F1989;  /* Purple — logo, headlines, links */
+  --color-primary-dark: #43106B;
+  --color-primary-soft: #EFE0F6;
 
-  /* Warm terracotta, used for CTAs and highlights against the green */
-  --color-secondary: oklch(0.62 0.14 45);
-  --color-secondary-foreground: oklch(0.99 0 0);
+  --color-secondary:    #44547C;  /* Slate — icons, alternate section details */
 
-  /* Soft sage, for section backgrounds and quiet surfaces */
-  --color-accent: oklch(0.93 0.04 150);
-  --color-accent-foreground: oklch(0.28 0.05 158);
+  --color-wine:      #772D42;  /* Wine — dividers, small accents */
 
-  --color-background: oklch(0.995 0.004 95);
-  --color-surface: oklch(1 0 0);
-  --color-foreground: oklch(0.25 0.02 160);
-  --color-muted: oklch(0.96 0.008 100);
-  --color-muted-foreground: oklch(0.48 0.015 160);
+  --color-accent-warm:      #B94C25;  /* Rust — the one "pop" color, CTAs */
+  --color-accent-warm-dark: #8A391B;
+  --color-accent-warm-light: #F7E0D3;
 
-  --color-border: oklch(0.9 0.01 130);
-  --color-ring: oklch(0.62 0.14 45);
+  /* Olive — tags, small details.
+     Darkened from the flier's #9D953C: that value is only 3.09:1 on white, and
+     the SHS phase badge renders it at text-xs (WCAG 1.4.3 needs 4.5:1). */
+  --color-accent-earth:      #635C1E;
+
+  /* Neutrals — tinted toward primary purple */
+  --color-background: #FFF9FC;
+  --color-surface:   #F6ECF3;
+  --color-foreground: #2A1B30;
+  --color-muted:     #F2EEF6;
+  --color-muted-foreground: #5B4A58;
+
+  --color-border:       #E4D4E0;
+  --color-ring:      #B94C25;
+
+  /* Derived tokens.
+     `@novastar/shared-ui`'s Button variants reference accent / accent-foreground
+     / primary-foreground / input. Tailwind v4 silently drops utilities whose
+     token is absent, so an undefined token here means a button variant with no
+     hover state rather than a build error. Keep these in sync with the
+     neutrals above. */
+  --color-primary-foreground:   #FFFFFF;
+  --color-secondary-foreground: #FFFFFF;
+  --color-destructive-foreground: #FFFFFF;
+
+  --color-card:     #FFFFFF;
+  --color-popover:  #FFFFFF;
+  /* Form control borders. Not the hairline --color-border: that is 1.4:1, but
+     the border is the only affordance marking a field's hit area and WCAG
+     1.4.11 requires 3:1 for UI component boundaries. */
+  --color-input:    #8A6A80;
+
+  /* Text that conveys a validation error. --color-destructive is a background
+     tint (4.0:1 on white), which fails 1.4.3 for the 14px error messages that
+     are the only non-color cue that a field is invalid. */
+  --color-error-text: #A82018;
+
+  /* Hover fill for outline/ghost buttons. Tinted toward primary so it reads as
+     part of the palette instead of a generic grey. */
+  --color-accent:           #F2EEF6;
+  --color-accent-foreground: #2A1B30;
 
   --color-success: oklch(0.55 0.13 150);
   --color-destructive: oklch(0.52 0.19 27);
 
-  /* Display face is loaded in layout.tsx via next/font and exposed as
-     --font-heading; body copy uses --font-sans. Both are real webfonts now
-     rather than unresolvable names. */
-  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
-  --font-heading: var(--font-fraunces), ui-serif, Georgia, serif;
+  /* Font variables — see layout.tsx for actual font loading */
+  --font-sans:   var(--font-mulish), -apple-system, Arial, sans-serif;
+  --font-heading: var(--font-playfair), ui-serif, Georgia, serif;
 
   --radius-sm: 0.375rem;
   --radius-md: 0.625rem;
   --radius-lg: 1rem;
   --radius-xl: 1.5rem;
+}
+
+/* Dark mode variant (following the concept pattern) */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-background: #211526;
+    --color-foreground: #F6ECF3;
+    --color-muted-foreground: #C9B7C5;
+    --color-surface: #332039;
+    --color-border: #4A3350;
+    --color-primary: #B98CDD;
+    --color-primary-soft: #442B52;
+    --color-primary-foreground: #211526;
+    --color-card: #2A1B30;
+    --color-popover: #2A1B30;
+    --color-input: #7E5C74;
+    --color-accent: #442B52;
+    --color-accent-foreground: #F6ECF3;
+    --color-error-text: #FCA5A5;
+
+    /* Required, not optional: every heading resolves to --color-primary-dark
+       (see the base rules below) and the footer is bg-primary-dark. Leaving
+       this at its light-mode #43106B made every heading render at 1.27:1 on
+       the dark background — effectively invisible. */
+    --color-primary-dark: #B98CDD;
+
+    /* Tokens the light block defines that also need a dark value. Unset, they
+       keep light-mode values and read as bright patches on a dark page. */
+    --color-secondary: #9FB0D6;
+    --color-secondary-foreground: #1B1F2B;
+    --color-wine: #D99AAF;
+    --color-muted: #3A2541;
+    --color-accent-warm: #E08154;
+    --color-accent-warm-dark: #F0A183;
+    --color-accent-warm-light: #4A2317;
+    --color-accent-earth: #C3BC7A;
+    --color-ring: #E08154;
+    --color-destructive: #F87171;
+    --color-destructive-foreground: #2A1B30;
+    --color-success: #6EE7A8;
+  }
 }
 
 @layer base {

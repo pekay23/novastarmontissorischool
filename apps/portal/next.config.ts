@@ -105,20 +105,40 @@ const nextConfig: NextConfig = {
   // layout (apps/portal/server.js) and the workspace packages it links to.
   outputFileTracingRoot: repoRoot,
   async headers() {
-    const csp = [
-      "default-src 'self'",
-      "script-src 'self' 'unsafe-eval' 'unsafe-inline' 'blob:' https:",
-      "style-src 'self' 'unsafe-inline'",
-      "img-src 'self' blob: data: https:",
-      "font-src 'self' https: data:",
-      "connect-src 'self' https:",
-      "frame-ancestors 'none'",
-      "base-uri 'self'",
-      "form-action 'self'",
-    ].join('; ')
+    const isProd = process.env.NODE_ENV === 'production'
+    const isDev = !isProd
+
+    // Production CSP: strict, nonce-based — no unsafe-inline/unsafe-eval.
+    // Development CSP: permissive to allow HMR and local tooling.
+    // Adopted from Aerojet Academy's production CSP hardening (ADR-022).
+    const csp = isDev
+      ? [
+          "default-src 'self'",
+          "script-src 'self' 'unsafe-inline' 'unsafe-eval' 'blob:' https:",
+          "style-src 'self' 'unsafe-inline'",
+          "img-src 'self' blob: data: https:",
+          "font-src 'self' https: data:",
+          "connect-src 'self' https:",
+          "frame-ancestors 'none'",
+          "base-uri 'self'",
+          "form-action 'self'",
+        ].join('; ')
+      : [
+          "default-src 'self'",
+          "script-src 'self' 'blob:' https://js.stripe.com https://uploadthing.com https://www.google.com https://www.gstatic.com https://va.vercel-scripts.com",
+          "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+          "img-src 'self' blob: data: https://utfs.io https://*.ufs.sh https://uploadthing.com https://lh3.googleusercontent.com",
+          "font-src 'self' https: data: https://fonts.gstatic.com",
+          "connect-src 'self' https://api.stripe.com https://*.supabase.co wss://*.supabase.co https://*.uploadthing.com https://*.ufs.sh https://vitals.vercel-insights.com",
+          "frame-src 'self' blob: https://js.stripe.com https://hooks.stripe.com https://www.google.com/recaptcha/",
+          "frame-ancestors 'none'",
+          "base-uri 'self'",
+          "form-action 'self'",
+          "object-src 'none'",
+          'upgrade-insecure-requests',
+        ].join('; ')
 
     // CORS: lock origin to NEXT_PUBLIC_ORIGIN in production; allow same-origin in dev
-    const isProd = process.env.NODE_ENV === 'production'
     const allowedOrigin = isProd
       ? process.env.NEXT_PUBLIC_ORIGIN || ''
       : process.env.NEXT_PUBLIC_ORIGIN || '*'

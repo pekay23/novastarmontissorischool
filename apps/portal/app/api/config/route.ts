@@ -1,4 +1,4 @@
-﻿import { NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { DEFAULT_ENTITY_REGISTRY } from '@novastar/shared-types'
 import { hasPermission } from '@novastar/auth'
 import { getTenantContext } from '@/lib/tenant'

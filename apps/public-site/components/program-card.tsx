@@ -1,8 +1,10 @@
+import Link from 'next/link'
 import { Button } from '@novastar/shared-ui'
+import { cn } from '@novastar/shared-ui'
+import { ageRange, phaseBadge, PhaseIcon, programSlug } from '@/lib/programs'
 
 interface ProgramCardProps {
   program: {
-    id: string
     name: string
     phase: string
     ageMin: number | null
@@ -11,35 +13,31 @@ interface ProgramCardProps {
 }
 
 export function ProgramCard({ program }: ProgramCardProps) {
-  const ageText = program.ageMin && program.ageMax 
-    ? `${program.ageMin}-${program.ageMax} months`
-    : 'All ages'
-
-  const phaseColors = {
-    KINDERGARTEN: 'bg-green-100 text-green-800',
-    PRIMARY: 'bg-blue-100 text-blue-800',
-    JHS: 'bg-purple-100 text-purple-800',
-    SHS: 'bg-orange-100 text-orange-800',
-  }
-
-  const phaseColor = phaseColors[program.phase as keyof typeof phaseColors] || 'bg-gray-100 text-gray-800'
-
   return (
-    <div className="bg-white dark:bg-card rounded-lg shadow-sm border border-border overflow-hidden transition-transform hover:shadow-md">
-      <div className="aspect-video bg-gradient-to-br from-primary/10 to-secondary/10 flex items-center justify-center">
-        <div className="text-4xl text-primary/40">★</div>
+    <div className="overflow-hidden rounded-lg border border-border bg-card shadow-sm transition-shadow hover:shadow-md">
+      <div className="flex aspect-video items-center justify-center bg-gradient-to-br from-primary/10 to-secondary/10">
+        <PhaseIcon phase={program.phase} className="h-12 w-12 text-primary/40" />
       </div>
       <div className="p-6">
-        <h3 className="text-xl font-heading font-semibold text-primary mb-1">
+        <h3 className="mb-1 font-heading text-xl font-semibold text-primary">
           {program.name}
         </h3>
-        <p className="text-sm text-muted-foreground mb-2">{ageText}</p>
-        <span className={`inline-block px-2 py-1 text-xs font-medium rounded-full mb-4 ${phaseColor}`}>
+        <p className="mb-2 text-sm text-muted-foreground">
+          {ageRange(program.ageMin, program.ageMax)}
+        </p>
+        <span
+          className={cn(
+            'mb-4 inline-block rounded-full px-2 py-1 text-xs font-medium',
+            phaseBadge(program.phase)
+          )}
+        >
           {program.phase}
         </span>
-        <p className="text-foreground/80 mb-4">Authentic Montessori education integrated with GES/NaCCA curriculum standards.</p>
-        <Button variant="outline" size="sm" className="w-full">
-          Learn More
+        <p className="mb-4 text-foreground/80">
+          Authentic Montessori education integrated with GES/NaCCA curriculum standards.
+        </p>
+        <Button variant="outline" size="sm" className="w-full" asChild>
+          <Link href={`/academics#${programSlug(program.name)}`}>Learn More</Link>
         </Button>
       </div>
     </div>

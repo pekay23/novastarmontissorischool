@@ -2,7 +2,7 @@
 // Data fetching for public site - reads from database at build time
 
 import { prisma } from '@novastar/database'
-import { Branding, News, Event, ClassLevel, Subject, FeeCategory, PaymentMethodConfig } from '@prisma/client'
+import { Branding, News, Event, ClassLevel, Subject, PaymentMethodConfig } from '@prisma/client'
 
 // Type-safe fetchers with fallbacks for build-time when DB unavailable
 async function safeFetch<T>(fn: () => Promise<T>, fallback: T): Promise<T> {
@@ -201,17 +201,19 @@ export async function getFeatures(): Promise<Array<{ title: string; desc: string
   )
 }
 
-// Testimonials from ConfigEntity or defaults
+// Testimonials from ConfigEntity or defaults.
+// One constant, not a copy per safeFetch branch: the two branches had drifted,
+// so the site could show different text depending on whether a database
+// happened to be reachable at build time.
+const DEFAULT_TESTIMONIALS = [
+  { name: 'Parent of KG2 Student', relation: 'Parent', quote: 'Since starting at Novastar, my daughter has become so much more independent and confident. The teachers are amazing!' },
+  { name: 'Parent of B3 Student', relation: 'Parent', quote: 'The blend of Montessori and Ghanaian curriculum gives our children the best of both worlds.' },
+]
+
 export async function getTestimonials(): Promise<Array<{ name: string; relation: string; quote: string }>> {
   return safeFetch(
-    async () => [
-      { name: 'Parent of KG2 Student', relation: 'Parent', quote: 'Since starting at Novastar, my daughter has become so much more independent and confident. The teachers are amazing!' },
-      { name: 'Parent of B3 Student', relation: 'Parent', quote: 'The blend of Montessori and Ghanaian curriculum gives our children the best of both worlds.' },
-    ],
-    [
-      { name: 'Parent of KG2 Student', relation: 'Parent', quote: 'Since starting at Novastar, my daughter has become so much more independent and confident. The teachers are amazing!' },
-      { name: 'Parent of B3 Student', relation: 'Parent', quote: 'The blend of Montessori and Ghanaian curriculum gives our children the best of both worlds.' },
-    ]
+    async () => DEFAULT_TESTIMONIALS,
+    DEFAULT_TESTIMONIALS
   )
 }
 
@@ -227,19 +229,6 @@ export async function getCTAContent(): Promise<{ title: string; subtitle: string
   )
 }
 
-// Fee categories for fees page
-export async function getFeeCategories(): Promise<FeeCategory[]> {
-  return safeFetch(
-    async () => {
-      return await prisma.feeCategory.findMany({
-        where: { tenant: { code: 'novastar' } },
-        orderBy: { sortOrder: 'asc' },
-      })
-    },
-    []
-  )
-}
-
 // Payment methods for fees page
 export async function getPaymentMethods(): Promise<PaymentMethodConfig[]> {
   return safeFetch(
@@ -251,4 +240,67 @@ export async function getPaymentMethods(): Promise<PaymentMethodConfig[]> {
     },
     []
   )
+}
+
+/**
+ * Fee line items for the published fee page, grouped by class level.
+ *
+ * `FeeCategory` on its own carries no amounts — the money lives on
+ * `FeeLineItem`, which hangs off a `FeeStructure` scoped to a class level,
+ * academic year and optionally a term. So this walks active structures and
+ * flattens their line items, which is what the page actually needs to render a
+ * per-programme price list.
+ *
+ * Returns `[]` without a database, so the static export still builds.
+ */
+export async function getFeeSchedule(): Promise<FeeScheduleGroup[]> {
+  return safeFetch(
+    async () => {
+      const structures = await prisma.feeStructure.findMany({
+        where: { tenant: { code: 'novastar' }, isActive: true },
+        orderBy: [{ classLevel: { order: 'asc' } }, { name: 'asc' }],
+        include: {
+          classLevel: { select: { id: true, name: true, code: true, order: true } },
+          lineItems: {
+            orderBy: { sortOrder: 'asc' },
+            include: { category: { select: { name: true } } },
+          },
+        },
+      })
+
+      const byLevel = new Map<string, FeeScheduleGroup>()
+      for (const structure of structures) {
+        const level = structure.classLevel
+        let group = byLevel.get(level.id)
+        if (!group) {
+          group = {
+            levelId: level.id,
+            title: level.name,
+            subtitle: level.code,
+            items: [],
+          }
+          byLevel.set(level.id, group)
+        }
+        for (const line of structure.lineItems) {
+          group.items.push({
+            item: line.category.name,
+            // Decimal serialises to string; format once, here, so the page
+            // does not have to know about Prisma's decimal handling.
+            amount: `₵ ${Number(line.amount).toLocaleString('en-GH')}`,
+            mandatory: line.isMandatory,
+          })
+        }
+      }
+
+      return [...byLevel.values()]
+    },
+    []
+  )
+}
+
+export interface FeeScheduleGroup {
+  levelId: string
+  title: string
+  subtitle: string
+  items: Array<{ item: string; amount: string; mandatory: boolean }>
 }

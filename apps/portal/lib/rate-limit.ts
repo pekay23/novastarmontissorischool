@@ -1,15 +1,44 @@
 /**
- * In-memory sliding-window rate limiter.
+ * Rate limiting module — Redis-backed (Upstash) with in-memory fallback.
  *
- * NOTE: this store is per-process, so limits are not shared across instances.
- * In production, replace the Map with a shared store such as Redis or Upstash
- * so the limit is enforced globally.
+ * Adopted from Aerojet Academy's `lib/security/rate-limit.ts`,
+ * adapted for Novastar's existing in-memory implementation.
  */
 
-export interface RateLimitResult {
+import { Ratelimit } from '@upstash/ratelimit'
+import { Redis } from '@upstash/redis'
+
+// ---------------------------------------------------------------------------
+// Redis-backed rate limiter (production) with in-memory fallback (dev/CI)
+// ---------------------------------------------------------------------------
+
+const hasRedis = !!(process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN)
+
+const redis = hasRedis
+  ? new Redis({
+      url: process.env.UPSTASH_REDIS_REST_URL!,
+      token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+    })
+  : null
+
+// Pre-configured limiters for common auth operations
+const AUTH_LIMITS = {
+  login: { limit: 5, windowMs: 5 * 60 * 1000 },
+  register: { limit: 3, windowMs: 60 * 60 * 1000 },
+  forgotPassword: { limit: 3, windowMs: 60 * 60 * 1000 },
+  resetPassword: { limit: 5, windowMs: 60 * 60 * 1000 },
+  api: { limit: 100, windowMs: 60 * 1000 },
+}
+
+type AuthLimitKey = keyof typeof AUTH_LIMITS
+
+// ---------------------------------------------------------------------------
+// In-memory fallback (existing Novastar implementation)
+// ---------------------------------------------------------------------------
+
+interface RateLimitResult {
   success: boolean
   remaining: number
-  /** Epoch milliseconds at which the window frees up a slot. */
   reset: number
 }
 
@@ -18,141 +47,183 @@ interface StoreEntry {
   windowMs: number
 }
 
-const store = new Map<string, StoreEntry>()
-const MAX_STORE_SIZE = 10000
+const inMemoryMap = new Map<string, StoreEntry>()
+const MAX_MAP_SIZE = 10000
 
 let sweepTimer: ReturnType<typeof setTimeout> | null = null
 
-/**
- * Periodically prune entries whose hits have all expired, using each entry's
- * own windowMs rather than a process-wide one. Also enforces a soft ceiling
- * on total memory usage.
- */
 function scheduleSweep(windowMs: number): void {
-  if (sweepTimer !== null) return // already armed
+  if (sweepTimer !== null) return
   sweepTimer = setTimeout(() => {
     sweepTimer = null
     const now = Date.now()
-    for (const [key, entry] of store) {
-      if (entry.timestamps.every(t => t < now - entry.windowMs)) {
-        store.delete(key)
+    for (const [key, entry] of inMemoryMap) {
+      if (entry.timestamps.every((t) => t < now - entry.windowMs)) {
+        inMemoryMap.delete(key)
       }
     }
-    // Evict oldest entries if over the soft cap
-    if (store.size > MAX_STORE_SIZE) {
-      const sorted = [...store.entries()].sort((a, b) => a[1].timestamps[0] - b[1].timestamps[0])
-      const evictCount = Math.floor(MAX_STORE_SIZE * 0.2)
+    if (inMemoryMap.size > MAX_MAP_SIZE) {
+      const entries = [...inMemoryMap.entries()].sort((a, b) => a[1].timestamps[0] - b[1].timestamps[0])
+      const evictCount = Math.floor(MAX_MAP_SIZE * 0.2)
       for (let i = 0; i < evictCount; i++) {
-        store.delete(sorted[i]?.[0])
+        inMemoryMap.delete(entries[i]?.[0])
       }
     }
   }, windowMs + 1000)
-  // Don't keep the process alive waiting for the sweep timer.
   sweepTimer.unref?.()
 }
 
-function hits(identifier: string, windowMs: number, now: number): number[] {
+function inMemoryRateLimit(
+  key: string,
+  limit: number,
+  windowMs: number
+): RateLimitResult {
+  scheduleSweep(windowMs)
+  const now = Date.now()
   const cutoff = now - windowMs
-  const existing = store.get(identifier)
+  const existing = inMemoryMap.get(key)
   const recent = existing ? existing.timestamps.filter((t) => t > cutoff) : []
+
   if (recent.length === 0) {
-    store.delete(identifier)
+    inMemoryMap.delete(key)
   } else {
-    store.set(identifier, { timestamps: recent, windowMs })
+    inMemoryMap.set(key, { timestamps: recent, windowMs })
   }
-  return recent
+
+  if (recent.length >= limit) {
+    return { success: false, remaining: 0, reset: recent[0] + windowMs }
+  }
+
+  recent.push(now)
+  inMemoryMap.set(key, { timestamps: recent, windowMs })
+
+  return { success: true, remaining: limit - recent.length, reset: now + windowMs }
 }
 
+// ---------------------------------------------------------------------------
+// Upstash limiter cache
+// ---------------------------------------------------------------------------
+
+const limiterCache = new Map<string, Ratelimit>()
+
+function getUpstashLimiter(limit: number, windowMs: number): Ratelimit {
+  const cacheKey = `${limit}:${windowMs}`
+  let limiter = limiterCache.get(cacheKey)
+  if (!limiter) {
+    const windowSeconds = Math.ceil(windowMs / 1000)
+    const windowStr = `${windowSeconds} s` as `${number} s`
+    limiter = new Ratelimit({
+      redis: redis!,
+      limiter: Ratelimit.slidingWindow(limit, windowStr),
+      prefix: 'novastar:rl',
+    })
+    limiterCache.set(cacheKey, limiter)
+  }
+  return limiter
+}
+
+// ---------------------------------------------------------------------------
+// Public API (replaces Novastar's old checkRateLimit/rateLimit)
+// ---------------------------------------------------------------------------
+
+export async function rateLimitAsync(
+  key: string,
+  limit: number = 10,
+  windowMs: number = 60000
+): Promise<RateLimitResult> {
+  if (!redis) {
+    return inMemoryRateLimit(key, limit, windowMs)
+  }
+
+  const limiter = getUpstashLimiter(limit, windowMs)
+  const result = await limiter.limit(key)
+  return {
+    success: result.success,
+    remaining: result.remaining,
+    reset: result.reset,
+  }
+}
+
+/** Synchronous rate-limit check (uses in-memory map). */
 export function checkRateLimit(
   identifier: string,
   max: number,
   windowMs: number
 ): RateLimitResult {
-  scheduleSweep(windowMs)
-  const now = Date.now()
-  const recent = hits(identifier, windowMs, now)
-
-  if (recent.length >= max) {
-    return {
-      success: false,
-      remaining: 0,
-      reset: recent[0] + windowMs,
-    }
-  }
-
-  recent.push(now)
-  store.set(identifier, { timestamps: recent, windowMs })
-
-  return {
-    success: true,
-    remaining: max - recent.length,
-    reset: now + windowMs,
-  }
+  return inMemoryRateLimit(identifier, max, windowMs)
 }
 
-/** Build a checker bound to a fixed window size and attempt budget. */
 export function rateLimit(options: { windowMs: number; max: number }) {
   const { windowMs, max } = options
-  return (identifier: string): RateLimitResult =>
-    checkRateLimit(identifier, max, windowMs)
+  return (identifier: string): RateLimitResult => checkRateLimit(identifier, max, windowMs)
 }
 
-/** Clear the rate-limit store and cancel any pending sweep. Intended for tests only. */
-export function resetRateLimit(): void {
-  store.clear()
-  if (sweepTimer !== null) {
-    clearTimeout(sweepTimer)
-    sweepTimer = null
-  }
+/** Pre-configured auth rate limits. */
+export function rateLimitAuth(action: AuthLimitKey) {
+  const config = AUTH_LIMITS[action]
+  return inMemoryRateLimit(`auth:${action}`, config.limit, config.windowMs)
 }
 
-/**
- * Number of trusted proxy hops. When set to a non-negative integer, the last
- * N entries of `x-forwarded-for` are considered proxy-appended and ignored.
- * The trusted client IP is the entry at index `hops.length - 1 - N`.
- *
- * Defaults to 1 (one trusted edge proxy, e.g. Vercel/CDN). Set to 0 if the
- * app receives requests directly (no proxy in front), in which case both
- * `x-forwarded-for` and `x-real-ip` are treated as untrusted and the
- * identifier collapses to 'unknown'.
- */
+export function rateLimitByIP(ip: string, limit: number = 20, windowMs: number = 60000) {
+  return inMemoryRateLimit(`ip:${ip}`, limit, windowMs)
+}
+
+export function rateLimitByUser(userId: string, limit: number = 30, windowMs: number = 60000) {
+  return inMemoryRateLimit(`user:${userId}`, limit, windowMs)
+}
+
+export async function rateLimitByIPAsync(ip: string, limit: number = 20, windowMs: number = 60000) {
+  return rateLimitAsync(`ip:${ip}`, limit, windowMs)
+}
+
+// ---------------------------------------------------------------------------
+// IP extraction (preserved from Novastar)
+// ---------------------------------------------------------------------------
+
 const TRUSTED_PROXY_HOPS = Math.max(0, Number.parseInt(process.env.TRUSTED_PROXY_HOPS ?? '1', 10) || 0)
 
-/**
- * Extract a client identifier from the request.
- *
- * Security model:
- * - When TRUSTED_PROXY_HOPS > 0, the app is behind a trusted proxy that sets
- *   `x-real-ip` and/or appends to `x-forwarded-for`. We use the hop at index
- *   `hops.length - 1 - TRUSTED_PROXY_HOPS`, which is the client IP the proxy
- *   observed.
- * - When TRUSTED_PROXY_HOPS === 0 (direct exposure), both XFF and x-real-ip
- *   are client-settable and must be treated as untrusted. The identifier
- *   collapses to 'unknown' — a shared bucket — rather than silently trusting
- *   an attacker-controlled value.
- */
 export function clientIdentifier(request: Request): string {
   if (TRUSTED_PROXY_HOPS === 0) {
     return 'unknown'
   }
 
-  // Prefer x-real-ip: set by the trusted edge (Vercel, nginx real_ip module),
-  // not by the client. This is the most reliable signal.
   const realIp = request.headers.get('x-real-ip')
   if (realIp) {
     return realIp.trim()
   }
 
-  // Fall back to XFF: only trust it when there are more hops than the trusted
-  // proxy count. The client IP is the entry at index
-  // `hops.length - 1 - TRUSTED_PROXY_HOPS`.
   const forwarded = request.headers.get('x-forwarded-for')
   if (forwarded) {
-    const hops = forwarded.split(',').map(s => s.trim()).filter(Boolean)
+    const hops = forwarded.split(',').map((s) => s.trim()).filter(Boolean)
     if (hops.length > TRUSTED_PROXY_HOPS) {
       return hops[hops.length - 1 - TRUSTED_PROXY_HOPS]!
     }
   }
 
   return 'unknown'
+}
+
+export function getRateLimitInfo(key: string): { count: number; reset: number } | null {
+  const entry = inMemoryMap.get(key)
+  if (!entry) return null
+  const now = Date.now()
+  const resetTime = entry.timestamps[0] + entry.windowMs
+  if (now > resetTime) {
+    inMemoryMap.delete(key)
+    return null
+  }
+  return { count: entry.timestamps.length, reset: resetTime }
+}
+
+export function clearRateLimit(key: string): void {
+  inMemoryMap.delete(key)
+}
+
+/** Clear the rate-limit store and cancel any pending sweep. Intended for tests only. */
+export function resetRateLimit(): void {
+  inMemoryMap.clear()
+  if (sweepTimer !== null) {
+    clearTimeout(sweepTimer)
+    sweepTimer = null
+  }
 }

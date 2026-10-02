@@ -4,57 +4,41 @@ import Link from 'next/link'
 import Image from 'next/image'
 import { usePathname } from 'next/navigation'
 import { useState } from 'react'
-import { Menu, X, Globe } from 'lucide-react'
-import { cn } from '@novastar/shared-ui'
-import { Button } from '@novastar/shared-ui'
-
-interface NavItem {
-  label: string
-  href: string
-  key: string
-}
+import { Menu, X } from 'lucide-react'
+import { cn, Button } from '@novastar/shared-ui'
+import type { NavigationLabels } from '@/lib/navigation'
 
 interface HeaderProps {
-  navigation: {
-    home: string
-    about: string
-    academics: string
-    admissions: string
-    fees: string
-    facilities: string
-    news: string
-    events: string
-    gallery: string
-    contact: string
-    applyNow: string
-    languageToggle: string
-  }
+  navigation: NavigationLabels
 }
-
-const navItems: NavItem[] = [
-  { label: 'About', href: '/about', key: 'about' },
-  { label: 'Academics', href: '/academics', key: 'academics' },
-  { label: 'Admissions', href: '/admissions', key: 'admissions' },
-  { label: 'Fees', href: '/fees', key: 'fees' },
-  { label: 'News', href: '/news', key: 'news' },
-  { label: 'Events', href: '/events', key: 'events' },
-  { label: 'Contact', href: '/contact', key: 'contact' },
-]
 
 export default function Header({ navigation }: HeaderProps) {
   const pathname = usePathname()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
+  const navItems = [
+    { label: navigation.about, href: '/about', key: 'about' },
+    { label: navigation.academics, href: '/academics', key: 'academics' },
+    { label: navigation.admissions, href: '/admissions', key: 'admissions' },
+    { label: navigation.fees, href: '/fees', key: 'fees' },
+    { label: navigation.news, href: '/news', key: 'news' },
+    { label: navigation.events, href: '/events', key: 'events' },
+    { label: navigation.contact, href: '/contact', key: 'contact' },
+  ]
+
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex h-14 items-center justify-between">
-          {/* Logo */}
           <Link href="/" className="flex items-center space-x-2">
             <Image
               src="/logo.svg"
-              alt="Novastar Montessori School"
-              width={40}
+              /* Decorative: the wordmark in the SVG duplicates the "Novastar" text beside
+                 it, so naming the image makes the link read twice. */
+              alt=""
+              /* logo.svg is 340x80, so the intrinsic box must keep that 4.25:1
+                 ratio or next/image warns and distorts the mark. */
+              width={170}
               height={40}
               className="h-10 w-auto"
               priority
@@ -62,14 +46,14 @@ export default function Header({ navigation }: HeaderProps) {
             <span className="font-heading text-xl font-bold text-primary">Novastar</span>
           </Link>
 
-          {/* Desktop Navigation */}
-          <nav className="hidden md:flex items-center space-x-1">
+          <nav aria-label="Main" className="hidden md:flex items-center space-x-1">
             {navItems.map((item) => (
               <Link
                 key={item.key}
                 href={item.href}
+                aria-current={pathname === item.href ? 'page' : undefined}
                 className={cn(
-                  'px-3 py-2 rounded-md text-sm font-medium transition-colors',
+                  'rounded-md px-3 py-2 text-sm font-medium transition-colors',
                   pathname === item.href
                     ? 'bg-primary/10 text-primary'
                     : 'text-foreground hover:bg-accent hover:text-accent-foreground'
@@ -80,49 +64,42 @@ export default function Header({ navigation }: HeaderProps) {
             ))}
           </nav>
 
-          {/* Right side */}
-          <div className="flex items-center space-x-2">
-            {/* Language Toggle */}
-            <Button variant="ghost" size="sm">
-              <Globe className="h-4 w-4 mr-1" />
-              Twi
+          <div className="flex items-center gap-2">
+            <Button size="sm" className="hidden sm:inline-flex" asChild>
+              <Link href="/admissions">{navigation.applyNow}</Link>
             </Button>
 
-            {/* Apply Button */}
-            <Button size="sm" className="hidden sm:inline-flex">
-              {navigation.applyNow}
-            </Button>
-
-            {/* Mobile Menu Button */}
             <Button
               variant="ghost"
               size="icon"
               className="md:hidden"
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              onClick={() => setMobileMenuOpen((open) => !open)}
               aria-label={mobileMenuOpen ? 'Close menu' : 'Open menu'}
+              aria-expanded={mobileMenuOpen}
+              aria-controls="mobile-menu"
             >
               {mobileMenuOpen ? (
-                <X className="h-5 w-5" />
+                <X className="h-5 w-5" aria-hidden="true" />
               ) : (
-                <Menu className="h-5 w-5" />
+                <Menu className="h-5 w-5" aria-hidden="true" />
               )}
             </Button>
           </div>
         </div>
 
-        {/* Mobile Menu */}
         {mobileMenuOpen && (
-          <div className="md:hidden pb-4">
-            <nav className="flex flex-col space-y-1 px-2">
+          <div id="mobile-menu" className="md:hidden pb-4">
+            <nav aria-label="Mobile" className="flex flex-col gap-1 px-2">
               {navItems.map((item) => (
                 <Link
                   key={item.key}
                   href={item.href}
+                  aria-current={pathname === item.href ? 'page' : undefined}
                   className={cn(
-                    'px-3 py-2 rounded-md text-sm font-medium',
+                    'rounded-md px-3 py-2 text-sm font-medium transition-colors',
                     pathname === item.href
                       ? 'bg-primary/10 text-primary'
-                      : 'text-foreground hover:bg-accent'
+                      : 'text-foreground hover:bg-accent hover:text-accent-foreground'
                   )}
                   onClick={() => setMobileMenuOpen(false)}
                 >
@@ -131,7 +108,9 @@ export default function Header({ navigation }: HeaderProps) {
               ))}
             </nav>
             <div className="mt-3 px-2">
-              <Button className="w-full">{navigation.applyNow}</Button>
+              <Button className="w-full" asChild>
+                <Link href="/admissions">{navigation.applyNow}</Link>
+              </Button>
             </div>
           </div>
         )}

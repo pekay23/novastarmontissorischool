@@ -30,14 +30,28 @@ const API_RATE_LIMIT = 100
 const PAGE_RATE_LIMIT = 300
 const RATE_LIMIT_WINDOW_MS = 60_000
 
-// Role-based permissions
+// Role-based permissions — keys MUST match the DB Role.name values from
+// tools/seed/index.ts: HEADMASTER, ASSISTANT_HEAD, HEAD_TEACHER,
+// CLASSROOM_TEACHER, ACCOUNTANT, ADMIN_STAFF, PARENT.
+//
+// The old lowercase PERMISSIONS keys (admin, teacher, finance, bursar,
+// assistant-head, staff) never matched the DB role names, causing every
+// authenticated user to be redirected to /login (PERMISSIONS[role] → undefined).
 const PERMISSIONS: Record<string, string[]> = {
-  admin: ['*'], // All access
-  teacher: ['dashboard', 'students', 'attendance', 'grades', 'announcements', 'messages'],
-  finance: ['dashboard', 'fees', 'payments', 'reports', 'students'],
-  bursar: ['dashboard', 'fees', 'payments', 'reports'],
-  'assistant-head': ['dashboard', 'students', 'grades', 'attendance', 'announcements', 'reports'],
-  staff: ['dashboard', 'students_view', 'announcements'],
+  HEADMASTER: ['*'], // All portal access
+  ASSISTANT_HEAD: [
+    'dashboard', 'students', 'grades', 'attendance', 'announcements',
+    'reports', 'fees', 'payments', 'calendar', 'library', 'inventory',
+  ],
+  HEAD_TEACHER: [
+    'dashboard', 'students', 'grades', 'attendance', 'announcements', 'reports',
+  ],
+  CLASSROOM_TEACHER: [
+    'dashboard', 'students', 'grades', 'attendance',
+  ],
+  ACCOUNTANT: ['dashboard', 'fees', 'payments', 'reports', 'students'],
+  ADMIN_STAFF: ['dashboard', 'students_view', 'announcements'],
+  PARENT: ['dashboard', 'announcements', 'students'],
 }
 
 export const config = {
@@ -93,8 +107,10 @@ export default withAuth(
         return NextResponse.next()
       }
 
-      const sections = pathname.split('/').filter(Boolean)
-      const section = sections[1] || ''
+      const sections = isApi
+        ? pathname.split('/').slice(2).filter(Boolean) // /api/<resource> → [resource]
+        : pathname.split('/').filter(Boolean) // /<section>/... → [section, ...]
+      const section = sections[0] || ''
 
       const hasPerm = perms.some((p) => section === p || section.startsWith(p))
       if (!hasPerm) {

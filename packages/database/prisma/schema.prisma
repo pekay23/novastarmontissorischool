@@ -496,22 +496,42 @@ model AttendanceTaker {
 
 // ============ USERS & STAFF ============
 model User {
-  id            String    @id @default(cuid())
-  tenantId      String
-  tenant        Tenant    @relation(fields: [tenantId], references: [id])
-  schoolId      String?
-  school        School?   @relation(fields: [schoolId], references: [id])
-  email         String
-  emailVerified DateTime?
-  passwordHash  String?
-  name          String?
-  image         String?
-  roleId        String?
-  role          Role?     @relation(fields: [roleId], references: [id])
-  isActive      Boolean   @default(true)
-  lastLoginAt   DateTime?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id                   String    @id @default(cuid())
+  tenantId             String
+  tenant               Tenant    @relation(fields: [tenantId], references: [id])
+  schoolId             String?
+  school               School?   @relation(fields: [schoolId], references: [id])
+  email                String
+  emailVerified        DateTime?
+  passwordHash         String?
+  name                 String?
+  image                String?
+  roleId               String?
+  role                 Role?     @relation(fields: [roleId], references: [id])
+  isActive             Boolean   @default(true)
+  lastLoginAt          DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  // Security: account status (Aerojet Academy pattern, ADR-022)
+  status               UserStatus   @default(ACTIVE)
+  loginAttempts        Int?         @default(0)
+  lockedUntil          DateTime?
+
+  // Security: 2FA (TOTP)
+  twoFactorEnabled     Boolean      @default(false)
+  twoFactorSecret      String?      // encrypted at rest
+  settings             Json?        // lastTotpCounter, etc.
+
+  // Security: passkey bridge (Aerojet Academy pattern)
+  passkeyBridgeToken   String?      @unique
+  passkeyBridgeExpires DateTime?
+
+  // Security: password change enforcement
+  mustChangePassword   Boolean      @default(false)
+  passwordChangedAt    DateTime?
+  verifyToken          String?      @unique
+  verifyTokenExpires   DateTime?
 
   accounts            Account[]
   sessions            Session[]
@@ -530,9 +550,21 @@ model User {
   messages            Message[]
   notifications       Notification[]
   leaveRequests       LeaveRequest[]
-  auditLogs           AuditLog[]
+   auditLogs           AuditLog[]
+    passkeys            Passkey[]
+    passkeyChallenges   PasskeyChallenge[]
+     systemErrors        SystemError[]     @relation("ReportedErrors")
+    resolvedErrors      SystemError[]     @relation("ResolvedErrors")
 
-  @@unique([tenantId, email])
+   @@unique([tenantId, email])
+}
+
+// Security: account status enum (Aerojet Academy pattern, ADR-022)
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  ARCHIVED
+  DELETED
 }
 
 model Account {
@@ -1327,13 +1359,106 @@ model AuditLog {
   user      User?    @relation(fields: [userId], references: [id])
   action    String
   entity    String
-  entityId  String?
-  oldData   Json?
+   entityId  String?
+   description String?
+   oldData   Json?
   newData   Json?
   ipAddress String?
   userAgent String?
   createdAt DateTime @default(now())
 
-  @@index([tenantId, schoolId, createdAt])
-  @@index([tenantId, entity, entityId])
+  // Hash chain: each entry hashes the previous entry's hash for tamper evidence
+  previousHash String?
+  hash         String?
+
+   @@index([tenantId, schoolId, createdAt])
+   @@index([tenantId, entity, entityId])
+}
+
+model Passkey {
+  id           String    @id @default(cuid())
+  userId       String
+  user         User      @relation(fields: [userId], references: [id])
+  credentialId String    @unique
+  publicKey    String    // base64url-encoded DER public key
+  counter      BigInt    @default(0)
+  name         String?
+  transports   String[]  // 'usb' | 'nfc' | 'ble' | 'internal'
+  createdAt    DateTime  @default(now())
+  lastUsedAt   DateTime?
+}
+
+model PasskeyChallenge {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  challenge String   @unique // base64url-encoded challenge
+  type      String   // 'registration' | 'authentication'
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([expiresAt])
+}
+
+// ============ SYSTEM CONFIG / FEATURE FLAGS ============
+model SystemConfig {
+  id          String   @id @default(cuid())
+  tenantId    String
+  key         String
+  value       Json
+  description String?
+  category    String?
+  isEditable  Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @default(now()) @updatedAt
+
+  @@unique([tenantId, key])
+  @@index([tenantId, category])
+}
+
+// ============ SYSTEM ERROR LOGGING ============
+model SystemError {
+  id        String         @id @default(cuid())
+  tenantId  String
+  errorType String
+  message   String
+  stack     String?
+  endpoint  String?
+  userId    String?
+  user      User?          @relation("ReportedErrors", fields: [userId], references: [id])
+  severity  ErrorSeverity  @default(MEDIUM)
+  resolved  Boolean        @default(false)
+  resolvedAt DateTime?
+  resolvedBy String?
+  resolvedByUser User?      @relation("ResolvedErrors", fields: [resolvedBy], references: [id])
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @default(now()) @updatedAt
+
+  @@index([tenantId, severity, createdAt])
+  @@index([tenantId, resolved, createdAt])
+}
+
+enum ErrorSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum LogLevel {
+  DEBUG
+  INFO
+  WARN
+  ERROR
+  FATAL
+}
+
+model LogEntry {
+  id        String   @id @default(cuid())
+  level     LogLevel
+  message   String
+  context   Json?
+  createdAt DateTime @default(now())
+
+  @@index([level, createdAt])
 }

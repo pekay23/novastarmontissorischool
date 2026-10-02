@@ -165,7 +165,7 @@ Solid = declared. Dashed = imported but **not** declared.
 | UI-12 | **`lib/constants.ts` is a copy-paste of `lib/utils.ts`.** It re-declares `cn` verbatim and then appends the colour constants. `utils.ts` does `export * from './constants'`, so `cn` is exported twice from the same module graph. `lib/index.ts` re-exports both. Dead code that will confuse the next reader. | Medium | `src/lib/constants.ts:1-7` |
 | UI-13 | `DialogPortal` and `DialogOverlay` are defined in `dialog.tsx` but **not exported** from the barrel, so consumers cannot customise portal container or overlay. `Calendar` is likewise defined but not exported, so the date-picker's calendar is not customisable. | Medium | `index.ts` export list |
 | UI-14 | `export { DataTabled }` — the typo `DataTabled` is baked into the **public API**. | Medium | `index.ts:44`, `data-table.tsx:19` |
-| UI-15 | Mojibake in committed source. `// Design System â€” Exports` is a UTF-8 em-dash read as cp1252. Same corruption in `sync-engine/index.ts` and `eslint.config.mjs`. | Low | `index.ts:2` |
+| UI-15 | Mojibake in committed source. `// Design System — Exports` is a UTF-8 em-dash read as cp1252. Same corruption in `sync-engine/index.ts` and `eslint.config.mjs`. | Low | `index.ts:2` |
 | UI-16 | `'use client'` distribution (21 of 31) is broadly correct, but `alert.tsx`, `badge.tsx`, `breadcrumb.tsx`, `table.tsx` spread arbitrary DOM props including possible event handlers while remaining Server Components — a server caller passing `onClick` fails at render with no in-library error message. | Low | component headers |
 
 ### 3.3 Accessibility
