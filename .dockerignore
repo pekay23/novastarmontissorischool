@@ -1,3 +1,17 @@
+# Paths excluded from the Docker build context.
+#
+# Two rules here are load-bearing for cache correctness, not tidiness:
+#
+#   1. `.docker-cache/` must be excluded. docker-compose.yml writes BuildKit
+#      layer caches there; leaving it in the context would copy the cache into
+#      the image and change the `COPY . .` hash on every build, invalidating
+#      every layer after it.
+#   2. The workspace exclusions use `**/`. A bare `out` or `dist` matches only
+#      the repo root, so `apps/public-site/out` and `packages/*/dist` would still
+#      ship to the daemon and bust the source layer whenever a previous build's
+#      output changed.
+
+# --- dependencies and build output ---
 node_modules
 **/node_modules
 .next
@@ -5,27 +19,51 @@ node_modules
 .turbo
 **/.turbo
 out
+**/out
 dist
+**/dist
 build
+**/build
 coverage
+**/coverage
+*.tsbuildinfo
+next-env.d.ts
+
+# --- BuildKit layer cache (must stay excluded) ---
+.docker-cache
+
+# --- tests and reports (not needed to build or run the apps) ---
+e2e
+playwright.config.ts
 playwright-report
 test-results
+**/*.spec.ts
 
+# --- CI helper scripts (never imported by an app at build or runtime) ---
+scripts/ci
+
+# --- secrets: never bake these into an image ---
+.env
+.env.*
+!.env.example
+
+# --- VCS, CI and agent config ---
 .git
 .github
 .gitignore
 .dockerignore
 Dockerfile
-.dockerignore
+Dockerfile.*
+.teamcity
 
-.env
-.env.*
-!.env.example
+# --- tool and agent state ---
 .hermes
 .kilo
 .claude
 
+# --- docs ---
 docs/html
+**/*.md
+
+# --- misc ---
 *.log
-*.tsbuildinfo
-next-env.d.ts

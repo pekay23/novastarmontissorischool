@@ -114,4 +114,17 @@ export default defineConfig([
       'no-unused-vars': 'off',
     },
   },
+
+  // ── Non-Next workspaces ────────────────────────────────────────────────────
+  // `next/no-html-link-for-pages` throws "Pages directory cannot be found" when
+  // it runs somewhere without a pages/ or src/pages/ directory. That made
+  // `eslint .` fail with exit 1 in every package under packages/ and tools/,
+  // which in turn failed `bun run lint` for the whole repo. The rule only means
+  // something inside a Next app, so it is switched off everywhere else.
+  {
+    files: ['packages/**/*.{ts,tsx}', 'tools/**/*.{ts,tsx}', 'scripts/**/*.{ts,tsx}', '*.ts'],
+    rules: {
+      'next/no-html-link-for-pages': 'off',
+    },
+  },
 ])

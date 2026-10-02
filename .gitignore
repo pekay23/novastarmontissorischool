@@ -84,3 +84,19 @@ docs/technical/2026-10-01_*.md
 *.db-journal
 .css-check.css
 null
+
+# Playwright / E2E output.
+# Reports and traces capture rendered page content and can contain session
+# material, so these must never be committed by accident after a local run.
+playwright-report/
+test-results/
+
+# Docker BuildKit layer cache written by `bun run ci:docker` and by
+# docker-compose. Machine-local and large; .dockerignore excludes it from the
+# build context too, and it must be excluded here as well.
+.docker-cache/
+
+# Vercel CLI local state. `vercel pull` writes .vercel/project.json and
+# .vercel/.env.*.local containing the project's real environment variables, so
+# this directory is as sensitive as .env itself.
+.vercel/

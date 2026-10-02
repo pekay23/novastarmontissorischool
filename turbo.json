@@ -1,6 +1,12 @@
 {
   "$schema": "https://v2-11-5.turborepo.dev/schema.json",
-  "globalDependencies": [".env*", "packages/database/.env"],
+  "globalDependencies": [
+    ".env*",
+    "packages/database/.env",
+    "tsconfig.base.json",
+    "eslint.config.mjs",
+    "biome.json"
+  ],
   "tasks": {
     "dev": {
       "cache": false,

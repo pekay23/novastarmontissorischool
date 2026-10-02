@@ -1,0 +1,82 @@
+# syntax=docker/dockerfile:1.7
+
+# ============================================================================
+# Novastar Montessori - public-site image
+#
+# apps/public-site/next.config.ts sets `output: 'export'` with
+# `trailingSlash: true`, so the build produces a directory tree of static HTML
+# in apps/public-site/out (home/index.html, about/index.html, ...). There is no
+# server to run and no API surface -- `app/api/admissions/route.ts` was removed,
+# so any form on this site must POST elsewhere.
+#
+# `trailingSlash: true` is why the nginx config uses `try_files` with a
+# directory index rather than Next's usual SPA fallback to index.html.
+# ============================================================================
+
+ARG NODE_VERSION=22
+ARG BUN_VERSION=1.4.0
+ARG NGINX_VERSION=1.27
+
+# ----------------------------------------------------------------------------
+FROM node:${NODE_VERSION}-alpine AS deps
+
+ENV NEXT_TELEMETRY_DISABLED=1 \
+    NPM_CONFIG_UPDATE_NOTIFIER=false \
+    CI=true
+
+WORKDIR /app
+
+# Must be redeclared inside the stage: an ARG declared before the first FROM is
+# only a default for FROM lines and expands to empty here otherwise.
+ARG BUN_VERSION
+
+RUN apk add --no-cache libc6-compat python3 make g++ \
+    && npm install --global bun@${BUN_VERSION}
+
+COPY package.json bun.lock turbo.json tsconfig.base.json biome.json ./
+
+# --- workspace manifests (keep in sync with package.json "workspaces") ---
+COPY apps/portal/package.json         ./apps/portal/
+COPY apps/public-site/package.json    ./apps/public-site/
+COPY packages/auth/package.json       ./packages/auth/
+COPY packages/database/package.json   ./packages/database/
+COPY packages/domain/package.json     ./packages/domain/
+COPY packages/ghana-education/package.json ./packages/ghana-education/
+COPY packages/notifications/package.json ./packages/notifications/
+COPY packages/payments/package.json   ./packages/payments/
+COPY packages/shared-types/package.json ./packages/shared-types/
+COPY packages/shared-ui/package.json  ./packages/shared-ui/
+COPY packages/shared-utils/package.json ./packages/shared-utils/
+COPY packages/sync-engine/package.json ./packages/sync-engine/
+COPY tools/db-mirror/package.json     ./tools/db-mirror/
+# --- end workspace manifests ---
+
+RUN bun install --frozen-lockfile
+
+# ----------------------------------------------------------------------------
+FROM deps AS builder
+
+ARG NEXT_PUBLIC_ORIGIN
+ARG NEXT_PUBLIC_DOMAIN
+
+ENV NEXT_PUBLIC_ORIGIN=$NEXT_PUBLIC_ORIGIN \
+    NEXT_PUBLIC_DOMAIN=$NEXT_PUBLIC_DOMAIN
+
+COPY . .
+
+RUN bun run --cwd packages/database db:generate
+
+RUN bun run build:public
+
+# ----------------------------------------------------------------------------
+FROM nginx:${NGINX_VERSION}-alpine AS runner
+
+COPY --from=builder /app/apps/public-site/out /usr/share/nginx/html
+COPY apps/public-site/nginx.conf /etc/nginx/conf.d/default.conf
+
+EXPOSE 80
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
+  CMD wget --quiet --tries=1 --spider http://127.0.0.1/health || exit 1
+
+CMD ["nginx", "-g", "daemon off;"]

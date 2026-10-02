@@ -1,0 +1,103 @@
+# ============================================================================
+# Novastar Montessori - local Docker stack
+#
+# There is deliberately NO postgres container here, and that is not an
+# oversight:
+#
+#   packages/database/index.ts builds its Prisma client with
+#   `new PrismaNeon({ connectionString })` (@prisma/adapter-neon). That adapter
+#   speaks Neon's SQL-over-HTTP protocol, not the PostgreSQL wire protocol. A
+#   `postgres:16` container on tcp/5432 cannot answer it, so a local postgres
+#   service would be a container the application silently fails to talk to.
+#
+#   The portal therefore reaches the real Neon database over HTTPS using
+#   DATABASE_URL from .env.local. @prisma/adapter-pg IS already a dependency of
+#   packages/database, so supporting a truly local postgres is a small adapter
+#   switch -- but that is runtime database code, not CI/CD, so it is not done
+#   here.
+#
+# There is also NO redis container: apps/portal/lib/rate-limit.ts talks to
+# Upstash over its REST endpoint (UPSTASH_REDIS_REST_URL / _TOKEN) and falls
+# back to an in-process map when those are unset. A tcp/6379 container would be
+# ignored.
+#
+# Prisma migrations are NOT run here on purpose. The checked-in init migration
+# is bare CREATE TABLE/CREATE TYPE statements and the live Neon database was
+# built with `prisma db push`, so it has no _prisma_migrations table. Running
+# `migrate deploy` against it would fail partway and record a partially applied
+# migration. See the migration notes in .github/workflows/ci.yml.
+# ============================================================================
+
+name: novastar
+
+x-build-cache: &build-cache
+  # BuildKit layer cache on disk. `.docker-cache` must stay in .dockerignore or
+  # the cache directory is copied into the build context and busts every layer.
+  cache_from:
+    - type=local,src=.docker-cache/portal
+  cache_to:
+    - type=local,dest=.docker-cache/portal-new,mode=max
+
+services:
+  portal:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      <<: *build-cache
+      args:
+        # Inlined into the client bundle at build time -- not runtime values.
+        NEXT_PUBLIC_ORIGIN: ${NEXT_PUBLIC_ORIGIN:-http://localhost:3000}
+        NEXT_PUBLIC_DOMAIN: ${NEXT_PUBLIC_DOMAIN:-localhost:3000}
+        # Placeholders: next build mocks Prisma when DATABASE_URL is absent.
+        # Supply a real one here only if a prerender needs live rows.
+        NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-build-only-placeholder-not-a-real-secret}
+        NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
+    image: novastar/portal:local
+    container_name: novastar-portal
+    # Runtime config. The standalone server does not evaluate next.config.ts, so
+    # apps/portal/next.config.ts's loadRootEnv() does NOT apply inside the
+    # container -- everything must arrive via the environment.
+    env_file:
+      - path: .env.local
+        required: false
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      HOSTNAME: 0.0.0.0
+      NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/login',{redirect:'manual'}).then(r=>process.exit(r.status<500?0:1)).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  public-site:
+    build:
+      context: .
+      dockerfile: Dockerfile.public-site
+      cache_from:
+        - type=local,src=.docker-cache/public-site
+      cache_to:
+        - type=local,dest=.docker-cache/public-site-new,mode=max
+      args:
+        NEXT_PUBLIC_ORIGIN: ${NEXT_PUBLIC_ORIGIN:-http://localhost:8080}
+        NEXT_PUBLIC_DOMAIN: ${NEXT_PUBLIC_DOMAIN:-localhost:8080}
+    image: novastar/public-site:local
+    container_name: novastar-public-site
+    ports:
+      - "8080:80"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s

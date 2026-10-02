@@ -31,6 +31,7 @@ docs/
 
 ### For Technical Review
 - **[Master Technical Plan](technical/2026-09-24_000000-novastar-montessori-master-plan-final.md)** — Complete implementation plan with schemas, code structure, tech stack.
+- **[CI/CD Setup](technical/2026-10-02_193000-ci-cd-teamcity-docker-vercel.md)** — GitHub Actions, TeamCity, Docker and Vercel: who deploys what, build caching, and the secrets to supply.
 
 ### For UI/UX Review
 Open these `.excalidraw` files at **[excalidraw.com](https://excalidraw.com)** → "Open from file":
@@ -52,6 +53,23 @@ Open these `.excalidraw` files at **[excalidraw.com](https://excalidraw.com)** �
 | Business Plan | 1.0 | ✅ Ready for review | 2026-09-25 |
 | Technical Plan | 4.1 | ✅ Final | 2026-09-25 |
 | Wireframes | 1.0 | ✅ Complete | 2026-09-24 |
+| CI/CD Setup | 1.0 | ⚠️ Wired, Docker build unverified | 2026-10-02 |
+| ADR-017 (Fork Decision) | 1.0 | ✅ Accepted | 2026-10-01 |
+
+## SPS & Aerojet Academy Security Patterns
+
+| Document | Location |
+|----------|----------|
+| ADR-022 (Security Patterns) | `docs/adr/ADR-022-adopt-aerojet-security-patterns.md` |
+| NMS Core Business Rules | `docs/business/2026-10-02-nms-core-business-rules-onboarding.md` |
+| NMS Super-Admin Build Plan | `docs/technical/2026-10-02-build-plan-nms-super-admin.md` |
+| Phase 7 Security Audit (addendum) | `docs/audit-reports/phase7-security.md` (see "Aerojet Academy Security Patterns" section) |
+
+Security patterns from Aerojet Academy (`C:\Projects\aerojet-academy`) are
+being adopted for **both** Novastar and its SPS fork. This includes passkeys
+(WebAuthn), TOTP 2FA, account lockout, session revalidation, audit logging,
+rate limiting, and strict CSP/security headers. See ADR-022 for the full
+decision rationale and mapping table.
 
 ## Next Steps
 
