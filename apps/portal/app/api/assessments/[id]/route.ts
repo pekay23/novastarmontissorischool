@@ -1,9 +1,48 @@
 import { NextRequest, NextResponse } from 'next/server'
+import type { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { getTenantContext } from '@/lib/tenant'
 import { hasPermission } from '@novastar/auth'
+import {
+  resolveVisibility,
+  assessmentVisibilityWhere,
+  visibilityDeniesAll,
+  type Visibility,
+} from '@/lib/visibility'
 import { z } from 'zod'
 import { logError } from '@/lib/logger'
+
+/**
+ * The one predicate every handler in this file reads and writes through.
+ *
+ * `assessment:read` and `assessment:update` are held by `CLASSROOM_TEACHER` at
+ * `class` scope, so `{ id, schoolId, tenantId }` on its own is not a narrowing
+ * of them: it is every assessment in the school, student names and raw scores
+ * included. The row scope composes under `AND` rather than as a spread, so it
+ * cannot be silently overwritten by a later property on the same object, and an
+ * out-of-scope id simply matches nothing.
+ *
+ * Built once and shared by GET, PATCH and DELETE so the three cannot drift --
+ * the defect this exists to close was that the mutation handlers applied a
+ * weaker `where` than the read handler in the same file. Typed as the
+ * unique-where input, so a write carries the scope rather than merely trusting
+ * the read that preceded it.
+ */
+function scopedAssessmentWhere(input: {
+  id: string
+  schoolId: string
+  tenantId: string
+  visibility: Visibility
+}): Prisma.AssessmentWhereUniqueInput {
+  const where: Prisma.AssessmentWhereUniqueInput = {
+    id: input.id,
+    schoolId: input.schoolId,
+    tenantId: input.tenantId,
+  }
+  const scope = assessmentVisibilityWhere(input.visibility)
+  if (Object.keys(scope).length > 0) where.AND = [scope]
+  return where
+}
 
 // GET /api/assessments/[id] — Get a single assessment with scores
 export async function GET(
@@ -11,7 +50,8 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const { schoolId, tenantId, userId } = await getTenantContext()
+    const ctx = await getTenantContext()
+    const { schoolId, tenantId, userId } = ctx
     if (!schoolId) {
       return NextResponse.json({ error: 'No school assigned' }, { status: 400 })
     }
@@ -21,10 +61,16 @@ export async function GET(
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
+    // Row scope, same discipline as the list route and the scores route.
+    const visibility = await resolveVisibility(ctx, 'assessment:read')
+    if (visibilityDeniesAll(visibility)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
     const { id } = await params
 
     const assessment = await prisma.assessment.findFirst({
-      where: { id, schoolId, tenantId },
+      where: scopedAssessmentWhere({ id, schoolId, tenantId, visibility }),
       include: {
         classSubject: {
           include: {
@@ -74,7 +120,8 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const { schoolId, tenantId, userId } = await getTenantContext()
+    const ctx = await getTenantContext()
+    const { schoolId, tenantId, userId } = ctx
     if (!schoolId) {
       return NextResponse.json({ error: 'No school assigned' }, { status: 400 })
     }
@@ -90,16 +137,40 @@ export async function PATCH(
     if (!parseResult.success) {
       return NextResponse.json({ error: 'Invalid input', details: parseResult.error.issues }, { status: 400 })
     }
+    const data = parseResult.data
 
-    // Verify ownership
-    const existing = await prisma.assessment.findFirst({
-      where: { id, schoolId, tenantId },
-    })
+    // Publishing to parents is a different act from editing the assessment, and
+    // it is the consequential one: parents see the result, and DELETE then
+    // refuses while scores exist. `assessment:publish` was granted to
+    // CLASSROOM_TEACHER and asserted in the role matrix but checked nowhere, so
+    // the branch ran under `assessment:update` and the key was fiction. Refuse
+    // rather than ignore the field: a caller who cannot publish must not be
+    // answered 200 as though they had. Every role the seed gives
+    // `assessment:update` also gets `assessment:publish` (both are `academic`,
+    // non-delete), so this changes nothing until one of the two is delegated on
+    // its own -- which is the point.
+    if (
+      data.isPublished !== undefined &&
+      !(await hasPermission(userId, 'assessment:publish', tenantId, schoolId))
+    ) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
+    // Row scope. The old "Verify ownership" comment described an existence
+    // check: `{ id, schoolId, tenantId }` proves the row is in this school, not
+    // that the caller may touch it, so a classroom teacher could publish or
+    // unpublish any assessment in the school by id.
+    const visibility = await resolveVisibility(ctx, 'assessment:update')
+    if (visibilityDeniesAll(visibility)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
+    const where = scopedAssessmentWhere({ id, schoolId, tenantId, visibility })
+    const existing = await prisma.assessment.findFirst({ where })
     if (!existing) {
       return NextResponse.json({ error: 'Assessment not found' }, { status: 404 })
     }
 
-    const data = parseResult.data
     const updateData: Record<string, unknown> = {}
     if (data.name !== undefined) updateData.name = data.name
     if (data.description !== undefined) updateData.description = data.description
@@ -115,7 +186,7 @@ export async function PATCH(
     }
 
     const updated = await prisma.assessment.update({
-      where: { id, schoolId, tenantId },
+      where,
       data: updateData,
     })
 
@@ -138,7 +209,8 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const { schoolId, tenantId, userId } = await getTenantContext()
+    const ctx = await getTenantContext()
+    const { schoolId, tenantId, userId } = ctx
     if (!schoolId) {
       return NextResponse.json({ error: 'No school assigned' }, { status: 400 })
     }
@@ -148,10 +220,19 @@ export async function DELETE(
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
+    // Row scope under the delete key, same reason as PATCH. No seeded role that
+    // resolves to a limited scope holds `assessment:delete`, so this is inert
+    // today; it is the gate that would hold if one were.
+    const visibility = await resolveVisibility(ctx, 'assessment:delete')
+    if (visibilityDeniesAll(visibility)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
     const { id } = await params
 
+    const where = scopedAssessmentWhere({ id, schoolId, tenantId, visibility })
     const existing = await prisma.assessment.findFirst({
-      where: { id, schoolId, tenantId },
+      where,
       include: { scores: true },
     })
 
@@ -166,9 +247,7 @@ export async function DELETE(
       )
     }
 
-    await prisma.assessment.delete({
-      where: { id, schoolId, tenantId },
-    })
+    await prisma.assessment.delete({ where })
 
     return NextResponse.json({ success: true })
   } catch (error) {

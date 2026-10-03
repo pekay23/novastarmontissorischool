@@ -1,4 +1,4 @@
-generator client {
+﻿generator client {
   provider        = "prisma-client-js"
   previewFeatures = ["multiSchema"]
 }
@@ -314,6 +314,10 @@ model GradingScale {
   @@unique([tenantId, schoolId, name])
 }
 
+// A band of a grading scale. There is deliberately no grade-point column:
+// percentage is the unit a primary or JHS terminal report is read on and
+// `order` already sequences the bands. A 0-4 grade point existed only as an
+// artefact of the removed 0-4 average.
 model GradingLevel {
   id             String       @id @default(cuid())
   tenantId       String
@@ -324,7 +328,6 @@ model GradingLevel {
   label          String
   minScore       Int
   maxScore       Int
-  point          Decimal      @default(0) @db.Decimal(4, 2)
   color          String
   description    String?
   order          Int
@@ -807,7 +810,14 @@ model Assessment {
   name           String
   description    String?
   maxScore       Int                  @default(100)
-  weight         Decimal              @default(1) @db.Decimal(3, 2)
+  // Nullable, and that is the point: NULL means "this assessment carries no
+  // weight of its own" and the weight its AssessmentTypeConfig configures
+  // applies. The column was `NOT NULL DEFAULT 1`, which made that indistinguishable
+  // from a teacher explicitly choosing 1.00 for one assessment, so an explicit
+  // 1.00 was discarded in favour of the type default. There is no sentinel now:
+  // see `resolveAssessmentWeight` in @novastar/shared-utils, which is also why
+  // nothing may divide by this value without resolving it first.
+  weight         Decimal?             @db.Decimal(3, 2)
   assessmentDate DateTime
   dueDate        DateTime?
   isPublished    Boolean              @default(false)
@@ -876,7 +886,7 @@ model AttendanceStaff {
   staff      Staff            @relation(fields: [staffId], references: [id])
   date       DateTime
   status     AttendanceStatus
-  // See AttendanceStudent.period — the same nullable-period defect applied here.
+  // See AttendanceStudent.period â€” the same nullable-period defect applied here.
   period     String           @default("")
   markedById String?
   markedBy   User?            @relation(fields: [markedById], references: [id])
@@ -1469,7 +1479,7 @@ model SystemConfig {
   // absent row reads as 0: a created row must be distinguishable from no row at
   // all, or a first write would look like it matched a precondition of 0 that
   // was never issued. Every later write increments, and deleting the row returns
-  // the flag to 0 — which is how a reset invalidates another tab's precondition.
+  // the flag to 0 â€” which is how a reset invalidates another tab's precondition.
   version     Int      @default(0)
 
   @@unique([tenantId, key])

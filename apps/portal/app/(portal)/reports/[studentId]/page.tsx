@@ -13,6 +13,7 @@ import {
   Download, Printer,
 } from 'lucide-react'
 import Link from 'next/link'
+import { contrastTextColor } from '@novastar/shared-utils'
 
 interface ReportStudent {
   id: string
@@ -23,17 +24,76 @@ interface ReportStudent {
   classLevel: string | null
 }
 
+/**
+ * A band of the school's own grading scale, resolved from the percentage.
+ *
+ * Coloured by the band's own `color` and never by the size of the score: bands
+ * are school-configured and the seeded JHS scale runs the other way (grade 9 is
+ * the worst result), so magnitude-based colouring would mislabel half the school.
+ */
+interface ReportBand {
+  key: string
+  label: string
+  color: string
+  minScore: number
+  maxScore: number
+  description?: string | null
+}
+
+/** One continuous-assessment component, as the school configured it. */
+interface ReportWeightingComponent {
+  code: string | null
+  name: string
+  count: number
+  /** The relative weight each assessment of this type carried. */
+  weight: number
+  /** That weight as a share of the total, 0-100. */
+  weightShare: number | null
+  percentage: number | null
+}
+
+interface ReportWeighting {
+  rule: string
+  totalWeight: number
+  components: ReportWeightingComponent[]
+}
+
+interface ReportSubject {
+  subjectId: string
+  subjectName: string
+  subjectCode: string | null
+  /** 0-100, weighted within the subject. Null when the weights cannot be composed. */
+  percentage: number | null
+  gradedAssessments: number
+  band: ReportBand | null
+  /**
+   * Set when the band above is absent because the school's own scale cannot grade
+   * this percentage, not because no mark was recorded. Stated so the UI can name
+   * the misconfiguration instead of rendering a blank that reads as a missing
+   * score.
+   */
+  bandProblem: string | null
+  weighting: ReportWeighting
+}
+
 interface ReportAssessment {
   id: string
   name: string
   subject: string
   subjectCode: string | null
+  subjectId: string | null
   assessmentType: string
+  assessmentTypeCode: string | null
+  /** The weight this assessment contributed under, after the type fallback. */
   weight: number
+  /** Where that weight came from: the assessment, its configured type, or 1. */
+  weightSource: 'assessment' | 'assessment_type' | 'default'
   maxScore: number
   score: number | null
   percentage: number | null
+  /** The band key recorded when the score was graded. Audit only — see `band`. */
   grade: string | null
+  band: ReportBand | null
   isGraded: boolean
   assessmentDate: string
   term: string | null
@@ -43,17 +103,35 @@ interface ReportAssessment {
 interface ReportSummary {
   totalAssessments: number
   gradedAssessments: number
-  gpa: number | null
+  /** 0-100, weighted across every graded assessment. */
+  weightedPercentage: number | null
+  /** 0-100, mean of the per-subject percentages. */
   overallPercentage: number | null
+  weighting: ReportWeighting
+  subjectCount: number
   hasAttendanceData: boolean
+  /** 0-100. */
   attendanceRate: number | null
+  /** Distinct calendar days, not periods. */
   totalAttendanceDays: number
+  /** Credited days, fractional: one HALF_DAY credits 0.5. */
   presentDays: number
+  excusedDays: number
+}
+
+/** The school's own scale for this class, or null when none applies. */
+interface ReportGrading {
+  scaleId: string
+  name: string
+  description: string | null
+  appliesToLevels: string[]
 }
 
 interface AcademicReport {
   student: ReportStudent
+  grading: ReportGrading | null
   summary: ReportSummary
+  subjects: ReportSubject[]
   assessments: ReportAssessment[]
 }
 
@@ -67,18 +145,117 @@ interface ReportEnrollment {
   } | null
 }
 
-const gradeColors: Record<string, string> = {
-  A: 'bg-green-100 text-green-800',
-  B: 'bg-blue-100 text-blue-800',
-  C: 'bg-amber-100 text-amber-800',
-  D: 'bg-orange-100 text-orange-800',
-  F: 'bg-red-100 text-red-800',
+/**
+ * Credited attendance days, without a trailing ".00".
+ *
+ * `presentDays` is fractional by design — one `HALF_DAY` credits 0.5 — so a
+ * fixed two decimals would render a whole term as "62.00", and a bare
+ * `toFixed(1)` would render 62 as "62.0". Integers lose the decimal point,
+ * fractions keep one digit.
+ */
+const formatDays = (days: number): string =>
+  Number.isInteger(days) ? String(days) : days.toFixed(1)
+
+/**
+ * A band badge in the school's own colour, with text contrast decided from that
+ * colour rather than from the score.
+ */
+const BandBadge = ({
+  band,
+  problem = null,
+}: {
+  band: ReportBand | null
+  /** Set when the school's own scale is what withheld the band. */
+  problem?: string | null
+}) => {
+  if (!band) {
+    // A band withheld because the scale cannot grade is a fault in the school's
+    // configuration, not a missing score. Printing "-" would read as "no mark
+    // recorded" and leave a misconfigured scale invisible until a parent queries
+    // the result, so state the fault instead.
+    if (problem) {
+      return (
+        <span
+          className="inline-flex items-center rounded-full border border-destructive/40 bg-destructive/10 px-2.5 py-0.5 text-xs font-medium text-destructive"
+          title={problem}
+        >
+          <span className="sr-only">Band withheld, grading scale error: </span>
+          Scale error
+        </span>
+      )
+    }
+    return <span className="text-muted-foreground">-</span>
+  }
+  return (
+    <span
+      className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium"
+      style={{ backgroundColor: band.color, color: contrastTextColor(band.color) }}
+      title={`${band.minScore}-${band.maxScore}%`}
+    >
+      {band.label}
+    </span>
+  )
 }
 
-const gradeBadgeClass = (grade: string | null): string => {
-  if (!grade) return ''
-  const upper = grade.toUpperCase()
-  return gradeColors[upper] || 'bg-gray-100 text-gray-800'
+/**
+ * How a percentage was composed. A teacher who cannot see why a child got 72%
+ * has no reason to believe the 72%, so the weights and their shares are on the
+ * card rather than only inside the arithmetic.
+ */
+const WeightingBreakdown = ({
+  weighting,
+  caption,
+}: {
+  weighting: ReportWeighting
+  caption: string
+}) => {
+  if (weighting.components.length === 0) {
+    return <p className="text-xs text-muted-foreground">No graded assessments to weigh.</p>
+  }
+  return (
+    <div className="mt-2">
+      <p className="text-xs text-muted-foreground mb-1">{caption}</p>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead className="text-xs">Component</TableHead>
+            <TableHead className="text-xs text-right">Entries</TableHead>
+            <TableHead className="text-xs text-right">Weight</TableHead>
+            <TableHead className="text-xs text-right">Share</TableHead>
+            <TableHead className="text-xs text-right">%</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {weighting.components.map((component) => (
+            <TableRow key={component.code ?? component.name}>
+              <TableCell className="text-sm">{component.name}</TableCell>
+              <TableCell className="text-right text-sm text-muted-foreground">
+                {component.count}
+              </TableCell>
+              <TableCell className="text-right text-sm">{component.weight.toFixed(2)}</TableCell>
+              <TableCell className="text-right text-sm">
+                {component.weightShare !== null ? `${component.weightShare.toFixed(1)}%` : '-'}
+              </TableCell>
+              <TableCell className="text-right text-sm">
+                {component.percentage !== null ? `${component.percentage.toFixed(1)}%` : '-'}
+              </TableCell>
+            </TableRow>
+          ))}
+          <TableRow>
+            <TableCell className="text-sm font-medium">Total</TableCell>
+            <TableCell className="text-right text-sm text-muted-foreground">
+              {weighting.components.reduce((sum, c) => sum + c.count, 0)}
+            </TableCell>
+            <TableCell className="text-right text-sm font-medium">
+              {weighting.totalWeight.toFixed(2)}
+            </TableCell>
+            <TableCell className="text-right text-sm font-medium">100%</TableCell>
+            <TableCell className="text-right text-sm font-medium">-</TableCell>
+          </TableRow>
+        </TableBody>
+      </Table>
+    </div>
+  )
 }
 
 export default function ReportCardPage({ params }: { params: Promise<{ studentId: string }> }) {
@@ -203,7 +380,7 @@ export default function ReportCardPage({ params }: { params: Promise<{ studentId
     )
   }
 
-  const { student, summary, assessments } = report
+  const { student, grading, summary, subjects, assessments } = report
   const academicYear = assessments[0]?.academicYear || null
   const term = assessments[0]?.term || null
 
@@ -213,6 +390,11 @@ export default function ReportCardPage({ params }: { params: Promise<{ studentId
     acc[key].push(a)
     return acc
   }, {})
+
+  // The per-subject block carries the percentage, the school's band for it and
+  // how that percentage was composed. The API groups on subject *id*; the card
+  // is laid out by display name, so the two are joined here.
+  const subjectByName = new Map(subjects.map((s) => [s.subjectName, s]))
 
   return (
     <>
@@ -294,94 +476,159 @@ export default function ReportCardPage({ params }: { params: Promise<{ studentId
 
             <Separator className="my-4" />
 
-            {/* Summary / GPA / Attendance */}
-            <div className="grid grid-cols-4 gap-4 mb-6">
+            {/* Summary. Percentage is the figure a parent reads, so it leads and
+                every label names its unit and range. There is no grade-point
+                average here: this school reports percentages, and the label
+                under each percentage is the school's own band. */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
               <Card>
                 <CardHeader>
-                  <CardDescription>GPA</CardDescription>
-                  <CardTitle className="text-2xl">
-                    {summary.gpa !== null ? summary.gpa.toFixed(2) : '-'}
-                  </CardTitle>
-                </CardHeader>
-              </Card>
-              <Card>
-                <CardHeader>
-                  <CardDescription>Overall %</CardDescription>
-                  <CardTitle className="text-2xl">
+                  <CardDescription>Overall % (0&ndash;100)</CardDescription>
+                  <CardTitle className="text-3xl">
                     {summary.overallPercentage !== null
                       ? `${summary.overallPercentage.toFixed(1)}%`
                       : '-'}
                   </CardTitle>
-                </CardHeader>
-              </Card>
-              <Card>
-                <CardHeader>
-                  <CardDescription>Attendance</CardDescription>
-                  <CardTitle className="text-2xl">
-                    {summary.attendanceRate !== null
-                      ? `${summary.attendanceRate.toFixed(1)}%`
-                      : '-'}
-                  </CardTitle>
                   <p className="text-xs text-muted-foreground">
-                    {summary.presentDays}/{summary.totalAttendanceDays} days
+                    Mean of {summary.subjectCount} subject average
+                    {summary.subjectCount === 1 ? '' : 's'}
                   </p>
                 </CardHeader>
               </Card>
               <Card>
                 <CardHeader>
-                  <CardDescription>Assessments</CardDescription>
-                  <CardTitle className="text-2xl">
+                  <CardDescription>Weighted % (0&ndash;100)</CardDescription>
+                  <CardTitle className="text-3xl">
+                    {summary.weightedPercentage !== null
+                      ? `${summary.weightedPercentage.toFixed(1)}%`
+                      : '-'}
+                  </CardTitle>
+                  <p className="text-xs text-muted-foreground">
+                    Mean mark across every graded assessment
+                  </p>
+                </CardHeader>
+              </Card>
+              <Card>
+                <CardHeader>
+                  <CardDescription>Attendance (0&ndash;100)</CardDescription>
+                  <CardTitle className="text-3xl">
+                    {summary.attendanceRate !== null
+                      ? `${summary.attendanceRate.toFixed(1)}%`
+                      : '-'}
+                  </CardTitle>
+                  <p className="text-xs text-muted-foreground">
+                    {formatDays(summary.presentDays)}/{summary.totalAttendanceDays} days
+                    {summary.excusedDays > 0
+                      ? `, ${summary.excusedDays} excused`
+                      : ''}
+                  </p>
+                </CardHeader>
+              </Card>
+              <Card>
+                <CardHeader>
+                  <CardDescription>Assessments graded</CardDescription>
+                  <CardTitle className="text-3xl">
                     {summary.gradedAssessments}/{summary.totalAssessments}
                   </CardTitle>
+                  <p className="text-xs text-muted-foreground">
+                    Weighted by the school&rsquo;s assessment types
+                  </p>
                 </CardHeader>
               </Card>
             </div>
 
-            {/* Assessments Table — grouped by subject */}
-            <div className="space-y-6">
-              {Object.entries(groupedBySubject).map(([subjectName, subjectAssessments]) => (
-                <div key={subjectName}>
-                  <h3 className="text-lg font-semibold mb-2">{subjectName}</h3>
-                  <div className="overflow-x-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Assessment</TableHead>
-                          <TableHead>Type</TableHead>
-                          <TableHead className="text-right">Weight</TableHead>
-                          <TableHead className="text-right">Max</TableHead>
-                          <TableHead className="text-right">Score</TableHead>
-                          <TableHead className="text-right">%</TableHead>
-                          <TableHead>Grade</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {subjectAssessments.map((a) => (
-                          <TableRow key={a.id}>
-                            <TableCell>{a.name || a.assessmentType}</TableCell>
-                            <TableCell className="text-muted-foreground">{a.assessmentType}</TableCell>
-                            <TableCell className="text-right">{a.weight.toFixed(1)}</TableCell>
-                            <TableCell className="text-right">{a.maxScore}</TableCell>
-                            <TableCell className="text-right">
-                              {a.isGraded && a.score !== null ? a.score : '-'}
-                            </TableCell>
-                            <TableCell className="text-right">
-                              {a.percentage !== null ? `${a.percentage.toFixed(1)}%` : '-'}
-                            </TableCell>
-                            <TableCell>
-                              {a.grade ? (
-                                <Badge className={gradeBadgeClass(a.grade)}>
-                                  {a.grade}
-                                </Badge>
-                              ) : '-'}
-                            </TableCell>
+            {/* The school's scale, in the school's own words. Its description is
+                where a school states which direction its bands run, so the card
+                quotes it rather than assuming one. */}
+            {grading && (
+              <p className="text-xs text-muted-foreground mb-2">
+                <span className="font-medium">Bands: {grading.name}</span>
+                {grading.description ? ` — ${grading.description}` : ''}
+              </p>
+            )}
+
+            {/* How the weighted percentage was composed. */}
+            <WeightingBreakdown
+              weighting={summary.weighting}
+              caption="Overall mark by component"
+            />
+
+            {/* Per subject: the percentage, the school's band for it, and the
+                weights behind it. */}
+            <div className="space-y-6 mt-6">
+              {Object.entries(groupedBySubject).map(([subjectName, subjectAssessments]) => {
+                const subject = subjectByName.get(subjectName)
+                return (
+                  <div key={subjectName}>
+                    <div className="flex flex-wrap items-baseline gap-3 mb-2">
+                      <h3 className="text-lg font-semibold">{subjectName}</h3>
+                      <span className="text-sm text-muted-foreground">
+                        {subject?.percentage !== null && subject?.percentage !== undefined
+                          ? `${subject.percentage.toFixed(1)}%`
+                          : '-'}
+                      </span>
+                      {/* The scale fault is stated once, here, rather than repeated on
+                          every row of the table below: it is a property of the
+                          subject's bands, not of any single assessment. */}
+                      <BandBadge
+                        band={subject?.band ?? null}
+                        problem={subject?.bandProblem ?? null}
+                      />
+                    </div>
+                    <WeightingBreakdown
+                      weighting={subject?.weighting ?? summary.weighting}
+                      caption="Subject mark by component"
+                    />
+                    <div className="overflow-x-auto mt-2">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Assessment</TableHead>
+                            <TableHead>Type</TableHead>
+                            <TableHead className="text-right">Weight</TableHead>
+                            <TableHead className="text-right">Max</TableHead>
+                            <TableHead className="text-right">Score</TableHead>
+                            <TableHead className="text-right">%</TableHead>
+                            <TableHead>Band</TableHead>
                           </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
+                        </TableHeader>
+                        <TableBody>
+                          {subjectAssessments.map((a) => (
+                            <TableRow key={a.id}>
+                              <TableCell>{a.name || a.assessmentType}</TableCell>
+                              <TableCell className="text-muted-foreground">
+                                {a.assessmentType}
+                              </TableCell>
+                              <TableCell
+                                className="text-right"
+                                title={
+                                  a.weightSource === 'assessment'
+                                    ? 'Weight set on this assessment'
+                                    : a.weightSource === 'assessment_type'
+                                      ? 'Weight inherited from the assessment type this school configured'
+                                      : 'No weight configured: weighted equally'
+                                }
+                              >
+                                {a.weight.toFixed(2)}
+                              </TableCell>
+                              <TableCell className="text-right">{a.maxScore}</TableCell>
+                              <TableCell className="text-right">
+                                {a.isGraded && a.score !== null ? a.score : '-'}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                {a.percentage !== null ? `${a.percentage.toFixed(1)}%` : '-'}
+                              </TableCell>
+                              <TableCell>
+                                <BandBadge band={a.band} />
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           </CardContent>
         </Card>

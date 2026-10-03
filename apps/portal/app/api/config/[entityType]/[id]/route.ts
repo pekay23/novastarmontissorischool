@@ -1,23 +1,61 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
-import { ENTITY_CONFIG_MAP } from '@novastar/shared-types'
+import { ENTITY_CONFIG_MAP, type EntityApiConfig } from '@novastar/shared-types'
+import {
+  gradingScaleBandWriteRule,
+  type CrossRowWriteRule,
+} from '@novastar/shared-utils'
 import { hasPermission } from '@novastar/auth'
 import { getTenantContext } from '@/lib/tenant'
 import { logError } from '@/lib/logger'
+import { isUniqueConstraintViolation, duplicateResponse } from '@/lib/prisma-conflict'
 
 /**
- * Prisma `P2002` is a unique-constraint violation.
- *
- * A PATCH that moves a record onto a value another record already holds is an
- * expected client outcome for the entities behind this generic route with real
- * unique constraints — `timetable_entry`, `attendance_taker`, `timetable`,
- * `syllabus`. See the identical helper and rationale in
- * `config/[entityType]/route.ts`, which this file deliberately duplicates rather
- * than sharing across a new module.
+ * Cross-row rules, keyed by the kind a registry entry declares. Dispatched rather
+ * than branched: this file never names an entity, so the rule travels with the
+ * entity's definition in `ENTITY_CONFIG_MAP`. Typing the record by
+ * `CrossRowWriteRuleKind` makes a kind without a rule a compile error.
  */
-function isUniqueConstraintViolation(err: unknown): err is Prisma.PrismaClientKnownRequestError {
-  return err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002'
+const CROSS_ROW_WRITE_RULES: Record<
+  NonNullable<EntityApiConfig['writeValidation']>['kind'],
+  CrossRowWriteRule
+> = {
+  grading_scale_bands: gradingScaleBandWriteRule,
+}
+
+/**
+ * The one database read a cross-row rule needs: every band stored for a scale.
+ * Supplied here so the rule stays a pure function in @novastar/shared-utils,
+ * beside the validator the seed calls.
+ */
+const readScaleBands: Parameters<CrossRowWriteRule>[0]['readScaleBands'] =
+  async (gradingScaleId) =>
+    prisma.gradingLevel.findMany({
+      where: { gradingScaleId },
+      select: { id: true, key: true, minScore: true, maxScore: true },
+    })
+
+/**
+ * The problems a write would leave behind, judged against its siblings. Empty for
+ * every entity that declares no rule. Throws rather than returning when a declared
+ * kind has no registered rule: failing closed is the only safe answer for a check
+ * that exists because the unchecked path mis-grades.
+ */
+async function crossRowWriteProblems(
+  entityConfig: EntityApiConfig,
+  context: {
+    operation: 'create' | 'update' | 'delete'
+    write: Record<string, unknown>
+    existing: Record<string, unknown> | null
+  },
+): Promise<string[]> {
+  const kind = entityConfig.writeValidation?.kind
+  if (kind === undefined) return []
+  const rule = CROSS_ROW_WRITE_RULES[kind]
+  if (rule === undefined) {
+    throw new Error(`No cross-row write rule is registered for "${kind}"`)
+  }
+  return rule({ ...context, readScaleBands })
 }
 
 /**
@@ -149,6 +187,18 @@ export async function PATCH(
       return NextResponse.json({ error: 'Entity not found' }, { status: 404 })
     }
 
+    // Judged against the row as it would be stored — the patch merged over what
+    // is there now — so a partial patch that leaves this row's siblings unable to
+    // grade between them is refused instead of persisted.
+    const siblingProblems = await crossRowWriteProblems(entityConfig, {
+      operation: 'update',
+      write: validated.data as Record<string, unknown>,
+      existing: existing as Record<string, unknown>,
+    })
+    if (siblingProblems.length > 0) {
+      return NextResponse.json({ error: 'Validation failed', issues: siblingProblems }, { status: 400 })
+    }
+
     const updated = await model.update({
       where: scopeWhere,
       data: validated.data as Record<string, unknown>,
@@ -167,10 +217,7 @@ export async function PATCH(
       return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
     }
     if (isUniqueConstraintViolation(error)) {
-      return NextResponse.json(
-        { error: 'A record with these values already exists' },
-        { status: 409 },
-      )
+      return duplicateResponse()
     }
     logError('ConfigEntity', error)
     return NextResponse.json({ error: 'Failed to update entity' }, { status: 500 })
@@ -214,6 +261,19 @@ export async function DELETE(
     const isSystem = 'isSystem' in entityRecord && entityRecord.isSystem === true
     if (isSystem) {
       return NextResponse.json({ error: 'System entities cannot be deleted' }, { status: 403 })
+    }
+
+    // A delete is a write too, and for a scale's bands it is the destructive one:
+    // removing a middle band opens a hole that would silently hand every child in
+    // that range the band below it. Refused here, with the range named, so an
+    // admin widens a neighbour first.
+    const siblingProblems = await crossRowWriteProblems(entityConfig, {
+      operation: 'delete',
+      write: {},
+      existing: entityRecord,
+    })
+    if (siblingProblems.length > 0) {
+      return NextResponse.json({ error: 'Validation failed', issues: siblingProblems }, { status: 400 })
     }
 
     // Soft-delete: if the model has an `isActive` column, set it to false

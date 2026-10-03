@@ -7,9 +7,43 @@ import {
   resolveVisibility,
   classVisibilityWhere,
   visibilityDeniesAll,
+  type Visibility,
 } from '@/lib/visibility'
 import { z } from 'zod'
 import { logError } from '@/lib/logger'
+
+/**
+ * The one predicate every handler in this file reads and writes through.
+ *
+ * `class:edit` resolves to `class` for a classroom teacher, so a mutation
+ * handler that only filtered by `{ id, schoolId, tenantId }` would let a teacher
+ * rename or resize a class they do not teach. `class:delete` resolves the same
+ * way, though no seeded role that is scope-limited currently holds it (see the
+ * DELETE handler). The row scope therefore composes under `AND` rather than as a
+ * spread, so it cannot be silently overwritten by a later property on the same
+ * object.
+ *
+ * The return type is the unique-where input, so the same object can be handed to
+ * `findFirst`, `update` and `delete` — the write carries the scope rather than
+ * merely trusting the read that preceded it. This is built once and shared so
+ * GET, PATCH and DELETE cannot drift apart, which is how the mutation handlers
+ * came to hold a weaker `where` than the read handler in the same file.
+ */
+function scopedClassWhere(input: {
+  id: string
+  schoolId: string
+  tenantId: string
+  visibility: Visibility
+}): Prisma.ClassWhereUniqueInput {
+  const where: Prisma.ClassWhereUniqueInput = {
+    id: input.id,
+    schoolId: input.schoolId,
+    tenantId: input.tenantId,
+  }
+  const scope = classVisibilityWhere(input.visibility)
+  if (Object.keys(scope).length > 0) where.AND = [scope]
+  return where
+}
 
 const UpdateClassSchema = z.object({
   name: z.string().min(1).optional(),
@@ -39,14 +73,8 @@ export async function GET(
     }
 
     const { id } = await params
-    const where: Prisma.ClassWhereInput = {
-      id,
-      schoolId,
-      tenantId,
-      ...classVisibilityWhere(visibility),
-    }
     const cls = await prisma.class.findFirst({
-      where,
+      where: scopedClassWhere({ id, schoolId, tenantId, visibility }),
       include: {
         _count: { select: { students: true } },
         level: { select: { name: true } },
@@ -72,11 +100,20 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const { schoolId, tenantId, userId } = await getTenantContext()
+    const ctx = await getTenantContext()
+    const { schoolId, tenantId, userId } = ctx
     if (!schoolId) return NextResponse.json({ error: 'No school assigned' }, { status: 400 })
 
     // RBAC
     if (!(await hasPermission(userId, 'class:edit', tenantId, schoolId))) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
+    // Row scope under the key this write is gated on. `class:edit` resolves to
+    // `class` for a classroom teacher, so without this a teacher could edit any
+    // class in the school by id.
+    const visibility = await resolveVisibility(ctx, 'class:edit')
+    if (visibilityDeniesAll(visibility)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
@@ -87,7 +124,8 @@ export async function PATCH(
       return NextResponse.json({ error: 'Invalid input', details: parseResult.error.issues }, { status: 400 })
     }
 
-    const existing = await prisma.class.findFirst({ where: { id, schoolId, tenantId } })
+    const where = scopedClassWhere({ id, schoolId, tenantId, visibility })
+    const existing = await prisma.class.findFirst({ where })
     if (!existing) return NextResponse.json({ error: 'Class not found' }, { status: 404 })
 
     const data = parseResult.data
@@ -99,7 +137,7 @@ export async function PATCH(
     if (data.classTeacherId !== undefined) updateData.classTeacherId = data.classTeacherId ?? null
 
     const updated = await prisma.class.update({
-      where: { id, schoolId, tenantId },
+      where,
       data: updateData,
     })
     return NextResponse.json({ success: true, class: updated })
@@ -120,7 +158,8 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const { schoolId, tenantId, userId } = await getTenantContext()
+    const ctx = await getTenantContext()
+    const { schoolId, tenantId, userId } = ctx
     if (!schoolId) return NextResponse.json({ error: 'No school assigned' }, { status: 400 })
 
     // RBAC
@@ -128,11 +167,21 @@ export async function DELETE(
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
+    // Row scope under the delete key, same reason as PATCH. No seeded role that
+    // resolves to a limited scope holds `class:delete`, so this is inert today;
+    // it is the gate that would hold if one were, and a mutation handler that
+    // resolves no visibility is exactly the shape that made this a class.
+    const visibility = await resolveVisibility(ctx, 'class:delete')
+    if (visibilityDeniesAll(visibility)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
     const { id } = await params
-    const existing = await prisma.class.findFirst({ where: { id, schoolId, tenantId } })
+    const where = scopedClassWhere({ id, schoolId, tenantId, visibility })
+    const existing = await prisma.class.findFirst({ where })
     if (!existing) return NextResponse.json({ error: 'Class not found' }, { status: 404 })
 
-    await prisma.class.delete({ where: { id, schoolId, tenantId } })
+    await prisma.class.delete({ where })
     return NextResponse.json({ success: true })
   } catch (error) {
     if (error instanceof Error && error.name === 'UnauthorizedError') {

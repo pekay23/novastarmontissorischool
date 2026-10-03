@@ -12,6 +12,7 @@ import {
   PaymentMethodConfigSchema,
   AssessmentTypeConfigSchema,
   GradingLevelCreateSchema,
+  GradingLevelUpdateSchema,
   SyllabusSchema,
   PhaseEnum,
   TermStatusEnum,
@@ -32,6 +33,23 @@ import {
  *  stored as text and sort as text. */
 const HHMM_REGEX = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Expected HH:mm')
 
+/**
+ * Cross-row invariants, named rather than implemented here.
+ *
+ * `shared-types` cannot import the rule: `@novastar/shared-utils` is not one of
+ * its dependencies and adding that edge would put a database-facing, date-fns
+ * importing module underneath the lowest layer of the type graph. So the entry
+ * names a kind, `apps/portal`'s config route dispatches on it, and the rule lives
+ * beside the validator the seed already calls — one implementation, one place
+ * that decides what a valid scale is.
+ *
+ * Naming it here rather than branching on `entityType` in the route is the point:
+ * the constraint travels with the definition of the entity, so registering a new
+ * cross-row entity is a registry change and the route never learns the entity's
+ * name.
+ */
+export type CrossRowWriteRuleKind = 'grading_scale_bands'
+
 export type EntityApiConfig = {
   /** Entity type key (URL segment) */
   type: string
@@ -49,6 +67,12 @@ export type EntityApiConfig = {
   schoolScoped: boolean
   /** Whether the entity supports soft-delete via isActive flag */
   softDelete: boolean
+  /**
+   * Set when a single write to this entity cannot be valid on its own — the row
+   * is only meaningful beside its siblings. The generic route reads the kind,
+   * looks the rule up, and refuses the write when the rule returns problems.
+   */
+  writeValidation?: { kind: CrossRowWriteRuleKind }
 }
 
 /**
@@ -68,6 +92,10 @@ export const TENANT_ONLY_ENTITY_TYPES = new Set([
  * Used to implement soft-delete: DELETE sets isActive=false instead of hard-deleting.
  * Models with status enums (staff, student, parent) or `isSystem`/`status` fields
  * (role, news, event) are excluded — they have dedicated lifecycle management.
+ *
+ * A model with no `isActive` column must NOT appear here. Membership adds
+ * `isActive: true` to the generic route's where clause, so a member without the
+ * column 500s on every read, update and delete.
  */
 export const SOFT_DELETE_ENTITY_TYPES = new Set([
   'academic_year',
@@ -75,7 +103,6 @@ export const SOFT_DELETE_ENTITY_TYPES = new Set([
   'class_level',
   'subject',
   'grading_scale',
-  'grading_level',
   'fee_category',
   'fee_structure',
   'payment_method',
@@ -84,7 +111,6 @@ export const SOFT_DELETE_ENTITY_TYPES = new Set([
   'department',
   'house',
   'class',
-  'subject_level',
   'attendance_taker',
 ])
 
@@ -252,16 +278,32 @@ export const ENTITY_CONFIG_MAP: Record<string, EntityApiConfig> = {
     softDelete: false,
   },
 
+  // Continuous assessment is the school's own configuration: the components it
+  // records (classwork, homework, SBA, quizzes, projects, exams) and what each is
+  // worth live here, and this entry is what makes them editable at
+  // /settings/entities instead of frozen in the seed.
+  //
+  // `schoolScoped: true` because the whole point is per-school divergence —
+  // `@@unique([tenantId, schoolId, code])` lets each school retune a weight
+  // without touching a sibling school's.
+  //
+  // `softDelete: true` is the retirement mechanism, not a second one: DELETE
+  // writes `isActive = false` (see `SOFT_DELETE_ENTITY_TYPES`). Hard-deleting a
+  // type would orphan every `Assessment` that points at it, and a retired type
+  // still has to resolve for last term's report.
   assessment_type: {
     type: 'assessment_type',
     model: 'assessmentTypeConfig',
-    fields: ['id', 'code', 'name', 'defaultWeight', 'maxScore', 'isActive', 'appliesToLevels', 'createdAt', 'updatedAt'],
+    fields: ['id', 'code', 'name', 'description', 'defaultWeight', 'maxScore', 'isActive', 'appliesToLevels', 'createdAt', 'updatedAt'],
     createSchema: AssessmentTypeConfigSchema.omit({
       id: true, tenantId: true, schoolId: true, createdAt: true, updatedAt: true,
     }),
     updateSchema: z.object({
       code: z.string().optional(),
       name: z.string().optional(),
+      description: z.string().nullable().optional(),
+      // Relative weight, not a share: 0..1 per row, and the set is normalised at
+      // composition time rather than required to sum to 1.
       defaultWeight: z.number().min(0).max(1).optional(),
       maxScore: z.number().int().positive().optional(),
       isActive: z.boolean().optional(),
@@ -272,25 +314,31 @@ export const ENTITY_CONFIG_MAP: Record<string, EntityApiConfig> = {
     softDelete: true,
   },
 
+  // A band. `softDelete` is false because `GradingLevel` has no `isActive`
+  // column: the [id] route pushes `isActive: true` into the where clause for a
+  // soft-deletable type, so declaring a band soft-deletable made every read,
+  // update and delete of it ask Prisma for a field the model does not have —
+  // which is why a school could not edit its own bands. Deleting a band
+  // hard-deletes it; `Score.grade` keys that named it stop resolving, and the
+  // report resolves the band from the score's percentage against the school's
+  // current scale instead.
+  //
+  // `writeValidation` is the other half of that: a band is judged against every
+  // other band of its scale, because no single row can be checked for coverage.
+  // Without it, an admin retuning one boundary from 65 to 66 persisted a scale
+  // where 65% matched no band and every child scoring 65 was reported in the band
+  // below — and the seed's coverage check, the only one that existed, never ran
+  // again. POST, PATCH and DELETE all route through it.
   grading_level: {
     type: 'grading_level',
     model: 'gradingLevel',
-    fields: ['id', 'gradingScaleId', 'key', 'label', 'minScore', 'maxScore', 'point', 'color', 'description', 'order', 'createdAt', 'updatedAt'],
+    fields: ['id', 'gradingScaleId', 'key', 'label', 'minScore', 'maxScore', 'color', 'description', 'order', 'createdAt', 'updatedAt'],
     createSchema: GradingLevelCreateSchema,
-    updateSchema: z.object({
-      gradingScaleId: z.string().optional(),
-      key: z.string().optional(),
-      label: z.string().optional(),
-      minScore: z.number().int().min(0).max(100).optional(),
-      maxScore: z.number().int().min(0).max(100).optional(),
-      point: z.number().min(0).max(4).optional(),
-      color: z.string().optional(),
-      order: z.number().int().optional(),
-      description: z.string().nullable().optional(),
-    }),
-    allowedSortFields: ['order', 'key', 'minScore', 'point', 'createdAt'],
+    updateSchema: GradingLevelUpdateSchema,
+    allowedSortFields: ['order', 'key', 'minScore', 'createdAt'],
     schoolScoped: false,
-    softDelete: true,
+    softDelete: false,
+    writeValidation: { kind: 'grading_scale_bands' },
   },
 
   // Per-term topic lists for a class subject. `softDelete` is false because the

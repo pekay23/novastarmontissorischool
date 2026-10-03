@@ -21,10 +21,21 @@ export const ConfigurableEntitySchema = z.object({
 })
 
 // Entity Type Registry — defines what configurable entities exist
+//
+// Every `type` used by `DEFAULT_ENTITY_REGISTRY` MUST be a member of this enum.
+// It was not: `class`, `fee_line_item`, `staff`, `student` and `parent` were in
+// the registry but absent here, so `EntityRegistrySchema.parse(
+// DEFAULT_ENTITY_REGISTRY)` failed and only the trailing `as EntityDefinition[]`
+// cast on the registry hid it. An enum that does not contain the registry means
+// a consumer narrowing on `EntityType` cannot name a managed entity.
+// `EntityRegistrySchema.parse(DEFAULT_ENTITY_REGISTRY)` is pinned by a test in
+// apps/portal/tests/assessment-config-weights.test.ts so the next added entry
+// cannot silently reintroduce the gap.
 export const EntityTypeSchema = z.enum([
   'academic_year',
   'term',
   'class_level',
+  'class',
   'subject',
   'subject_level',
   'class_subject',
@@ -33,6 +44,7 @@ export const EntityTypeSchema = z.enum([
   'assessment_type',
   'fee_category',
   'fee_structure',
+  'fee_line_item',
   'payment_method',
   'role',
   'permission',
@@ -48,6 +60,9 @@ export const EntityTypeSchema = z.enum([
   'promotion_rule',
   'attendance_taker',
   'communication_template',
+  'staff',
+  'student',
+  'parent',
 ])
 
 export type EntityType = z.infer<typeof EntityTypeSchema>
@@ -327,7 +342,7 @@ export const DEFAULT_ENTITY_REGISTRY = [
     type: 'grading_scale',
     name: 'Grading Scale',
     namePlural: 'Grading Scales',
-    description: 'Configure grading systems (A-F, Exemplary, etc.)',
+    description: 'Grading scales: the percentage bands a school reports against. A band is presentation, not policy — the percentage is the mark',
     icon: 'scale',
     color: '#dc2626',
     fields: GradingScaleFields.map(f => EntityFieldSchema.parse(f)),
@@ -487,7 +502,7 @@ export const DEFAULT_ENTITY_REGISTRY = [
     type: 'grading_level',
     name: 'Grading Level',
     namePlural: 'Grading Levels',
-    description: 'Define grade levels within a scale (A, B, C...)',
+    description: 'The bands within a grading scale — percentage ranges with the label and colour this school reports them under',
     icon: 'award',
     color: '#ea580c',
     fields: [
@@ -509,15 +524,20 @@ export const DEFAULT_ENTITY_REGISTRY = [
     type: 'assessment_type',
     name: 'Assessment Type',
     namePlural: 'Assessment Types',
-    description: 'Configure assessment types (Classwork, Exam, SBA, etc.)',
+    description: "The school's own continuous assessment scheme: which components are recorded and what each is worth",
     icon: 'clipboard-check',
     color: '#7c3aed',
     fields: [
       { key: 'code', label: 'Code', type: 'string' as const, required: true },
       { key: 'name', label: 'Name', type: 'string' as const, required: true },
-      { key: 'defaultWeight', label: 'Default Weight', type: 'number' as const, default: 0.1 },
+      { key: 'description', label: 'Description', type: 'text' as const, helpText: 'How this school uses the component, e.g. "SBA 1 and SBA 2 are recorded separately; each carries the SBA weight."' },
+      // A relative weight, not a share of the terminal mark. The report composes
+      // a normalised weighted mean, so only the ratio between components matters
+      // and the set is not required to sum to 1 — it usually cannot, because SBA
+      // repeats three times in a term.
+      { key: 'defaultWeight', label: 'Default Weight (relative)', type: 'number' as const, default: 0.1, helpText: 'Relative weight of every assessment of this type. A new assessment inherits it unless it is given a weight of its own. The report normalises the weights it finds, so these need not add up to 1.' },
       { key: 'maxScore', label: 'Max Score', type: 'number' as const, default: 100 },
-      { key: 'isActive', label: 'Active', type: 'boolean' as const, default: true },
+      { key: 'isActive', label: 'Active', type: 'boolean' as const, default: true, helpText: 'Retire a type by turning this off. Past reports keep resolving against it; it simply stops being offered for new assessments.' },
       { key: 'appliesToLevels', label: 'Applies To Levels', type: 'multiselect' as const },
     ],
     allowAdd: true,
@@ -657,6 +677,11 @@ export const DEFAULT_ENTITY_REGISTRY = [
     filterFields: ['schoolId', 'classId', 'staffId', 'isActive'],
     hasPermissions: true,
   },
+// The cast is required: entries written with inline `fields` arrays are missing
+// the defaulted keys `EntityFieldSchema` fills in (`required`, `order`,
+// `isSystem`, `translatable`), so they are not assignable to `EntityDefinition[]`
+// as written. It must stay honest, so `EntityRegistrySchema.parse` on this array
+// is asserted by a test rather than assumed.
 ] as EntityDefinition[]
 
 export const CONFIG_VERSION = '1.0.0'

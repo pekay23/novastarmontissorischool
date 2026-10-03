@@ -1,7 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
+import type { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { getTenantContext } from '@/lib/tenant'
 import { hasPermission } from '@novastar/auth'
+import {
+  resolveVisibility,
+  assessmentVisibilityWhere,
+  studentVisibilityWhere,
+  visibilityDeniesAll,
+} from '@/lib/visibility'
 import { calculatePercentage, determineGrade } from '@novastar/shared-utils'
 import { z } from 'zod'
 import { logError } from '@/lib/logger'
@@ -12,7 +19,8 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const { schoolId, tenantId, userId } = await getTenantContext()
+    const ctx = await getTenantContext()
+    const { schoolId, tenantId, userId } = ctx
     if (!schoolId) {
       return NextResponse.json({ error: 'No school assigned' }, { status: 400 })
     }
@@ -22,19 +30,47 @@ export async function GET(
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
+    // Row scope. Same discipline as the list route: `assessment:read` is held
+    // by a classroom teacher at `class` scope, so school scope alone is not a
+    // narrowing of it.
+    const visibility = await resolveVisibility(ctx, 'assessment:read')
+    if (visibilityDeniesAll(visibility)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
     const { id: assessmentId } = await params
 
-    // Verify assessment belongs to this school/tenant
+    // Verify the assessment belongs to this school/tenant AND to a class the
+    // caller may read. Both clauses go under `AND` rather than being merged,
+    // so the visibility filter cannot be dropped by a later assignment.
+    const assessmentScope = assessmentVisibilityWhere(visibility)
     const assessment = await prisma.assessment.findFirst({
-      where: { id: assessmentId, schoolId, tenantId },
+      where: {
+        id: assessmentId,
+        schoolId,
+        tenantId,
+        ...(Object.keys(assessmentScope).length > 0 ? { AND: [assessmentScope] } : {}),
+      },
       select: { id: true, name: true, maxScore: true, isPublished: true },
     })
     if (!assessment) {
       return NextResponse.json({ error: 'Assessment not found' }, { status: 404 })
     }
 
+    // `Score` has no `schoolId` and no `classId`: it reaches a school through
+    // its `student`, and it reaches a class only through that student's
+    // enrolments. So `assessmentId` + `tenantId` alone returned EVERY score
+    // on the assessment — names and marks for students in classes the caller
+    // does not teach. Narrow to the students the caller may see with the
+    // shared `studentVisibilityWhere`, which already encodes the `own` and
+    // `class` branches, and compose it under `AND` with the school filter so
+    // neither can overwrite the other.
+    const clauses: Prisma.ScoreWhereInput[] = [{ student: { schoolId } }]
+    const studentScope = studentVisibilityWhere(visibility)
+    if (Object.keys(studentScope).length > 0) clauses.push({ student: studentScope })
+
     const scores = await prisma.score.findMany({
-      where: { assessmentId: assessmentId, tenantId },
+      where: { assessmentId, tenantId, AND: clauses },
       include: {
         student: { select: { firstName: true, lastName: true, studentId: true } },
         approvedBy: { select: { name: true } },
@@ -75,7 +111,8 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const { schoolId, tenantId, userId } = await getTenantContext()
+    const ctx = await getTenantContext()
+    const { schoolId, tenantId, userId } = ctx
     if (!schoolId) {
       return NextResponse.json({ error: 'No school assigned' }, { status: 400 })
     }
@@ -85,13 +122,30 @@ export async function POST(
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
+    // Row scope. `assessment:grade` is held by `CLASSROOM_TEACHER` at `class`
+    // scope, and the check below that the student is enrolled in the assessment's
+    // class only bounds the student relative to the assessment -- it says nothing
+    // about whether the caller may touch that assessment. Without this, any
+    // teacher could write a mark into any assessment in the school.
+    const visibility = await resolveVisibility(ctx, 'assessment:grade')
+    if (visibilityDeniesAll(visibility)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
     const { id: assessmentId } = await params
 
-    // Verify assessment belongs to this school/tenant. The class's level
-    // comes with the same join the student check already needs, so the
-    // grading-scale lookup below does not re-query the assessment.
+    // Verify the assessment belongs to this school/tenant AND to a class the
+    // caller may grade in, composed under `AND` so the scope cannot be dropped.
+    // The class's level comes with the same join the student check already
+    // needs, so the grading-scale lookup below does not re-query the assessment.
+    const assessmentScope = assessmentVisibilityWhere(visibility)
     const assessment = await prisma.assessment.findFirst({
-      where: { id: assessmentId, schoolId, tenantId },
+      where: {
+        id: assessmentId,
+        schoolId,
+        tenantId,
+        ...(Object.keys(assessmentScope).length > 0 ? { AND: [assessmentScope] } : {}),
+      },
       include: {
         classSubject: {
           include: {

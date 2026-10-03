@@ -39,13 +39,19 @@ const statusColors: Record<string, string> = {
   HALF_DAY: 'bg-purple-100 text-purple-800',
 }
 
-export default function AttendanceMarkPage({ params }: { params: Promise<{ id: string }> }) {
+/**
+ * The marking screen. Reached only with `?class=<id>&date=<YYYY-MM-DD>`
+ * (and optionally `&period=`) from the class picker or a teacher's
+ * course list — there is no route parameter, so a bare visit to
+ * `/attendance/mark` says so instead of rendering an empty roster.
+ */
+export default function AttendanceMarkPage() {
   const searchParams = useSearchParams()
   const { toast } = useToast()
   const confirm = useConfirm()
 
   const [classId, setClassId] = useState<string>('')
-  const [_attendanceId, setAttendanceId] = useState<string>('')
+  const [className, setClassName] = useState<string>('')
   const [date, setDate] = useState<string>('')
   const [period, setPeriod] = useState<string>('')
   const [students, setStudents] = useState<Student[]>([])
@@ -59,6 +65,8 @@ export default function AttendanceMarkPage({ params }: { params: Promise<{ id: s
       const res = await fetch(`/api/classes/${cid}`)
       if (res.ok) {
         const data = await res.json()
+        // The class itself carries the name the header shows.
+        setClassName(data.name || '')
         const studentsWithIds = (data.students || []).map((s: { id: string; firstName: string; lastName: string; studentId: string | null }) => ({
           id: s.id,
           firstName: s.firstName,
@@ -88,33 +96,9 @@ export default function AttendanceMarkPage({ params }: { params: Promise<{ id: s
     }
   }, [])
 
-  const fetchAttendanceRecord = useCallback(async (id: string) => {
-    setLoading(true)
-    try {
-      const res = await fetch(`/api/attendance/${id}`)
-      if (res.ok) {
-        const data = await res.json()
-        setClassId(data.classId)
-        setDate(data.date?.split('T')[0] || '')
-        setPeriod(data.period || '')
-        setRecords([data])
-        await fetchStudentsForClass(data.classId)
-      } else {
-        toast.error({ title: 'Error', description: 'Failed to load attendance record' })
-      }
-    } catch {
-      toast.error({ title: 'Error', description: 'Failed to load attendance record' })
-    } finally {
-      setLoading(false)
-    }
-  }, [toast, fetchStudentsForClass])
-
   // Parse params from URL
   useEffect(() => {
     const init = async () => {
-      const { id } = await params
-      setAttendanceId(id)
-
       // Extract classId and date from URL search params
       const urlClassId = searchParams.get('class')
       const urlDate = searchParams.get('date')
@@ -124,17 +108,14 @@ export default function AttendanceMarkPage({ params }: { params: Promise<{ id: s
       if (urlDate) setDate(urlDate)
       if (urlPeriod) setPeriod(urlPeriod)
 
-      // If we have an attendance ID, fetch that specific record
-      if (id) {
-        await fetchAttendanceRecord(id)
-      } else if (urlClassId && urlDate) {
-        // Otherwise fetch students for the class
+      if (urlClassId && urlDate) {
         await fetchStudentsForClass(urlClassId)
         await fetchExistingAttendance(urlClassId, urlDate, urlPeriod || undefined)
       }
+      setLoading(false)
     }
     init()
-  }, [params, searchParams, fetchAttendanceRecord, fetchStudentsForClass, fetchExistingAttendance])
+  }, [searchParams, fetchStudentsForClass, fetchExistingAttendance])
 
   /**
    * Upsert the in-progress state for one rostered student.
@@ -247,13 +228,13 @@ export default function AttendanceMarkPage({ params }: { params: Promise<{ id: s
   }
 
   interface MergedStudent extends Student {
-  status: 'PRESENT' | 'ABSENT' | 'LATE' | 'EXCUSED' | 'HALF_DAY'
-  period: string
-  notes: string
-  recordId: string | null
-}
+    status: 'PRESENT' | 'ABSENT' | 'LATE' | 'EXCUSED' | 'HALF_DAY'
+    period: string
+    notes: string
+    recordId: string | null
+  }
 
-// Merge students with their attendance records
+  // Merge students with their attendance records
   const mergedStudents: MergedStudent[] = students.map(student => {
     const record = records.find(r => r.studentId === student.id)
     return {
@@ -268,6 +249,8 @@ export default function AttendanceMarkPage({ params }: { params: Promise<{ id: s
   const filteredStudents = mergedStudents.filter(s =>
     `${s.firstName} ${s.lastName} ${s.studentId || ''}`.toLowerCase().includes(search.toLowerCase())
   )
+
+  const ready = Boolean(classId && date)
 
   if (loading) {
     return (
@@ -295,7 +278,12 @@ export default function AttendanceMarkPage({ params }: { params: Promise<{ id: s
           <Link href="/attendance">&larr; Back to Attendance</Link>
         </Button>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => handleMarkAll('PRESENT')} disabled={saving}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => handleMarkAll('PRESENT')}
+            disabled={saving || students.length === 0}
+          >
             Mark All Present
           </Button>
           <Button className="gap-2" onClick={handleSave} disabled={saving || students.length === 0}>
@@ -312,140 +300,154 @@ export default function AttendanceMarkPage({ params }: { params: Promise<{ id: s
             Mark Attendance
           </CardTitle>
           <CardDescription>
-            Class: {classId} • Date: {date ? new Date(date).toLocaleDateString() : '—'}{period && ` • Period: ${period}`}
+            Class: {className || classId || '—'} • Date: {date ? new Date(date).toLocaleDateString() : '—'}{period && ` • Period: ${period}`}
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="relative mb-4">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <input
-              type="text"
-              placeholder="Search students..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-10 pr-4 py-2 border rounded-md w-full max-w-xs"
-            />
-          </div>
+          {!ready ? (
+            <p className="text-sm text-muted-foreground">
+              Choose a class from the attendance overview to mark attendance for a date.
+            </p>
+          ) : (
+            <>
+              <div className="relative mb-4">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <input
+                  type="text"
+                  placeholder="Search students..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="pl-10 pr-4 py-2 border rounded-md w-full max-w-xs"
+                  aria-label="Search students"
+                />
+              </div>
 
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-8">
-                    <input
-                      type="checkbox"
-                      checked={filteredStudents.every(s => s.status === 'PRESENT') && filteredStudents.length > 0}
-                      onChange={(e) => handleMarkAllFromCheckbox(e.target.checked)}
-                      className="rounded"
-                    />
-                  </TableHead>
-                  <TableHead>Student</TableHead>
-                  <TableHead>Student ID</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Period</TableHead>
-                  <TableHead>Notes</TableHead>
-                  <TableHead className="w-12" />
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredStudents.map((student) => (
-                  <TableRow key={student.id}>
-                    <TableCell>
-                      <input
-                        type="checkbox"
-                        checked={student.status === 'PRESENT'}
-                        onChange={(e) => {
-                          const newStatus = e.target.checked ? 'PRESENT' : 'ABSENT'
-                          upsertRecord(student.id, { status: newStatus })
-                        }}
-                        className="rounded"
-                      />
-                    </TableCell>
-                    <TableCell className="font-medium">
-                      {student.firstName} {student.lastName}
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {student.studentId || '-'}
-                    </TableCell>
-                    <TableCell>
-                      <select
-                        value={student.status}
-                        onChange={(e) => {
-                          upsertRecord(student.id, { status: e.target.value as 'PRESENT' | 'ABSENT' | 'LATE' | 'EXCUSED' | 'HALF_DAY' })
-                        }}
-                        className={`w-full px-2 py-1 border rounded ${statusColors[student.status]}`}
-                      >
-                        <option value="PRESENT">Present</option>
-                        <option value="ABSENT">Absent</option>
-                        <option value="LATE">Late</option>
-                        <option value="EXCUSED">Excused</option>
-                        <option value="HALF_DAY">Half Day</option>
-                      </select>
-                    </TableCell>
-                    <TableCell>
-                      <Input
-                        value={student.period}
-                        onChange={(e) => {
-                          upsertRecord(student.id, { period: e.target.value })
-                        }}
-                        placeholder="Period"
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Input
-                        value={student.notes}
-                        onChange={(e) => {
-                          upsertRecord(student.id, { notes: e.target.value })
-                        }}
-                        placeholder="Notes"
-                      />
-                    </TableCell>
-                    <TableCell>
-                      {student.recordId && (
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-8 w-8">
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem
-                              onClick={() => handleDelete({
-                                id: student.recordId!,
-                                studentId: student.id,
-                                student: { id: student.id, firstName: student.firstName, lastName: student.lastName, studentId: student.studentId },
-                                status: student.status,
-                                period: student.period,
-                                notes: student.notes,
-                                markedBy: null,
-                                createdAt: new Date().toISOString(),
-                              })}
-                              className="text-red-600 focus:text-red-600"
-                            >
-                              Delete
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-8">
+                        <input
+                          type="checkbox"
+                          checked={filteredStudents.every(s => s.status === 'PRESENT') && filteredStudents.length > 0}
+                          onChange={(e) => handleMarkAllFromCheckbox(e.target.checked)}
+                          className="rounded"
+                          aria-label="Select all students as present"
+                        />
+                      </TableHead>
+                      <TableHead>Student</TableHead>
+                      <TableHead>Student ID</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Period</TableHead>
+                      <TableHead>Notes</TableHead>
+                      <TableHead className="w-12" />
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredStudents.map((student) => (
+                      <TableRow key={student.id}>
+                        <TableCell>
+                          <input
+                            type="checkbox"
+                            checked={student.status === 'PRESENT'}
+                            onChange={(e) => {
+                              const newStatus = e.target.checked ? 'PRESENT' : 'ABSENT'
+                              upsertRecord(student.id, { status: newStatus })
+                            }}
+                            className="rounded"
+                            aria-label={`Mark ${student.firstName} ${student.lastName} present`}
+                          />
+                        </TableCell>
+                        <TableCell className="font-medium">
+                          {student.firstName} {student.lastName}
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {student.studentId || '-'}
+                        </TableCell>
+                        <TableCell>
+                          <select
+                            value={student.status}
+                            onChange={(e) => {
+                              upsertRecord(student.id, { status: e.target.value as 'PRESENT' | 'ABSENT' | 'LATE' | 'EXCUSED' | 'HALF_DAY' })
+                            }}
+                            className={`w-full px-2 py-1 border rounded ${statusColors[student.status]}`}
+                            aria-label={`Status for ${student.firstName} ${student.lastName}`}
+                          >
+                            <option value="PRESENT">Present</option>
+                            <option value="ABSENT">Absent</option>
+                            <option value="LATE">Late</option>
+                            <option value="EXCUSED">Excused</option>
+                            <option value="HALF_DAY">Half Day</option>
+                          </select>
+                        </TableCell>
+                        <TableCell>
+                          <Input
+                            value={student.period}
+                            onChange={(e) => {
+                              upsertRecord(student.id, { period: e.target.value })
+                            }}
+                            placeholder="Period"
+                            aria-label={`Period for ${student.firstName} ${student.lastName}`}
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Input
+                            value={student.notes}
+                            onChange={(e) => {
+                              upsertRecord(student.id, { notes: e.target.value })
+                            }}
+                            placeholder="Notes"
+                            aria-label={`Notes for ${student.firstName} ${student.lastName}`}
+                          />
+                        </TableCell>
+                        <TableCell>
+                          {student.recordId && (
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon" className="h-8 w-8">
+                                  <MoreHorizontal className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem
+                                  onClick={() => handleDelete({
+                                    id: student.recordId!,
+                                    studentId: student.id,
+                                    student: { id: student.id, firstName: student.firstName, lastName: student.lastName, studentId: student.studentId },
+                                    status: student.status,
+                                    period: student.period,
+                                    notes: student.notes,
+                                    markedBy: null,
+                                    createdAt: new Date().toISOString(),
+                                  })}
+                                  className="text-red-600 focus:text-red-600"
+                                >
+                                  Delete
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
 
-          {filteredStudents.length === 0 && students.length === 0 && (
-            <div className="text-center py-8 text-muted-foreground">
-              <Clock className="h-12 w-12 mx-auto mb-3 opacity-50" />
-              <p>No students found for this class</p>
-            </div>
-          )}
+              {filteredStudents.length === 0 && students.length === 0 && (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Clock className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                  <p>No students found for this class</p>
+                </div>
+              )}
 
-          {filteredStudents.length === 0 && students.length > 0 && (
-            <div className="text-center py-8 text-muted-foreground">
-              <Search className="h-12 w-12 mx-auto mb-3 opacity-50" />
-              <p>No students match your search</p>
-            </div>
+              {filteredStudents.length === 0 && students.length > 0 && (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Search className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                  <p>No students match your search</p>
+                </div>
+              )}
+            </>
           )}
         </CardContent>
       </Card>

@@ -1,40 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import { hasPermission } from '@novastar/auth'
 import { getTenantContext } from '@/lib/tenant'
 import { logError } from '@/lib/logger'
-import { ENTITY_CONFIG_MAP } from '@novastar/shared-types'
-
-/**
- * Prisma `P2002` is a unique-constraint violation.
- *
- * Four entities behind this generic route carry real unique constraints —
- * `timetable_entry` (`@@unique([tenantId, timetableId, dayOfWeek, startTime,
- * classSubjectId])`), `attendance_taker` (`@@unique([tenantId, schoolId,
- * classId, staffId])`), `timetable` and `syllabus` — so a duplicate POST is an
- * expected client outcome, not a server fault. Reported as a 500 it both
- * misreports the fault and buries ordinary use in the error log and on the
- * platform-errors page.
- *
- * Duplicated rather than shared with `config/[entityType]/[id]/route.ts`: the two
- * files already carry byte-identical catch blocks, and a shared helper would be a
- * new module outside this change's ownership. `Prisma.PrismaClientKnownRequestError`
- * is matched by `instanceof` rather than by duck-typing `err.code`, which would
- * also catch an unrelated error object that happens to carry a `code` field.
- */
-function isUniqueConstraintViolation(err: unknown): err is Prisma.PrismaClientKnownRequestError {
-  return err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002'
-}
-
-/** The 409 body. Same `{ error }` shape as every other response in this file. */
-function duplicateResponse() {
-  return NextResponse.json(
-    { error: 'A record with these values already exists' },
-    { status: 409 },
-  )
-}
+import { ENTITY_CONFIG_MAP, type EntityApiConfig } from '@novastar/shared-types'
+import {
+  gradingScaleBandWriteRule,
+  type CrossRowWriteRule,
+} from '@novastar/shared-utils'
+import { isUniqueConstraintViolation, duplicateResponse } from '@/lib/prisma-conflict'
 
 const paginationSchema = z.object({
   page: z.coerce.number().int().positive().default(1),
@@ -43,6 +18,60 @@ const paginationSchema = z.object({
   order: z.enum(['asc', 'desc']).default('desc'),
   search: z.string().optional(),
 })
+
+/**
+ * Cross-row rules, keyed by the kind a registry entry declares.
+ *
+ * Dispatched, not branched: this file never names an entity, so an entity whose
+ * rows are only valid together is registered in `ENTITY_CONFIG_MAP` and picked up
+ * here. Typing the record by `CrossRowWriteRuleKind` means adding a kind without
+ * a rule is a compile error rather than a write that skips validation.
+ */
+const CROSS_ROW_WRITE_RULES: Record<
+  NonNullable<EntityApiConfig['writeValidation']>['kind'],
+  CrossRowWriteRule
+> = {
+  grading_scale_bands: gradingScaleBandWriteRule,
+}
+
+/**
+ * The one database read a cross-row rule needs: every band stored for a scale.
+ *
+ * Supplied here rather than imported into the rule so the rule stays a pure
+ * function in @novastar/shared-utils, which also owns the validator the seed
+ * calls — one implementation of "a valid scale", not two.
+ */
+const readScaleBands: Parameters<CrossRowWriteRule>[0]['readScaleBands'] =
+  async (gradingScaleId) =>
+    prisma.gradingLevel.findMany({
+      where: { gradingScaleId },
+      select: { id: true, key: true, minScore: true, maxScore: true },
+    })
+
+/**
+ * The problems a write would leave behind, judged against its siblings.
+ *
+ * Empty for every entity that declares no rule, and a 400 with the reasons for
+ * one that does. Throws rather than returning when a declared kind has no rule
+ * registered: that is a wiring fault, and failing closed is the only safe answer
+ * for a validation that exists precisely because the silent path mis-grades.
+ */
+async function crossRowWriteProblems(
+  entityConfig: EntityApiConfig,
+  context: {
+    operation: 'create' | 'update' | 'delete'
+    write: Record<string, unknown>
+    existing: Record<string, unknown> | null
+  },
+): Promise<string[]> {
+  const kind = entityConfig.writeValidation?.kind
+  if (kind === undefined) return []
+  const rule = CROSS_ROW_WRITE_RULES[kind]
+  if (rule === undefined) {
+    throw new Error(`No cross-row write rule is registered for "${kind}"`)
+  }
+  return rule({ ...context, readScaleBands })
+}
 
 function buildWhere(tenantId: string, schoolId: string | null, schoolScoped: boolean, search: string | undefined, fields: string[]) {
   const where: Record<string, unknown> = {}
@@ -176,9 +205,22 @@ export async function POST(
       return NextResponse.json({ error: 'Validation failed', issues: validated.error.format() }, { status: 400 })
     }
 
+    const validatedData = validated.data as Record<string, unknown>
+
+    // Before the write, not after: a row that can only be valid beside its
+    // siblings is checked against the scale it would join, so the school never
+    // ends up holding a scale that mis-grades a child.
+    const siblingProblems = await crossRowWriteProblems(entityConfig, {
+      operation: 'create',
+      write: validatedData,
+      existing: null,
+    })
+    if (siblingProblems.length > 0) {
+      return NextResponse.json({ error: 'Validation failed', issues: siblingProblems }, { status: 400 })
+    }
+
     // entityConfig.model is keyof typeof prisma; use typed delegate to avoid `as any`
     const model = (prisma as unknown as Record<string, { create: (args: { data: Record<string, unknown> }) => Promise<unknown> }>)[entityConfig.model]
-    const validatedData = validated.data as Record<string, unknown>
     const created = await model.create({
       data: {
         ...validatedData,

@@ -5,6 +5,18 @@
 import { PrismaClient } from '@prisma/client'
 import { PrismaNeon } from '@prisma/adapter-neon'
 import { PERMISSION_CATALOG, permissionsForRole } from '@novastar/shared-types'
+// Imported for its band definitions rather than re-typed here. By relative path
+// on purpose: `tools/seed` has no package.json of its own, so it resolves against
+// the repo root, whose node_modules carries no workspace links. The package is
+// consumed as TypeScript source and its only other import is `import type`, which
+// is erased, so nothing else has to resolve at run time either.
+import { NACCA_6_LEVEL } from '../../packages/ghana-education'
+// The band-coverage check is the shared validator, not a copy of it: the admin
+// write path calls the same one through `ENTITY_CONFIG_MAP.grading_level`, and a
+// second implementation here is exactly how a scale became creatable through
+// Settings that the seed would have refused. Imported by relative path for the
+// same reason as above — `tools/seed` resolves against the repo root.
+import { assertBandsCoverZeroToHundred } from '../../packages/shared-utils'
 import { Phase, SubjectCategory, TermStatus, Gender, StaffStatus, StudentStatus, AttendanceStatus, InvoiceStatus, PaymentStatus, MessageChannel, MessageStatus, NotificationType, ContentStatus, ReportType, LeaveType, LeaveStatus } from '@prisma/client'
 import * as fs from 'fs'
 import * as path from 'path'
@@ -33,6 +45,131 @@ if (!connectionString) {
 
 const adapter = new PrismaNeon({ connectionString })
 const prisma = new PrismaClient({ adapter })
+
+// ---------------------------------------------------------------------------
+// Grading defaults
+// ---------------------------------------------------------------------------
+// Percentage is the unit of grading. A band is the label and colour a school
+// reports a percentage under, and `order` is presentation order only — band
+// lookup is by percentage range, so the two directions a school might pick
+// (higher is better, lower is better) are equally expressible.
+
+interface SeedBand {
+  key: string
+  label: string
+  minScore: number
+  maxScore: number
+  color: string
+  description: string
+  order: number
+}
+
+/**
+ * Bands for the primary default, derived from the NaCCA 6-level scale in
+ * @novastar/ghana-education rather than re-typed here, so the definitions live in
+ * one place and cannot drift from the curriculum engine.
+ *
+ * NaCCA counts a HIGHER level as better, so the key keeps NaCCA's own level
+ * number (`level_6` is Level 6, Excellent) while `order` is assigned best-first
+ * for display.
+ */
+const PRIMARY_DEFAULT_BANDS: SeedBand[] = [...NACCA_6_LEVEL.levels]
+  .map((band) => ({
+    key: `level_${band.key.replace(/^level/, '')}`,
+    label: band.label,
+    minScore: band.minScore,
+    maxScore: band.maxScore,
+    color: band.color,
+    description: band.description ?? '',
+  }))
+  .sort((a, b) => b.maxScore - a.maxScore)
+  .map((band, index) => ({ ...band, order: index + 1 }))
+
+/**
+ * Bands for the JHS default: WAEC's published percentage interpretation of the
+ * BECE 1-9 scale. Direction is LOWER-is-better — grade 1 is the best result —
+ * which is why `order` is not the same as the key.
+ *
+ * COMPLIANCE — this is the one place in the codebase that must not be misread.
+ * WAEC's live BECE marking is norm-referenced (stanine): the boundaries shift
+ * with the national cohort every year, and only WAEC computes them. These fixed
+ * bands reproduce the *published percentage interpretation* so a school can label
+ * its own internal terminal report, and for nothing else. This software must not
+ * be represented as generating official BECE results, and no output derived from
+ * these bands may be presented as an official result.
+ *
+ * The colours are a school-editable ramp from best to worst, not a WAEC colour
+ * scheme. The report colours a band by the band's own colour and never by the
+ * numeric size of the score, so a school can replace any of it.
+ */
+const JHS_DEFAULT_BANDS: SeedBand[] = [
+  { key: 'grade_1', label: 'Grade 1 (Excellent)', minScore: 75, maxScore: 100, color: '#047857', description: '75-100% - Excellent', order: 1 },
+  { key: 'grade_2', label: 'Grade 2 (Very Good)', minScore: 70, maxScore: 74, color: '#059669', description: '70-74% - Very Good', order: 2 },
+  { key: 'grade_3', label: 'Grade 3 (Good)', minScore: 65, maxScore: 69, color: '#65a30d', description: '65-69% - Good', order: 3 },
+  { key: 'grade_4', label: 'Grade 4 (Credit)', minScore: 60, maxScore: 64, color: '#ca8a04', description: '60-64% - Credit', order: 4 },
+  { key: 'grade_5', label: 'Grade 5 (Credit)', minScore: 55, maxScore: 59, color: '#d97706', description: '55-59% - Credit', order: 5 },
+  { key: 'grade_6', label: 'Grade 6 (Credit)', minScore: 50, maxScore: 54, color: '#ea580c', description: '50-54% - Credit', order: 6 },
+  { key: 'grade_7', label: 'Grade 7 (Pass)', minScore: 45, maxScore: 49, color: '#f97316', description: '45-49% - Pass', order: 7 },
+  { key: 'grade_8', label: 'Grade 8 (Pass)', minScore: 40, maxScore: 44, color: '#fb923c', description: '40-44% - Pass', order: 8 },
+  { key: 'grade_9', label: 'Grade 9 (Fail)', minScore: 0, maxScore: 39, color: '#dc2626', description: '0-39% - Fail', order: 9 },
+]
+
+/**
+ * Refuse a grading scale that does not cover 0-100 exactly once.
+ *
+ * `assertBandsCoverZeroToHundred` now lives in @novastar/shared-utils, next to
+ * `resolveGradeBand`, because the seed is no longer the only thing that has to
+ * know it: a school can also build a scale band by band through
+ * `/api/config/grading_level`, and that path enforces the same rule through the
+ * registry. What is left here is the call.
+ */
+
+/**
+ * Create or refresh one default grading scale.
+ *
+ * Every band carries `tenantId` explicitly: `GradingLevel.tenantId` is required
+ * and Prisma does not propagate the parent's `tenantId` through a nested create,
+ * so omitting it fails the seed with a missing-required-field error.
+ *
+ * `legacyName` renames a superseded seed row in place instead of creating a
+ * second scale beside it. The scale keeps its id, so `Score.gradingScaleId` keeps
+ * resolving, and two scales cannot end up claiming the same levels — which would
+ * make which one wins a function of row order. The bands are rewritten either
+ * way: `@@unique([gradingScaleId, key])` and `@@unique([gradingScaleId, order])`
+ * mean a re-seed cannot add a band without clearing the old set.
+ */
+async function upsertGradingScale(params: {
+  tenantId: string
+  schoolId: string
+  name: string
+  legacyName?: string
+  description: string
+  isDefault: boolean
+  appliesToLevels: string[]
+  bands: SeedBand[]
+}) {
+  const { tenantId, schoolId, name, legacyName, description, isDefault, appliesToLevels, bands } = params
+
+  const existing =
+    (await prisma.gradingScale.findFirst({ where: { tenantId, schoolId, name } })) ??
+    (legacyName
+      ? await prisma.gradingScale.findFirst({ where: { tenantId, schoolId, name: legacyName } })
+      : null)
+
+  const levelRows = bands.map((band) => ({ tenantId, ...band }))
+  const data = {
+    name,
+    description,
+    isDefault,
+    appliesToLevels,
+    levels: { deleteMany: {}, create: levelRows },
+  }
+
+  if (existing) {
+    return prisma.gradingScale.update({ where: { id: existing.id }, data })
+  }
+  return prisma.gradingScale.create({ data: { tenantId, schoolId, ...data } })
+}
 
 async function hashPassword(password: string): Promise<string> {
   return await Bun.password.hash(password, { algorithm: 'argon2id' })
@@ -298,105 +435,102 @@ async function main() {
 
   console.log('✅ Subject Levels mapped')
 
-  // ============ GRADING SCALES (GES Standard) ============
-  const existingGesScale = await prisma.gradingScale.findFirst({
-    where: { tenantId: tenant.id, schoolId: school.id, name: 'GES Standard (A-F)' }
+  // ============ GRADING SCALES (school-configurable templates) ============
+  // Percentage is the unit of grading; a band is the label and colour the school
+  // reports a percentage under. Both scales below are DEFAULTS, seeded so a
+  // school is useful on day one and editable afterwards with no code change —
+  // rename them, retune a boundary, replace the set, or add a fourth scale.
+  //
+  // Nothing in the application chooses between them by Phase. Which scale
+  // applies to a class is resolved from the scale's own `appliesToLevels`
+  // (`resolveApplicableGradingScale` in @novastar/shared-utils), so a school that
+  // invents its own bands is graded on its own terms.
+  const primaryScale = await upsertGradingScale({
+    tenantId: tenant.id,
+    schoolId: school.id,
+    name: 'Ghana Primary (GES 6-level)',
+    legacyName: 'GES Standard (A-F)',
+    description:
+      'Default primary template, editable at Settings. Bands are the NaCCA 6-level standards scale: Level 6 Excellent (85-100%) down to Level 1 Below Partial (0-39%). HIGHER level is better. The percentage is the mark; this is only how it is labelled and coloured.',
+    isDefault: true,
+    appliesToLevels: ['B1', 'B2', 'B3', 'B4', 'B5', 'B6'],
+    bands: PRIMARY_DEFAULT_BANDS,
   })
 
-  const gesScale = existingGesScale
-    ? await prisma.gradingScale.update({
-        where: { id: existingGesScale.id },
-        data: {
-          description: 'Ghana Education Service standard grading scale used for BECE and national exams',
-          isDefault: true,
-          appliesToLevels: ['B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B9'],
-          levels: {
-            deleteMany: {},
-            create: [
-              { key: 'A', label: 'A (Excellent)', minScore: 80, maxScore: 100, color: '#16a34a', order: 1, description: 'Excellent understanding' },
-              { key: 'B', label: 'B (Very Good)', minScore: 70, maxScore: 79, color: '#22c55e', order: 2, description: 'Very good understanding' },
-              { key: 'C', label: 'C (Good)', minScore: 60, maxScore: 69, color: '#eab308', order: 3, description: 'Good understanding' },
-              { key: 'D', label: 'D (Pass)', minScore: 50, maxScore: 59, color: '#f97316', order: 4, description: 'Pass' },
-              { key: 'E', label: 'E (Weak Pass)', minScore: 40, maxScore: 49, color: '#f43f5e', order: 5, description: 'Weak pass' },
-              { key: 'F', label: 'F (Fail)', minScore: 0, maxScore: 39, color: '#ef4444', order: 6, description: 'Fail' },
-            ],
-          },
-        },
-      })
-    : await prisma.gradingScale.create({
-        data: {
-          tenantId: tenant.id,
-          schoolId: school.id,
-          name: 'GES Standard (A-F)',
-          description: 'Ghana Education Service standard grading scale used for BECE and national exams',
-          isDefault: true,
-          appliesToLevels: ['B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B9'],
-          levels: {
-            create: [
-              { key: 'A', label: 'A (Excellent)', minScore: 80, maxScore: 100, color: '#16a34a', order: 1, description: 'Excellent understanding' },
-              { key: 'B', label: 'B (Very Good)', minScore: 70, maxScore: 79, color: '#22c55e', order: 2, description: 'Very good understanding' },
-              { key: 'C', label: 'C (Good)', minScore: 60, maxScore: 69, color: '#eab308', order: 3, description: 'Good understanding' },
-              { key: 'D', label: 'D (Pass)', minScore: 50, maxScore: 59, color: '#f97316', order: 4, description: 'Pass' },
-              { key: 'E', label: 'E (Weak Pass)', minScore: 40, maxScore: 49, color: '#f43f5e', order: 5, description: 'Weak pass' },
-              { key: 'F', label: 'F (Fail)', minScore: 0, maxScore: 39, color: '#ef4444', order: 6, description: 'Fail' },
-            ],
-          },
-        },
-      })
-
-  const existingMontessoriScale = await prisma.gradingScale.findFirst({
-    where: { tenantId: tenant.id, schoolId: school.id, name: 'Montessori Observational' }
+  const jhsScale = await upsertGradingScale({
+    tenantId: tenant.id,
+    schoolId: school.id,
+    name: 'Ghana JHS (BECE 1-9)',
+    description:
+      'Default JHS template, editable at Settings. Bands are WAEC published percentage interpretation of BECE grades 1-9. LOWER grade number is better: grade 1 Excellent (75-100%), grade 9 Fail (0-39%). Internal terminal reporting only.',
+    isDefault: false,
+    appliesToLevels: ['B7', 'B8', 'B9'],
+    bands: JHS_DEFAULT_BANDS,
   })
 
-  const montessoriScale = existingMontessoriScale
-    ? await prisma.gradingScale.update({
-        where: { id: existingMontessoriScale.id },
-        data: {
-          description: 'Narrative-based assessment for Montessori environments (Creche-KG2)',
-          isDefault: false,
-          appliesToLevels: ['CRECHE', 'NURSERY1', 'NURSERY2', 'KG1', 'KG2'],
-          levels: {
-            deleteMany: {},
-            create: [
-              { key: 'EXEMPLARY', label: 'Exemplary', minScore: 90, maxScore: 100, color: '#16a34a', order: 1, description: 'Exceeds expectations independently' },
-              { key: 'PROFICIENT', label: 'Proficient', minScore: 75, maxScore: 89, color: '#22c55e', order: 2, description: 'Meets expectations independently' },
-              { key: 'DEVELOPING', label: 'Developing', minScore: 60, maxScore: 74, color: '#eab308', order: 3, description: 'Progressing with guidance' },
-              { key: 'EMERGING', label: 'Emerging', minScore: 0, maxScore: 59, color: '#f43f5e', order: 4, description: 'Beginning to show understanding' },
-            ],
-          },
-        },
-      })
-    : await prisma.gradingScale.create({
-        data: {
-          tenantId: tenant.id,
-          schoolId: school.id,
-          name: 'Montessori Observational',
-          description: 'Narrative-based assessment for Montessori environments (Creche-KG2)',
-          isDefault: false,
-          appliesToLevels: ['CRECHE', 'NURSERY1', 'NURSERY2', 'KG1', 'KG2'],
-          levels: {
-            create: [
-              { key: 'EXEMPLARY', label: 'Exemplary', minScore: 90, maxScore: 100, color: '#16a34a', order: 1, description: 'Exceeds expectations independently' },
-              { key: 'PROFICIENT', label: 'Proficient', minScore: 75, maxScore: 89, color: '#22c55e', order: 2, description: 'Meets expectations independently' },
-              { key: 'DEVELOPING', label: 'Developing', minScore: 60, maxScore: 74, color: '#eab308', order: 3, description: 'Progressing with guidance' },
-              { key: 'EMERGING', label: 'Emerging', minScore: 0, maxScore: 59, color: '#f43f5e', order: 4, description: 'Beginning to show understanding' },
-            ],
-          },
-        },
-      })
+  // The former "Montessori Observational" seed template is deliberately NOT
+  // deleted or rewritten here. It was aimed at Creche/KG, which neither Ghana
+  // default covers, and it carries no `isDefault`, so it can never win the
+  // tie-break in `resolveApplicableGradingScale`. Deleting a scale a school
+  // already has grades against would destroy that history for no gain; leaving
+  // an existing one alone means a database seeded before this change keeps it and
+  // a fresh database simply does not have it. A school with Creche/KG classes
+  // configures a scale for them at Settings.
 
-  console.log('✅ Grading Scales created')
+  // A gap or an overlap in a seeded scale mis-grades a child quietly: a gap
+  // leaves a percentage with no label at all, and an overlap hands it to whichever
+  // band sorts first. Both are off-by-one mistakes in data, so both are refused
+  // here rather than discovered on a report card. The check itself is the shared
+  // validator in @novastar/shared-utils, which the admin write path calls too —
+  // a scale built at Settings is held to the same rule as a seeded one.
+  for (const scale of [primaryScale, jhsScale]) {
+    assertBandsCoverZeroToHundred(scale.name, scale.levels)
+  }
+
+  console.log('✅ Grading Scales created (editable templates: Ghana Primary GES 6-level, Ghana JHS BECE 1-9)')
 
   // ============ ASSESSMENT TYPES ============
+  // The school's own continuous assessment scheme. This is a STARTING TEMPLATE:
+  // a head teacher retunes these at Settings (Assessment Types), and the report
+  // composes whatever is configured at the time.
+  //
+  // `defaultWeight` is a RELATIVE weight, not a share of the terminal mark. The
+  // report composes a normalised weighted mean, `sum(pct x weight) / sum(weight)`,
+  // so only the ratio between components matters and the set is not required to
+  // sum to 1 — it usually cannot, because SBA is recorded three times in a term
+  // (SBA 1, SBA 2, SBA 3) and each carries the SBA weight. The absolute-share
+  // alternative overflows past 100% on exactly that rollup.
+  //
+  // These template numbers DO add up to 1.00 because that is what a head teacher
+  // reads most easily, not because the arithmetic demands it.
   const assessmentTypes = [
-    { code: 'CLASSWORK', name: 'Classwork', defaultWeight: 0.20, maxScore: 100, tenantId: tenant.id, schoolId: school.id },
-    { code: 'HOMEWORK', name: 'Homework', defaultWeight: 0.10, maxScore: 100, tenantId: tenant.id, schoolId: school.id },
-    { code: 'QUIZ', name: 'Quiz', defaultWeight: 0.15, maxScore: 100, tenantId: tenant.id, schoolId: school.id },
-    { code: 'PROJECT', name: 'Project', defaultWeight: 0.15, maxScore: 100, tenantId: tenant.id, schoolId: school.id },
-    { code: 'MIDTERM', name: 'Midterm Exam', defaultWeight: 0.20, maxScore: 100, tenantId: tenant.id, schoolId: school.id },
-    { code: 'FINAL', name: 'Final Exam', defaultWeight: 0.20, maxScore: 100, tenantId: tenant.id, schoolId: school.id },
+    { code: 'CLASSWORK', name: 'Classwork', defaultWeight: 0.15, maxScore: 100, tenantId: tenant.id, schoolId: school.id },
+    { code: 'HOMEWORK', name: 'Homework', defaultWeight: 0.05, maxScore: 100, tenantId: tenant.id, schoolId: school.id },
+    { code: 'QUIZ', name: 'Quiz', defaultWeight: 0.10, maxScore: 100, tenantId: tenant.id, schoolId: school.id },
+    { code: 'PROJECT', name: 'Project', defaultWeight: 0.10, maxScore: 100, tenantId: tenant.id, schoolId: school.id },
+    { code: 'MIDTERM', name: 'Midterm Exam', defaultWeight: 0.15, maxScore: 100, tenantId: tenant.id, schoolId: school.id },
+    { code: 'FINAL', name: 'Final Exam', defaultWeight: 0.15, maxScore: 100, tenantId: tenant.id, schoolId: school.id },
     { code: 'SBA', name: 'School-Based Assessment', defaultWeight: 0.30, maxScore: 100, tenantId: tenant.id, schoolId: school.id },
   ]
+
+  // Refuse to seed a scheme that cannot be composed. An all-zero or negative set
+  // leaves every terminal percentage undefined, and discovering that from a blank
+  // report card after a school has been seeded is the worst possible moment to
+  // find out.
+  const weightTotal = assessmentTypes.reduce((sum, at) => sum + at.defaultWeight, 0)
+  if (!Number.isFinite(weightTotal) || weightTotal <= 0) {
+    throw new Error(
+      `Seed refused: assessment-type weights must be finite and sum above 0, got ${weightTotal}. ` +
+      'A terminal percentage is sum(pct x weight) / sum(weight); with no weight there is nothing to divide by.',
+    )
+  }
+  for (const at of assessmentTypes) {
+    if (!Number.isFinite(at.defaultWeight) || at.defaultWeight < 0) {
+      throw new Error(
+        `Seed refused: assessment type ${at.code} has weight ${at.defaultWeight}; weights must be finite and not negative.`,
+      )
+    }
+  }
 
   for (const at of assessmentTypes) {
     const existing = await prisma.assessmentTypeConfig.findFirst({
@@ -415,6 +549,24 @@ async function main() {
   }
 
   console.log('✅ Assessment Types created')
+
+  // ============ ASSESSMENTS: NONE, DELIBERATELY ============
+  // There is no `Assessment` write anywhere in this seed, and that is the honest
+  // answer to "what does the seed put in `Assessment.weight`": nothing.
+  //
+  // It matters because the column is now nullable. `Assessment.weight` was
+  // `NOT NULL DEFAULT 1`, which made "no weight of its own" indistinguishable from
+  // "explicitly 1.00" and forced `resolveAssessmentWeight` to treat a stored 1 as
+  // unset — silently discarding a teacher's deliberate 1.00. NULL now means unset
+  // and the type's configured weight applies; 1.00 means 1.00. No seed row needs
+  // rewriting, because no seed row exists.
+  //
+  // A school creates assessments through `POST /api/assessments`, which copies
+  // its type's `defaultWeight` into the row at creation time. Such a row already
+  // carries an explicit weight and resolves identically before and after this
+  // change; retuning the type later will not reach it, which is a property of that
+  // write path, not of this column. See the wave0 migration for the decision on
+  // rows that already hold 1.
 
   // ============ FEE CATEGORIES ============
   const feeCategories = [
@@ -915,8 +1067,8 @@ async function main() {
   console.log('  • 3 Terms per year')
   console.log('  • 14 Class Levels (Creche → JHS 3)')
   console.log('  • 19 Subjects (GES + Montessori)')
-  console.log('  • 2 Grading Scales (GES A-F, Montessori Observational)')
-  console.log('  • 7 Assessment Types (SBA, exams, coursework)')
+  console.log('  • 2 Grading Scale templates (Ghana Primary GES 6-level, Ghana JHS BECE 1-9) — editable, not policy')
+  console.log('  • 7 Assessment Types (SBA, exams, coursework) — relative weights summing to 1.00')
   console.log('  • 9 Fee Categories + 6 Payment Methods (MoMo, Bank, Cash)')
   console.log('  • 5 Fee Structures')
   console.log('  • 7 Roles + 28 Permissions')

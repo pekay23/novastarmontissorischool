@@ -330,15 +330,13 @@ describe('Middleware - Assessment Endpoint Protection', () => {
     expect(assessmentsRoute).toContain('assessment:read')
   })
 
-  it('should use hasPermission with assessment:read for GET assessment by id', () => {
-    expect(assessmentIdRoute).toContain('hasPermission')
-    expect(assessmentIdRoute).toContain('assessment:read')
-  })
-
-  it('should use hasPermission with assessment:update for PATCH assessment', () => {
-    expect(assessmentIdRoute).toContain('hasPermission')
-    expect(assessmentIdRoute).toContain('assessment:update')
-  })
+  // GET-by-id and PATCH-by-id used to be asserted here with
+  // `expect(assessmentIdRoute).toContain('assessment:read')` and `toContain(
+  // 'assessment:update')`. Both were green while this route applied no row
+  // scope whatsoever, which is the point: naming a permission in a handler's
+  // source says nothing about whether the handler narrows rows. They are now
+  // executed instead, in `tests/route-authz.test.ts`, against a class-scoped
+  // principal â€” including the `assessment:publish` gate on `isPublished`.
 
   it('should use hasPermission with assessment:delete for DELETE assessment', () => {
     expect(assessmentIdRoute).toContain('hasPermission')
@@ -434,13 +432,12 @@ describe('Middleware - Row-Level Visibility on GET', () => {
     expect(handler).toContain('visibilityDeniesAll')
   })
 
-  it('should scope the single-teacher lookup by visibility', () => {
-    const handler = extractHandler(readRoute('teachers/[id]/route.ts'), 'GET')
-    expect(handler).toContain('hasPermission')
-    expect(handler).toContain("'teacher:read'")
-    expect(handler).toContain('staffVisibilityWhere')
-    expect(handler).toContain("{ status: 404 }")
-  })
+  // The single-teacher and single-class lookups used to be asserted here with
+  // `expect(handler).toContain('staffVisibilityWhere')`. Both were green while
+  // `teachers/[id]` spread that builder over the path `id` and handed back an
+  // arbitrary colleague for any id at all: a presence check cannot see a
+  // property that was overwritten three lines later. They are executed now, in
+  // `tests/route-authz.test.ts`.
 
   it('should require both gates on the classes list', () => {
     const handler = extractHandler(readRoute('classes/route.ts'), 'GET')
@@ -448,14 +445,6 @@ describe('Middleware - Row-Level Visibility on GET', () => {
     expect(handler).toContain("'class:read'")
     expect(handler).toContain('classVisibilityWhere')
     expect(handler).toContain('visibilityDeniesAll')
-  })
-
-  it('should scope the single-class lookup by visibility', () => {
-    const handler = extractHandler(readRoute('classes/[id]/route.ts'), 'GET')
-    expect(handler).toContain('hasPermission')
-    expect(handler).toContain("'class:read'")
-    expect(handler).toContain('classVisibilityWhere')
-    expect(handler).toContain("{ status: 404 }")
   })
 
   it('should gate the terms list with term:read', () => {
@@ -845,15 +834,15 @@ describe('Role grant matrices', () => {
     expect(`${teacher.has('promotion:execute')}`).toBe('false')
   })
 
-it('should grant no delete verb to a classroom teacher, admin staff or a parent', () => {
+  it('should grant no delete verb to a classroom teacher, admin staff or a parent', () => {
     // Deliberately not asserted for the other three roles, whose rules are the
     // pre-existing seed behaviour and carry deletes:
-    //   HEADMASTER   — everything, by design.
-    //   ACCOUNTANT   — `finance:delete`, `finance:invoice:delete` via its
+    //   HEADMASTER   â€” everything, by design.
+    //   ACCOUNTANT   â€” `finance:delete`, `finance:invoice:delete` via its
     //                  `category === 'finance'` rule. Deleting a financial
     //                  record is plausibly an auditor's question, not this
     //                  change's to answer.
-    //   HEAD_TEACHER — `academic|student|communication` with no delete filter.
+    //   HEAD_TEACHER â€” `academic|student|communication` with no delete filter.
     // Worth a decision; not silently changed here.
     for (const role of ['CLASSROOM_TEACHER', 'ADMIN_STAFF', 'PARENT', 'ASSISTANT_HEAD'] as const) {
       expect(`${role}: ${permissionsForRole(role).some((k) => k.includes('delete'))}`).toBe(
@@ -877,8 +866,8 @@ it('should grant no delete verb to a classroom teacher, admin staff or a parent'
 
 describe('Route-permission table and the catalog cannot drift apart', () => {
   it('should name only keys the catalog actually ships', () => {
-    // The table used to define a second, dot-cased vocabulary — `payments.approve`,
-    // `users.manage` and twelve more — that nothing granted. Every
+    // The table used to define a second, dot-cased vocabulary â€” `payments.approve`,
+    // `users.manage` and twelve more â€” that nothing granted. Every
     // `hasPermission(userId, <dot key>)` lookup through it could never succeed.
     const catalog = new Set<string>(PERMISSION_KEYS)
     const unknown = ROUTE_PERMISSION_BINDINGS.map((b) => b.permission).filter((p) => !catalog.has(p))
@@ -924,7 +913,7 @@ it('should carry no dot-cased key anywhere in the module source', () => {
  * The headline regression: a parent holds `student:read`, so a permission gate
  * alone cannot keep them out of the school roster. `resolveVisibility` resolves
  * `ROLE_READ_SCOPE.PARENT['student:read'] = 'own'`, and the `where` builder turns
- * that into a filter Prisma applies — so the row cannot come back at all.
+ * that into a filter Prisma applies â€” so the row cannot come back at all.
  *
  * `resolveVisibility` itself is exercised against a mocked client in
  * `tests/route-authz.test.ts`; the builders and the scope resolution are pure, so
@@ -1008,22 +997,37 @@ describe('A parent reading GET /api/students sees only their own children', () =
   })
 })
 
+/**
+ * A source-text presence check, not coverage.
+ *
+ * These assert that a handler's text mentions `hasPermission`, the right key and
+ * (where narrowed) the visibility plumbing. That is worth something â€” it catches a
+ * gate deleted outright â€” but it passes just as happily against a gate that is
+ * present and never reached, and it cannot see the one thing that matters: whether
+ * the id the caller asked for survives into the `where`.
+ *
+ * `classes/[id]`, `teachers/[id]` and `assessments/[id]` were listed here and
+ * their entries removed once `tests/route-authz.test.ts` executed those three
+ * handlers against a class-scoped principal and asserted 200-for-in-scope /
+ * 404-for-out-of-scope / 404-for-wrong-but-in-scope. A presence check standing in
+ * for that is worse than no test, because it reads as coverage. The remaining
+ * routes still need the same conversion; it needs prisma doubles for models this
+ * file does not mock.
+ */
 describe('Every guarded GET handler declares its read permission', () => {
   /**
    * The read key each route must carry, and whether the route also resolves a
    * row-level scope.
    *
-   * `narrowed: false` means the resource is school-wide and not row-scoped —
+   * `narrowed: false` means the resource is school-wide and not row-scoped â€”
    * the permission gate is still required, but asserting `resolveVisibility`
    * there would be asserting a change nobody asked for.
    */
   const READ_GUARDS: [route: string, key: string, builder: string | null][] = [
     ['classes/route.ts', 'class:read', 'classVisibilityWhere'],
-    ['classes/[id]/route.ts', 'class:read', 'classVisibilityWhere'],
     ['students/route.ts', 'student:read', 'studentVisibilityWhere'],
     ['students/[id]/route.ts', 'student:read', 'studentVisibilityWhere'],
     ['teachers/route.ts', 'teacher:read', 'staffVisibilityWhere'],
-    ['teachers/[id]/route.ts', 'teacher:read', 'staffVisibilityWhere'],
     ['announcements/route.ts', 'announcement:read', null],
     ['announcements/[id]/route.ts', 'announcement:read', null],
     ['terms/route.ts', 'term:read', null],
@@ -1063,19 +1067,37 @@ describe('Every guarded GET handler declares its read permission', () => {
 describe('Config entity routes report duplicates as 409, not 500', () => {
   const entitiesRoute = readRoute('config/[entityType]/route.ts')
   const entityIdRoute = readRoute('config/[entityType]/[id]/route.ts')
+  // The detection used to be copy-pasted into each of six routes. It now lives
+  // in one module, so these assertions have to follow the definition there: a
+  // route that quietly stopped importing the helper would still satisfy a
+  // `toContain('isUniqueConstraintViolation')` on its own source.
+  const conflictSrc = readLib('prisma-conflict.ts')
 
-  it('should detect P2002 by Prisma error type in both routes', () => {
+  it('should detect P2002 in the one place that decides what counts as a duplicate', () => {
+    // Matched on `name` as well as `code`, and both are required: `instanceof`
+    // fails across a duplicated `@prisma/client`, and a bare `code` check would
+    // catch any unrelated error that happens to carry one.
+    expect(conflictSrc).toContain("'P2002'")
+    expect(conflictSrc).toContain('PrismaClientKnownRequestError')
+  })
+
+  it('should build the 409 response once, with a message a client can act on', () => {
+    expect(conflictSrc).toContain('status: 409')
+    expect(conflictSrc).toContain('already exists')
+  })
+
+  it('should route both config handlers through that shared helper', () => {
     for (const src of [entitiesRoute, entityIdRoute]) {
-      expect(src).toContain("'P2002'")
-      expect(src).toContain('Prisma.PrismaClientKnownRequestError')
+      expect(src).toContain("from '@/lib/prisma-conflict'")
+      expect(src).toContain('duplicateResponse')
     }
   })
 
-  it('should return 409 with a message a client can act on', () => {
-    // The response shape is the file's own `{ error }`, not a new one.
+  it('should not have kept its own copy of the detection', () => {
+    // A second definition is the original defect: two of them drift, and one of
+    // them ends up in a route that forgot to update it.
     for (const src of [entitiesRoute, entityIdRoute]) {
-      expect(src).toContain('status: 409')
-      expect(src).toContain('already exists')
+      expect(src).not.toContain("'P2002'")
     }
   })
 
@@ -1098,7 +1120,7 @@ describe('Config entity routes report duplicates as 409, not 500', () => {
   it('should still map P2025-style misses to 404 rather than swallowing them', () => {
     // The 409 must not have displaced the existing not-found handling.
     for (const src of [entitiesRoute, entityIdRoute]) {
-      expect(src).toContain("{ status: 404 }")
+      expect(src).toContain('{ status: 404 }')
     }
   })
 })

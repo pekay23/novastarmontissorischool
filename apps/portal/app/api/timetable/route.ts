@@ -7,6 +7,11 @@ import { resolveVisibility, visibilityDeniesAll } from '@/lib/visibility'
 import { ENTITY_CONFIG_MAP } from '@novastar/shared-types'
 import { z } from 'zod'
 import { logError } from '@/lib/logger'
+// Shared. Both timetable models carry real unique constraints — `Timetable` on
+// `(tenantId, classId, termId, name)` and `TimetableEntry` on
+// `(tenantId, timetableId, dayOfWeek, startTime, classSubjectId)` — so a
+// duplicate POST is an expected client outcome and must be a 409, not a 500.
+import { isUniqueConstraintViolation, duplicateResponse } from '@/lib/prisma-conflict'
 
 /**
  * The Neon adapter turns every statement into a network round trip, so
@@ -95,36 +100,6 @@ export type CreateTimetableInput = z.infer<typeof CreateTimetableSchema>
  */
 export function validateCreateTimetable(body: unknown) {
   return CreateTimetableSchema.safeParse(body)
-}
-
-/**
- * Prisma `P2002` is a unique-constraint violation.
- *
- * Both timetable models carry real unique constraints —
- * `Timetable` on `(tenantId, classId, termId, name)` and
- * `TimetableEntry` on `(tenantId, timetableId, dayOfWeek, startTime,
- * classSubjectId)` — so a duplicate POST is an expected client
- * outcome, not a server fault. Reported as a 500 it both misreports
- * the fault and buries ordinary use in the error log and on the
- * platform-errors page.
- *
- * Duplicated rather than shared with `config/[entityType]/route.ts`:
- * the two files already carry byte-identical catch blocks, and a shared
- * helper would be a new module outside this change's ownership.
- * `Prisma.PrismaClientKnownRequestError` is matched by `instanceof`
- * rather than by duck-typing `err.code`, which would also catch an
- * unrelated error object that happens to carry a `code` field.
- */
-function isUniqueConstraintViolation(err: unknown): err is Prisma.PrismaClientKnownRequestError {
-  return err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002'
-}
-
-/** The 409 body. Same `{ error }` shape as every other response here. */
-function duplicateResponse() {
-  return NextResponse.json(
-    { error: 'A record with these values already exists' },
-    { status: 409 },
-  )
 }
 
 /**
@@ -247,11 +222,22 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const { schoolId, tenantId, userId } = await getTenantContext()
+    const ctx = await getTenantContext()
+    const { schoolId, tenantId, userId } = ctx
     if (!schoolId) return NextResponse.json({ error: 'No school assigned' }, { status: 400 })
 
     // RBAC
     if (!(await hasPermission(userId, 'timetable:update', tenantId, schoolId))) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
+    // Row scope under the write key. `timetable:update` resolves to `class` for a
+    // classroom teacher, and the target of this write is a class named in the
+    // body — so without narrowing that id, a teacher could write the schedule of
+    // any class in the school. The class lookup below therefore tests membership
+    // of the caller's visible classes, not merely existence in this school.
+    const visibility = await resolveVisibility(ctx, 'timetable:update')
+    if (visibilityDeniesAll(visibility)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
@@ -263,9 +249,12 @@ export async function POST(req: NextRequest) {
     const { classId, termId, name, isPublished, entries } = parseResult.data
 
     // The class must exist in this tenant and school, or the write would
-    // fail on the foreign key as a 500.
+    // fail on the foreign key as a 500. The two conditions compose: `AND`
+    // rather than a spread, so neither can overwrite the other.
+    const classWhere: Prisma.ClassWhereInput = { id: classId, tenantId, schoolId }
+    if (visibility.classIds) classWhere.AND = [{ id: { in: visibility.classIds } }]
     const classRow = await prisma.class.findFirst({
-      where: { id: classId, tenantId, schoolId },
+      where: classWhere,
       select: { id: true },
     })
     if (!classRow) {

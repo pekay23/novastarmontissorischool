@@ -5,6 +5,11 @@ import { z } from 'zod'
 import { hasPermission } from '@novastar/auth'
 import { getTenantContext } from '@/lib/tenant'
 import { toErrorResponse } from '@/lib/api-response'
+import { resolveVisibility, visibilityDeniesAll } from '@/lib/visibility'
+import {
+  isUniqueConstraintViolation,
+  duplicateResponse as sharedDuplicateResponse,
+} from '@/lib/prisma-conflict'
 
 /**
  * Syllabi are the per-term topic lists a class subject is taught against.
@@ -26,30 +31,18 @@ import { toErrorResponse } from '@/lib/api-response'
  */
 
 /**
- * Duck-typed on `code` AND `name` rather than on `code` alone, which would
- * also catch an unrelated error object that happens to carry a `code` field,
- * and rather than by `instanceof Prisma.PrismaClientKnownRequestError`, which
- * cannot be exercised from a test that must not open a database connection.
- * The `Syllabus` model carries the
- * `@@unique([tenantId, classSubjectId, termId, title])` constraint, so a
- * duplicate POST is an expected client outcome — report it as 409.
+ * The 409 body for a duplicate syllabus, phrased for this resource rather than
+ * for the generic case. The detection itself is shared — see
+ * `@/lib/prisma-conflict`, which matches on `code` AND `name` so an unrelated
+ * error object carrying a `code` is not caught, and so the check can be
+ * exercised from a test that must not open a database connection.
  *
  * Checked BEFORE `toErrorResponse`, which would otherwise log an ordinary
  * duplicate as an outage and store it on the platform-errors page.
  */
-function isUniqueConstraintViolation(err: unknown): boolean {
-  return (
-    typeof err === 'object' &&
-    err !== null &&
-    (err as { code?: unknown }).code === 'P2002' &&
-    (err as { name?: unknown }).name === 'PrismaClientKnownRequestError'
-  )
-}
-
 function duplicateResponse() {
-  return NextResponse.json(
-    { error: 'A syllabus with this title already exists for this class subject and term' },
-    { status: 409 },
+  return sharedDuplicateResponse(
+    'A syllabus with this title already exists for this class subject and term',
   )
 }
 
@@ -160,10 +153,19 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const { tenantId, schoolId, userId } = await getTenantContext()
+    const ctx = await getTenantContext()
+    const { tenantId, schoolId, userId } = ctx
     if (!schoolId) return NextResponse.json({ error: 'No school assigned' }, { status: 400 })
 
     if (!(await hasPermission(userId, 'academic:create', tenantId, schoolId))) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
+    // Row scope under the write key. `academic:create` resolves to `class` for a
+    // classroom teacher, and a syllabus hangs off a `ClassSubject`, so the class
+    // the write lands on is the class the caller's reach is measured against.
+    const visibility = await resolveVisibility(ctx, 'academic:create')
+    if (visibilityDeniesAll(visibility)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
@@ -185,9 +187,23 @@ export async function POST(req: NextRequest) {
     // this tenant's response. `ClassSubject` carries no `schoolId` column of
     // its own, so it is scoped by tenant and through its class; `Term` is
     // school-scoped directly.
+    //
+    // The class clause also carries the caller's visible classes. Tenant and
+    // school alone only prove the class subject is somewhere in this school, so
+    // a caller whose reach is `class` could otherwise write a syllabus for a
+    // class they do not teach. Composed under `AND` so it narrows the school
+    // check rather than replacing it.
+    const classSubjectWhere: Prisma.ClassSubjectWhereInput = {
+      id: data.classSubjectId,
+      tenantId,
+      class: { schoolId },
+    }
+    if (visibility.classIds) {
+      classSubjectWhere.AND = [{ class: { id: { in: visibility.classIds } } }]
+    }
     const [classSubject, term] = await Promise.all([
       prisma.classSubject.findFirst({
-        where: { id: data.classSubjectId, tenantId, class: { schoolId } },
+        where: classSubjectWhere,
         select: { id: true },
       }),
       prisma.term.findFirst({

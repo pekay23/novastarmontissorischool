@@ -76,7 +76,12 @@ export default function TeacherWorkspacePage() {
     load()
   }, [fetchCourses, fetchCurrentTerm])
 
-  const attendanceHref = (classId: string) => `/attendance?class=${classId}`
+  // Both parameters the marking screen reads off the URL: without a
+  // date it renders no roster, so the link carries today.
+  const attendanceHref = (classId: string) => {
+    const today = new Date().toISOString().split('T')[0]
+    return `/attendance/mark?class=${classId}&date=${today}`
+  }
   const timetableHref = (classId: string) =>
     currentTermId ? `/timetable?class=${classId}&term=${currentTermId}` : null
 
@@ -215,7 +220,7 @@ export default function TeacherWorkspacePage() {
                               variant="outline"
                               size="sm"
                               asChild
-                              aria-label={`Give marks — opens Grades, which lists assessments for every class`}
+                              aria-label="Give marks — opens Grades, which lists assessments for every class"
                             >
                               {/* Unparameterised on purpose. `/api/assessments`
                                   does filter by `?classId=&termId=`, but the

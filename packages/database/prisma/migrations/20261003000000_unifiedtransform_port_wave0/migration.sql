@@ -1,12 +1,19 @@
 -- Unifiedtransform port — foundation wave (Wave 0).
 --
 -- Adds:
---   * GradingLevel.point        — grade point on a 0-4 scale (Phase 0)
 --   * GradingLevel.tenantId     — the level becomes tenant-scoped like its parent
 --   * GradingLevel uniques      — (gradingScaleId, key) and (gradingScaleId, order)
 --   * Attendance period NOT NULL— makes the existing one-row-per-day unique real
 --   * Syllabus table            — per-term topic lists
 --   * ClassSubject teacher index— hot path for timetable + teacher workspace
+--   * Assessment.weight NULL    — "unset" stops being a stored 1.00
+--
+-- NOT added, deliberately: `GradingLevel.point`. The column, and the 0-4 average
+-- it fed, have been removed (see schema.prisma) — percentage is the unit of grading and
+-- a 0-4 grade point has no place on a Ghanaian primary/JHS terminal report. Had
+-- it shipped, every existing band would have carried the column default of 0.0
+-- and read as "this child failed". Because this migration was never applied, no
+-- database holds the column and no DROP or data backfill is needed.
 --
 -- STATUS: WRITTEN BUT NOT APPLIED. Nothing in this file has been executed
 -- against any database. Do not run `prisma migrate deploy` to apply it — see the
@@ -28,12 +35,6 @@
 -- The two GradingLevel unique indexes are the only statements here that can fail
 -- on a populated table, and only if a row already violates them. See the repair
 -- queries printed inline; do not delete rows to make the index build.
-
--- AlterTable
--- `point` is the grade point on a 0-4 scale. It carries a DEFAULT so the column
--- is safe to add to a populated table: existing bands get 0.0 rather than
--- failing, and the seed rewrites them explicitly.
-ALTER TABLE "GradingLevel" ADD COLUMN "point" DECIMAL(4,2) NOT NULL DEFAULT 0;
 
 -- AlterTable
 -- Added nullable first. `tenantId` is NOT NULL in schema.prisma, but a NOT NULL
@@ -165,3 +166,49 @@ ALTER TABLE "Syllabus" ADD CONSTRAINT "Syllabus_termId_fkey" FOREIGN KEY ("termI
 -- The teacher workspace and the timetable both filter ClassSubject by teacher;
 -- without this the query has no supporting index on the hot path.
 CREATE INDEX "ClassSubject_tenantId_teacherId_idx" ON "ClassSubject"("tenantId", "teacherId");
+
+-- AlterTable
+-- `Assessment.weight` becomes nullable, and loses its default.
+--
+-- WHY: the column was `NOT NULL DEFAULT 1`, so "the teacher never set a weight"
+-- and "the teacher explicitly set this assessment to weigh 1.00" were the same
+-- stored value. `resolveAssessmentWeight` (@novastar/shared-utils) had to treat a
+-- stored 1 as "unset" to let a type's configured weight reach a report at all,
+-- which silently discarded a teacher's deliberate 1.00 — the school's own scheme
+-- could not be honoured for one assessment. NULL now carries "unset" and 1.00
+-- carries what it says, with no sentinel overloading either value.
+--
+-- ORDER: DROP DEFAULT first. `ALTER COLUMN ... DROP NOT NULL` and `DROP DEFAULT`
+-- are independent, but a column that keeps `DEFAULT 1` would hand every insert
+-- that omits `weight` — Prisma included — a 1 that means "explicit 1.00" again,
+-- which is the bug this statement exists to remove.
+ALTER TABLE "Assessment" ALTER COLUMN "weight" DROP DEFAULT;
+
+-- AlterTable
+ALTER TABLE "Assessment" ALTER COLUMN "weight" DROP NOT NULL;
+
+-- DATA CONSEQUENCE — READ BEFORE APPLYING, THIS ONE IS A JUDGEMENT CALL.
+--
+-- Dropping the default does not rewrite stored rows: every existing
+-- `Assessment.weight` keeps whatever it holds. A row holding 1 becomes, from now
+-- on, "explicitly 1.00" and stops inheriting its type's `defaultWeight`.
+--
+-- NO BACKFILL IS WRITTEN HERE, deliberately. A stored 1 is ambiguous in exactly
+-- the way this migration removes the ambiguity for: it is either a row that
+-- inherited the column default (never weighted deliberately) or a row whose
+-- creator copied a type default of 1.00. Rewriting one to NULL and not the other
+-- is a guess about grading history, and a wrong guess silently changes every
+-- terminal percentage that row contributes to. That decision belongs to whoever
+-- owns the data, with these queries:
+--
+--   -- what is actually stored:
+--   SELECT "weight", COUNT(*) FROM "Assessment" GROUP BY 1 ORDER BY 1;
+--   -- the rows this migration changes meaning for:
+--   SELECT a."id", a."name", a."typeId", t."code", t."defaultWeight"
+--     FROM "Assessment" a JOIN "AssessmentTypeConfig" t ON t."id" = a."typeId"
+--    WHERE a."weight" = 1;
+--   -- to restore inheritance for rows that never carried a deliberate weight:
+--   UPDATE "Assessment" SET "weight" = NULL WHERE "weight" = 1;
+--
+-- The seed writes no `Assessment` rows at all — a school creates them — so there
+-- is no seeded data to preserve and nothing to convert here.

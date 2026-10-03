@@ -1,14 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server'
+import type { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { getTenantContext } from '@/lib/tenant'
 import { hasPermission } from '@novastar/auth'
+import {
+  resolveVisibility,
+  assessmentVisibilityWhere,
+  visibilityDeniesAll,
+} from '@/lib/visibility'
 import { z } from 'zod'
 import { logError } from '@/lib/logger'
 
 // List all assessments for the current school/tenant
 export async function GET(req: NextRequest) {
   try {
-    const { schoolId, tenantId, userId } = await getTenantContext()
+    const ctx = await getTenantContext()
+    const { schoolId, tenantId, userId } = ctx
     if (!schoolId) {
       return NextResponse.json({ error: 'No school assigned' }, { status: 400 })
     }
@@ -18,12 +25,31 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
+    // Row scope. The permission gate above answers "may they read assessments
+    // at all"; this answers "which assessments". `CLASSROOM_TEACHER` holds
+    // `assessment:read` at `class` scope, so without this the school/tenant
+    // filter alone handed every teacher every assessment in the school.
+    const visibility = await resolveVisibility(ctx, 'assessment:read')
+    if (visibilityDeniesAll(visibility)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
     const { searchParams } = new URL(req.url)
     const classId = searchParams.get('classId')
     const termId = searchParams.get('termId')
 
-    const where: Record<string, unknown> = { schoolId, tenantId }
-    if (classId) where.classSubject = { classId }
+    // Every clause goes under `AND`. Both the visibility filter and
+    // `?classId=` address the assessment through `classSubject`, so a shallow
+    // merge would let one silently overwrite the other: `?classId=` must
+    // NARROW the visible class set, never replace it. Under `AND` a class the
+    // caller cannot see yields an unsatisfiable predicate and zero rows.
+    const clauses: Prisma.AssessmentWhereInput[] = []
+    const scope = assessmentVisibilityWhere(visibility)
+    if (Object.keys(scope).length > 0) clauses.push(scope)
+    if (classId) clauses.push({ classSubject: { classId } })
+
+    const where: Prisma.AssessmentWhereInput = { schoolId, tenantId }
+    if (clauses.length > 0) where.AND = clauses
     if (termId) where.termId = termId
 
     const assessments = await prisma.assessment.findMany({
@@ -69,13 +95,23 @@ const CreateAssessmentSchema = z.object({
 // Create a new assessment
 export async function POST(req: NextRequest) {
   try {
-    const { schoolId, tenantId, userId } = await getTenantContext()
+    const ctx = await getTenantContext()
+    const { schoolId, tenantId, userId } = ctx
     if (!schoolId) {
       return NextResponse.json({ error: 'No school assigned' }, { status: 400 })
     }
 
     // RBAC
     if (!(await hasPermission(userId, 'assessment:create', tenantId, schoolId))) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
+    // Row scope. `CLASSROOM_TEACHER` holds `assessment:create` at `class` scope,
+    // so the permission gate alone let any teacher create an assessment against
+    // any `classSubjectId` in the tenant. `visibilityDeniesAll` first, so a
+    // teacher with no classes is refused rather than silently creating nothing.
+    const visibility = await resolveVisibility(ctx, 'assessment:create')
+    if (visibilityDeniesAll(visibility)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
@@ -86,9 +122,20 @@ export async function POST(req: NextRequest) {
     }
     const { classSubjectId, termId, typeId, name, description, maxScore, assessmentDate, dueDate } = parseResult.data
 
-    // Verify classSubject belongs to this school/tenant
+    // Verify the classSubject belongs to this school/tenant AND to a class the
+    // caller may create assessments in. `ClassSubject` has no `schoolId` column,
+    // so school scope arrives through the `class` relation. The class filter is
+    // assigned, not spread, and onto a key the base object does not carry, so it
+    // cannot overwrite the identity or school columns.
+    const classSubjectWhere: Prisma.ClassSubjectWhereInput = {
+      id: classSubjectId,
+      tenantId,
+      class: { schoolId },
+    }
+    if (visibility.classIds) classSubjectWhere.classId = { in: visibility.classIds }
+
     const classSubject = await prisma.classSubject.findFirst({
-      where: { id: classSubjectId, tenantId },
+      where: classSubjectWhere,
       include: { subject: { select: { name: true, code: true } } },
     })
     if (!classSubject) {

@@ -47,6 +47,86 @@ const ROSTER: Row[] = [
   { id: 'stu-other', studentId: 'S002', firstName: 'Brah', lastName: 'Other', parentId: 'parent-other' },
 ]
 
+/**
+ * The school, as a classroom teacher sees it: two classes they are responsible
+ * for and two they are not, one colleague who co-teaches with them, one employee
+ * they have no connection to, and one assessment per class.
+ *
+ * `staff-session` carries `userId` so the single `staffFindFirst` double can
+ * serve both jobs it has: `resolveVisibility` looking the caller's identity up
+ * by `userId`, and `GET /api/teachers/[id]` looking a staff row up by the
+ * composed `where`.
+ */
+const CLASSES: Row[] = [
+  { id: 'class-1', tenantId: TENANT_ID, schoolId: SCHOOL_ID, name: 'Casa 1' },
+  { id: 'class-2', tenantId: TENANT_ID, schoolId: SCHOOL_ID, name: 'Casa 2' },
+  { id: 'class-9', tenantId: TENANT_ID, schoolId: SCHOOL_ID, name: 'Casa 9' },
+  { id: 'class-8', tenantId: TENANT_ID, schoolId: SCHOOL_ID, name: 'Casa 8' },
+]
+
+const STAFF: Row[] = [
+  {
+    id: 'staff-session',
+    tenantId: TENANT_ID,
+    schoolId: SCHOOL_ID,
+    userId: USER_ID,
+    firstName: 'Session',
+    lastName: 'Teacher',
+    department: { name: 'Casa 1' },
+  },
+  {
+    id: 'staff-colleague',
+    tenantId: TENANT_ID,
+    schoolId: SCHOOL_ID,
+    userId: 'user-colleague',
+    firstName: 'Cora',
+    lastName: 'Colleague',
+    department: { name: 'Casa 1' },
+  },
+  {
+    id: 'staff-stranger',
+    tenantId: TENANT_ID,
+    schoolId: SCHOOL_ID,
+    userId: 'user-stranger',
+    firstName: 'Sam',
+    lastName: 'Stranger',
+    department: { name: 'Casa 9' },
+  },
+]
+
+const ASSESSMENTS: Row[] = [
+  {
+    id: 'assess-1',
+    tenantId: TENANT_ID,
+    schoolId: SCHOOL_ID,
+    name: 'Casa 1 term paper',
+    isPublished: false,
+    scores: [],
+    classSubject: { classId: 'class-1' },
+  },
+  {
+    id: 'assess-2',
+    tenantId: TENANT_ID,
+    schoolId: SCHOOL_ID,
+    name: 'Casa 2 term paper',
+    isPublished: false,
+    scores: [],
+    classSubject: { classId: 'class-2' },
+  },
+  {
+    id: 'assess-9',
+    tenantId: TENANT_ID,
+    schoolId: SCHOOL_ID,
+    name: 'Casa 9 term paper',
+    isPublished: false,
+    scores: [],
+    classSubject: { classId: 'class-9' },
+  },
+]
+
+/** The classes `resolveVisibility` resolves a classroom teacher to. */
+const TEACHER_CLASS_IDS = ['class-1', 'class-2']
+
 /** Every column `User` carries, secrets included. See `userFindFirst`. */
 const USER_ROW: Row = {
   id: USER_ID,
@@ -86,7 +166,10 @@ const staffFindFirst = mock(async (args: QueryArgs): Promise<Row | null> => {
   return null
 })
 const classFindMany = mock(async (_args: QueryArgs): Promise<Row[]> => [])
+const classFindFirst = mock(async (_args: QueryArgs): Promise<Row | null> => null)
 const classSubjectFindMany = mock(async (_args: QueryArgs): Promise<Row[]> => [])
+const assessmentFindFirst = mock(async (_args: QueryArgs): Promise<Row | null> => null)
+const assessmentUpdate = mock(async (_args: QueryArgs): Promise<Row> => ({}))
 const parentFindFirst = mock(async (args: QueryArgs): Promise<Row | null> => {
   const where = args.where ?? {}
   if (where.userId === USER_ID && callerParentId) return { id: callerParentId }
@@ -126,8 +209,9 @@ mock.module('@/lib/prisma', () => ({
   prisma: {
     student: { findMany: studentFindMany, findFirst: studentFindFirst },
     staff: { findMany: staffFindMany, findFirst: staffFindFirst },
-    class: { findMany: classFindMany },
+    class: { findMany: classFindMany, findFirst: classFindFirst },
     classSubject: { findMany: classSubjectFindMany },
+    assessment: { findFirst: assessmentFindFirst, update: assessmentUpdate },
     parent: { findFirst: parentFindFirst },
     user: { findFirst: userFindFirst, update: userUpdate },
     passkey: { create: passkeyCreate },
@@ -234,6 +318,11 @@ mock.module('@/lib/audit/logger', () => ({
 const { GET: studentsGET } = await import('@/app/api/students/route')
 const { GET: studentGET } = await import('@/app/api/students/[id]/route')
 const { GET: teachersGET } = await import('@/app/api/teachers/route')
+const { GET: teacherGET } = await import('@/app/api/teachers/[id]/route')
+const { GET: classGET } = await import('@/app/api/classes/[id]/route')
+const { GET: assessmentGET, PATCH: assessmentPATCH } = await import(
+  '@/app/api/assessments/[id]/route'
+)
 const { POST: totpPOST } = await import('@/app/api/auth/totp/route')
 const { POST: registerVerifyPOST } = await import(
   '@/app/api/auth/passkey/register-verify/route'
@@ -248,13 +337,75 @@ function studentsRequest(query = ''): NextRequest {
   return new NextRequest(`http://localhost/api/students${query}`)
 }
 
+/**
+ * Apply a Prisma `where` the way a real client would.
+ *
+ * This is the load-bearing piece for the detail-route assertions below. It
+ * understands the three shapes the handlers actually build: an exact scalar, an
+ * `{ in: [...] }` filter, and a nested relation filter, plus `AND` as the
+ * conjunction of clauses. A mock that ignored `where` — or that only handled
+ * scalars — would answer 200 with whatever row it liked and the tests would
+ * pass because the mock, not the handler, did the narrowing.
+ *
+ * Note what this makes impossible: when a handler spreads a visibility builder
+ * over its path `id`, the `id` in the object becomes `{ in: [...] }`, and the
+ * requested id stops being part of the predicate at all. Then `findFirst` with
+ * an id that exists nowhere returns the first in-scope row instead of null,
+ * which is exactly the defect these tests exist to catch.
+ */
+function whereMatches(row: Row, where: Row): boolean {
+  for (const [key, condition] of Object.entries(where)) {
+    if (key === 'AND') {
+      const clauses = Array.isArray(condition) ? (condition as Row[]) : []
+      if (!clauses.every((clause) => whereMatches(row, clause))) return false
+      continue
+    }
+    const value = row[key]
+    if (typeof condition === 'string') {
+      if (value !== condition) return false
+      continue
+    }
+    if (condition && typeof condition === 'object') {
+      const filter = condition as Row
+      const inList = filter.in as string[] | undefined
+      if (Array.isArray(inList)) {
+        if (typeof value !== 'string' || !inList.includes(value)) return false
+        continue
+      }
+      if (!whereMatches((value ?? {}) as Row, filter)) return false
+      continue
+    }
+    return false
+  }
+  return true
+}
+
+/** First row of `rows` the `where` selects, or null. */
+function selectFirst(rows: Row[], args: QueryArgs): Row | null {
+  const where = args.where ?? {}
+  const match = rows.find((row) => whereMatches(row, where))
+  return match ? { ...match } : null
+}
+
 function studentRequest(id: string): NextRequest {
   return new NextRequest(`http://localhost/api/students/${id}`)
+}
+
+function detailRequest(path: string, id: string): NextRequest {
+  return new NextRequest(`http://localhost${path}/${id}`)
 }
 
 function jsonRequest(path: string, body: unknown): Request {
   return new Request(`http://localhost${path}`, {
     method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+}
+
+function patchRequest(path: string, body: unknown): NextRequest {
+  return new NextRequest(`http://localhost${path}`, {
+    method: 'PATCH',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
   })
@@ -268,7 +419,10 @@ function dbCalls(): number {
     staffFindMany.mock.calls.length +
     staffFindFirst.mock.calls.length +
     classFindMany.mock.calls.length +
+    classFindFirst.mock.calls.length +
     classSubjectFindMany.mock.calls.length +
+    assessmentFindFirst.mock.calls.length +
+    assessmentUpdate.mock.calls.length +
     parentFindFirst.mock.calls.length +
     userFindFirst.mock.calls.length +
     userUpdate.mock.calls.length +
@@ -298,13 +452,29 @@ beforeEach(() => {
   staffFindMany.mockReset()
   staffFindMany.mockImplementation(async () => [])
   staffFindFirst.mockReset()
-  staffFindFirst.mockImplementation(async (args: QueryArgs) =>
-    (args.where ?? {}).userId === USER_ID ? { id: 'staff-session' } : null,
-  )
+  staffFindFirst.mockImplementation(async (args: QueryArgs) => selectFirst(STAFF, args))
   classFindMany.mockReset()
-  classFindMany.mockImplementation(async () => [])
+  classFindMany.mockImplementation(async (args: QueryArgs) => {
+    // `resolveVisibility` asks for the caller's classes with `select: { id }`.
+    // `staffVisibilityWhere` then asks for the same classes with a richer
+    // select. One double has to answer both.
+    if (args.select?.classTeacherId) {
+      return [{ classTeacherId: 'staff-session', subjects: [{ teacherId: 'staff-colleague' }] }]
+    }
+    return TEACHER_CLASS_IDS.map((id) => ({ id }))
+  })
+  classFindFirst.mockReset()
+  classFindFirst.mockImplementation(async (args: QueryArgs) => selectFirst(CLASSES, args))
   classSubjectFindMany.mockReset()
   classSubjectFindMany.mockImplementation(async () => [])
+  assessmentFindFirst.mockReset()
+  assessmentFindFirst.mockImplementation(async (args: QueryArgs) => selectFirst(ASSESSMENTS, args))
+  assessmentUpdate.mockReset()
+  assessmentUpdate.mockImplementation(async (args: QueryArgs) => {
+    const existing = selectFirst(ASSESSMENTS, args)
+    if (!existing) throw new Error('update matched no assessment')
+    return { ...existing, ...((args.data ?? {}) as Row) }
+  })
   parentFindFirst.mockReset()
   parentFindFirst.mockImplementation(async (args: QueryArgs) =>
     (args.where ?? {}).userId === USER_ID && callerParentId ? { id: callerParentId } : null,
@@ -566,6 +736,8 @@ describe('GET /api/teachers - narrowed to the caller and their own colleagues', 
     // as "no restriction".
     session = { ...SESSION, role: 'CLASSROOM_TEACHER' }
     grants = ['teacher:read']
+    // The shared default resolves this teacher to two classes; here they have none.
+    classFindMany.mockImplementation(async () => [])
 
     const res = await teachersGET(new NextRequest('http://localhost/api/teachers'))
 
@@ -599,6 +771,378 @@ describe('GET /api/teachers - narrowed to the caller and their own colleagues', 
 
     expect(res.status).toBe(401)
     expect(staffFindMany).toHaveBeenCalledTimes(0)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// The three detail routes, executed
+// ---------------------------------------------------------------------------
+
+/**
+ * These three routes had nothing behavioural behind them: `middleware.test.ts`
+ * asserted that their source mentioned `classVisibilityWhere`,
+ * `staffVisibilityWhere` and `assessment:read`, and a handler could delete the
+ * filter entirely and stay green. Two of them really did.
+ *
+ * The case that matters is the third one in each group. A wrong-but-in-scope id
+ * is a request the caller is entitled to make, so the route must look it up and
+ * find nothing. What actually happened instead:
+ *
+ * - `teachers/[id]` spread `staffVisibilityWhere` beside the path `id`. That
+ *   builder emits `{ id: { in: [...] } }` in every class/department branch, so
+ *   the spread overwrote the id and the lookup became "the first colleague this
+ *   teacher may read". Any id at all answered 200, with `user.email` attached.
+ * - `classes/[id]` did the same with `classVisibilityWhere`.
+ * - `assessments/[id]` carried no visibility at all, so it answered 200 with any
+ *   assessment in the school — student names and raw scores — to any teacher
+ *   holding `assessment:read`.
+ */
+describe('GET /api/classes/[id] - the requested id survives the visibility filter', () => {
+  /** A classroom teacher: `class:read` resolves to `class` scope for that role. */
+  function asTeacher() {
+    session = { ...SESSION, role: 'CLASSROOM_TEACHER' }
+    grants = ['class:read']
+  }
+
+  it('should answer 200 with the requested class when it is in scope', async () => {
+    asTeacher()
+
+    const res = await classGET(detailRequest('/api/classes', 'class-1'), {
+      params: Promise.resolve({ id: 'class-1' }),
+    })
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as Row
+    expect(body.id).toBe('class-1')
+  })
+
+  it('should answer 404 for a class the caller does not teach', async () => {
+    asTeacher()
+
+    const res = await classGET(detailRequest('/api/classes', 'class-9'), {
+      params: Promise.resolve({ id: 'class-9' }),
+    })
+
+    expect(res.status).toBe(404)
+  })
+
+  it('should answer 404 for an id that exists nowhere, not the first in-scope class', async () => {
+    // THE defect. `classVisibilityWhere` returns `{ id: { in: [...] } }`, so the
+    // spread form turned the `where` into "any class I teach" and this request
+    // came back 200 with `class-1` — a real record, just not the one asked for.
+    asTeacher()
+
+    const res = await classGET(detailRequest('/api/classes', 'class-nope'), {
+      params: Promise.resolve({ id: 'class-nope' }),
+    })
+
+    expect(res.status).toBe(404)
+  })
+
+  it('should keep the requested id in the where clause alongside the scope', async () => {
+    asTeacher()
+
+    await classGET(detailRequest('/api/classes', 'class-2'), {
+      params: Promise.resolve({ id: 'class-2' }),
+    })
+
+    const where = (classFindFirst.mock.calls[0][0] as QueryArgs).where ?? {}
+    expect(where.id).toBe('class-2')
+    expect(where.tenantId).toBe(TENANT_ID)
+    expect(where.schoolId).toBe(SCHOOL_ID)
+    // The scope composes under AND, so nothing on the object can overwrite it.
+    expect(JSON.stringify(where.AND)).toContain('class-1')
+  })
+
+  it('should answer 403 before the lookup for a role without class:read', async () => {
+    asTeacher()
+    grants = []
+
+    const res = await classGET(detailRequest('/api/classes', 'class-1'), {
+      params: Promise.resolve({ id: 'class-1' }),
+    })
+
+    expect(res.status).toBe(403)
+    expect(classFindFirst).toHaveBeenCalledTimes(0)
+  })
+
+  it('should answer 400 with no school, before any query', async () => {
+    asTeacher()
+    session = { ...SESSION, role: 'CLASSROOM_TEACHER', schoolId: null }
+
+    const res = await classGET(detailRequest('/api/classes', 'class-1'), {
+      params: Promise.resolve({ id: 'class-1' }),
+    })
+
+    expect(res.status).toBe(400)
+    expect(dbCalls()).toBe(0)
+  })
+
+  it('should answer 403 for a teacher assigned to no class, not an empty 404', async () => {
+    asTeacher()
+    classFindMany.mockImplementation(async () => [])
+
+    const res = await classGET(detailRequest('/api/classes', 'class-1'), {
+      params: Promise.resolve({ id: 'class-1' }),
+    })
+
+    expect(res.status).toBe(403)
+    expect(classFindFirst).toHaveBeenCalledTimes(0)
+  })
+})
+
+describe('GET /api/teachers/[id] - the requested id survives the visibility filter', () => {
+  function asTeacher() {
+    session = { ...SESSION, role: 'CLASSROOM_TEACHER' }
+    grants = ['teacher:read']
+  }
+
+  it('should answer 200 with the requested colleague when they are in scope', async () => {
+    asTeacher()
+
+    const res = await teacherGET(detailRequest('/api/teachers', 'staff-colleague'), {
+      params: Promise.resolve({ id: 'staff-colleague' }),
+    })
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as Row
+    expect(body.id).toBe('staff-colleague')
+  })
+
+  it('should answer 404 for a colleague with no connection to the caller', async () => {
+    asTeacher()
+
+    const res = await teacherGET(detailRequest('/api/teachers', 'staff-stranger'), {
+      params: Promise.resolve({ id: 'staff-stranger' }),
+    })
+
+    expect(res.status).toBe(404)
+  })
+
+  it('should answer 404 for an id that exists nowhere, not the first reachable colleague', async () => {
+    // THE defect, and the reason this route was worth a rewrite: the spread
+    // replaced the id with the caller's own colleague list, so this came back
+    // 200 with `staff-session` and their `user.email`.
+    asTeacher()
+
+    const res = await teacherGET(detailRequest('/api/teachers', 'staff-nope'), {
+      params: Promise.resolve({ id: 'staff-nope' }),
+    })
+
+    expect(res.status).toBe(404)
+  })
+
+  it('should keep the requested id in the where clause alongside the scope', async () => {
+    asTeacher()
+
+    await teacherGET(detailRequest('/api/teachers', 'staff-session'), {
+      params: Promise.resolve({ id: 'staff-session' }),
+    })
+
+    // The last call is the lookup; the earlier ones are `resolveVisibility` and
+    // `staffVisibilityWhere` resolving the caller's own identity and classes.
+    const calls = staffFindFirst.mock.calls as [QueryArgs][]
+    const where = calls[calls.length - 1][0].where ?? {}
+    expect(where.id).toBe('staff-session')
+    expect(where.tenantId).toBe(TENANT_ID)
+    expect(where.schoolId).toBe(SCHOOL_ID)
+    expect(JSON.stringify(where.AND)).toContain('staff-colleague')
+  })
+
+  it('should answer 403 before the lookup for a role without teacher:read', async () => {
+    asTeacher()
+    grants = []
+
+    const res = await teacherGET(detailRequest('/api/teachers', 'staff-session'), {
+      params: Promise.resolve({ id: 'staff-session' }),
+    })
+
+    expect(res.status).toBe(403)
+    expect(staffFindFirst).toHaveBeenCalledTimes(0)
+  })
+
+  it('should answer 400 with no school, before any query', async () => {
+    asTeacher()
+    session = { ...SESSION, role: 'CLASSROOM_TEACHER', schoolId: null }
+
+    const res = await teacherGET(detailRequest('/api/teachers', 'staff-session'), {
+      params: Promise.resolve({ id: 'staff-session' }),
+    })
+
+    expect(res.status).toBe(400)
+    expect(dbCalls()).toBe(0)
+  })
+})
+
+describe('GET /api/assessments/[id] - a classroom teacher reads only their own classes', () => {
+  function asTeacher() {
+    session = { ...SESSION, role: 'CLASSROOM_TEACHER' }
+    grants = ['assessment:read']
+  }
+
+  it('should answer 200 with the requested assessment when it is in scope', async () => {
+    asTeacher()
+
+    const res = await assessmentGET(detailRequest('/api/assessments', 'assess-1'), {
+      params: Promise.resolve({ id: 'assess-1' }),
+    })
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as Row
+    expect(body.id).toBe('assess-1')
+  })
+
+  it('should answer 404 for an assessment in a class the caller does not teach', async () => {
+    // THE defect. This route resolved no visibility at all, so `{ id, schoolId,
+    // tenantId }` was the whole filter and this came back 200 with the student
+    // names and raw scores of a class the caller has no connection to.
+    asTeacher()
+
+    const res = await assessmentGET(detailRequest('/api/assessments', 'assess-9'), {
+      params: Promise.resolve({ id: 'assess-9' }),
+    })
+
+    expect(res.status).toBe(404)
+  })
+
+  it('should answer 404 for an id that exists nowhere', async () => {
+    asTeacher()
+
+    const res = await assessmentGET(detailRequest('/api/assessments', 'assess-nope'), {
+      params: Promise.resolve({ id: 'assess-nope' }),
+    })
+
+    expect(res.status).toBe(404)
+  })
+
+  it('should narrow the lookup by the class the assessment hangs off', async () => {
+    asTeacher()
+
+    await assessmentGET(detailRequest('/api/assessments', 'assess-2'), {
+      params: Promise.resolve({ id: 'assess-2' }),
+    })
+
+    const where = (assessmentFindFirst.mock.calls[0][0] as QueryArgs).where ?? {}
+    expect(where.id).toBe('assess-2')
+    expect(where.tenantId).toBe(TENANT_ID)
+    expect(where.schoolId).toBe(SCHOOL_ID)
+    // `assessmentVisibilityWhere` reaches the class through `classSubject`, so
+    // that is the shape the scope takes.
+    expect(JSON.stringify(where.AND)).toContain('classSubject')
+    expect(JSON.stringify(where.AND)).toContain('class-1')
+  })
+
+  it('should answer 403 before the lookup for a role without assessment:read', async () => {
+    asTeacher()
+    grants = []
+
+    const res = await assessmentGET(detailRequest('/api/assessments', 'assess-1'), {
+      params: Promise.resolve({ id: 'assess-1' }),
+    })
+
+    expect(res.status).toBe(403)
+    expect(assessmentFindFirst).toHaveBeenCalledTimes(0)
+  })
+
+  it('should answer 400 with no school, before any query', async () => {
+    asTeacher()
+    session = { ...SESSION, role: 'CLASSROOM_TEACHER', schoolId: null }
+
+    const res = await assessmentGET(detailRequest('/api/assessments', 'assess-1'), {
+      params: Promise.resolve({ id: 'assess-1' }),
+    })
+
+    expect(res.status).toBe(400)
+    expect(dbCalls()).toBe(0)
+  })
+})
+
+describe('PATCH /api/assessments/[id] - editing is not publishing', () => {
+  function asTeacher() {
+    session = { ...SESSION, role: 'CLASSROOM_TEACHER' }
+    grants = ['assessment:update', 'assessment:publish']
+  }
+
+  it('should answer 200 and apply an ordinary field edit', async () => {
+    asTeacher()
+
+    const res = await assessmentPATCH(patchRequest('/api/assessments/assess-1', { name: 'Renamed' }), {
+      params: Promise.resolve({ id: 'assess-1' }),
+    })
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { assessment: Row }
+    expect(body.assessment.name).toBe('Renamed')
+  })
+
+  it('should refuse to publish for a caller holding assessment:update only', async () => {
+    // THE defect. `assessment:publish` was granted to CLASSROOM_TEACHER and
+    // asserted in the role matrix, but no route read it, so publishing ran under
+    // `assessment:update` and the key meant nothing. Dropping the publish key
+    // while keeping update is the only way to tell the two gates apart.
+    asTeacher()
+    grants = ['assessment:update']
+
+    const res = await assessmentPATCH(
+      patchRequest('/api/assessments/assess-1', { isPublished: true }),
+      { params: Promise.resolve({ id: 'assess-1' }) },
+    )
+
+    expect(res.status).toBe(403)
+    // Refused outright, not silently ignored: a caller who cannot publish must
+    // not be answered 200 as though they had.
+    expect(assessmentUpdate).toHaveBeenCalledTimes(0)
+  })
+
+  it('should publish for a caller who does hold assessment:publish', async () => {
+    asTeacher()
+
+    const res = await assessmentPATCH(
+      patchRequest('/api/assessments/assess-1', { isPublished: true }),
+      { params: Promise.resolve({ id: 'assess-1' }) },
+    )
+
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { assessment: Row }
+    expect(body.assessment.isPublished).toBe(true)
+  })
+
+  it('should carry the row scope into the write, not just the read', async () => {
+    // The write must be bounded by the same predicate as the lookup that
+    // preceded it, or the scope is advisory.
+    asTeacher()
+
+    await assessmentPATCH(patchRequest('/api/assessments/assess-1', { name: 'Renamed' }), {
+      params: Promise.resolve({ id: 'assess-1' }),
+    })
+
+    const where = (assessmentUpdate.mock.calls[0][0] as QueryArgs).where ?? {}
+    expect(where.id).toBe('assess-1')
+    expect(JSON.stringify(where.AND)).toContain('classSubject')
+  })
+
+  it('should answer 404 when publishing an assessment outside the caller\'s classes', async () => {
+    asTeacher()
+
+    const res = await assessmentPATCH(
+      patchRequest('/api/assessments/assess-9', { isPublished: true }),
+      { params: Promise.resolve({ id: 'assess-9' }) },
+    )
+
+    expect(res.status).toBe(404)
+    expect(assessmentUpdate).toHaveBeenCalledTimes(0)
+  })
+
+  it('should answer 403 before reading for a role without assessment:update', async () => {
+    asTeacher()
+    grants = []
+
+    const res = await assessmentPATCH(patchRequest('/api/assessments/assess-1', { name: 'Renamed' }), {
+      params: Promise.resolve({ id: 'assess-1' }),
+    })
+
+    expect(res.status).toBe(403)
+    expect(assessmentFindFirst).toHaveBeenCalledTimes(0)
   })
 })
 

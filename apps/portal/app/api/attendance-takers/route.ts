@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getTenantContext } from '@/lib/tenant'
 import { hasPermission } from '@novastar/auth'
+import { isUniqueConstraintViolation, duplicateResponse } from '@/lib/prisma-conflict'
 import { z } from 'zod'
 import { logError } from '@/lib/logger'
 
@@ -44,7 +45,7 @@ const RELEASE_SCHEMA = z.object({
  */
 const GRANT_TRANSACTION_BOUNDS = { maxWait: 2_000, timeout: 30_000 } as const
 
-export async function GET(req: NextRequest) {
+export async function GET(_req: NextRequest) {
   try {
     const { tenantId, schoolId, userId } = await getTenantContext()
     if (!schoolId) return NextResponse.json({ error: 'No school assigned' }, { status: 400 })
@@ -147,6 +148,16 @@ export async function POST(req: NextRequest) {
     }
     if (error instanceof Error && error.name === 'ForbiddenError') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+    // The read-modify-write above is not atomic against a concurrent grant: two
+    // operators saving the same cell of the matrix both miss the `findFirst` and
+    // both reach `create`, and the compound unique
+    // `@@unique([tenantId, schoolId, classId, staffId])` rejects the loser. That
+    // is an expected client outcome — the grant it wanted already exists — and
+    // the catch-all 500 would both misreport it and bury it in the error log and
+    // on the platform-errors page.
+    if (isUniqueConstraintViolation(error)) {
+      return duplicateResponse()
     }
     logError('AttendanceTakers POST', error)
     return NextResponse.json({ error: 'Failed to save attendance taker grant' }, { status: 500 })

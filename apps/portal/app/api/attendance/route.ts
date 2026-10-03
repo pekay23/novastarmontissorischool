@@ -10,6 +10,12 @@ import {
 } from '@/lib/visibility'
 import { z } from 'zod'
 import { logError } from '@/lib/logger'
+// `P2002` handling, shared. `AttendanceStudent` carries
+// `@@unique([tenantId, studentId, date, period])` and the write path's
+// read-then-write is not atomic against a concurrent marker, so two POSTs for
+// the same student, day and period can both miss the `findFirst` and both reach
+// `create` — the loser gets a P2002 and must see a 409, not a 500.
+import { isUniqueConstraintViolation, duplicateResponse } from '@/lib/prisma-conflict'
 
 /**
  * Normalise nullable text once, at the boundary.
@@ -77,40 +83,6 @@ export function normaliseAttendanceDate(value: string): Date {
  * this request — open for however long the database feels like answering.
  */
 const ATTENDANCE_TRANSACTION_BOUNDS = { maxWait: 2_000, timeout: 30_000 } as const
-
-/**
- * Prisma `P2002` is a unique-constraint violation.
- *
- * `AttendanceStudent` carries
- * `@@unique([tenantId, studentId, date, period])`, and the write path's
- * read-then-write is not atomic against a concurrent marker: two POSTs
- * for the same student, day and period can both miss the `findFirst` and
- * both reach `create`, and the loser gets a P2002. That is an expected
- * client outcome — the row it wanted already exists — so it is a 409,
- * not a server fault. Reported as a 500 it misreports the fault and
- * buries ordinary concurrent marking in the error log and on the
- * platform-errors page.
- *
- * Duplicated rather than shared with `api/timetable/route.ts` and
- * `api/syllabi/route.ts`, which carry the same helper and rationale:
- * sharing it would be a new module outside this change's ownership.
- * `Prisma.PrismaClientKnownRequestError` is matched by `instanceof`
- * rather than by duck-typing `err.code`, which would also catch an
- * unrelated error object that happens to carry a `code` field.
- */
-function isUniqueConstraintViolation(
-  err: unknown,
-): err is Prisma.PrismaClientKnownRequestError {
-  return err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002'
-}
-
-/** The 409 body. Same `{ error }` shape as every other response here. */
-function duplicateResponse() {
-  return NextResponse.json(
-    { error: 'A record with these values already exists' },
-    { status: 409 },
-  )
-}
 
 export async function GET(req: NextRequest) {
   try {
@@ -356,30 +328,46 @@ export async function POST(req: NextRequest) {
       records = [parseResult.data]
     }
 
-    // Verify all students are in the specified class
-    const classId = records[0].classId
-    const classCheck = await prisma.class.findFirst({
-      where: { id: classId, schoolId, tenantId },
-      include: { students: { select: { id: true } } },
-    })
-    if (!classCheck) {
-      return NextResponse.json({ error: 'Class not found' }, { status: 404 })
-    }
-    const validStudentIds = new Set(classCheck.students.map((s) => s.id))
+    // Every distinct class the request names is checked, not just the first
+    // record's. A bulk array is one request but each element carries its own
+    // `classId` and its own `studentId`, and each is written independently below.
+    // Deciding once from `records[0]` would mean a caller assigned to class A
+    // could put class B in the second element of the same call and have it
+    // written — the grant question would never be asked about class B.
+    const requestedClassIds = [...new Set(records.map((record) => record.classId))]
 
-    // AttendanceTaker enforcement: an active assignment for this class
-    // (or school-wide), or the leadership role fallback above.
-    const mayMark = await mayMarkAttendance({ tenantId, schoolId, userId, role, classId })
-    if (!mayMark) {
-      return NextResponse.json(
-        { error: 'You are not assigned to mark attendance for this class' },
-        { status: 403 },
-      )
+    // Roster per requested class, and the attendance grant per requested class.
+    // Both are keyed by class id so a record is authorised against the class it
+    // actually writes to, not against whichever class happened to be first.
+    const rosters = new Map<string, Set<string>>()
+
+    for (const requestedClassId of requestedClassIds) {
+      // Verify the students are in the specified class
+      const classCheck = await prisma.class.findFirst({
+        where: { id: requestedClassId, schoolId, tenantId },
+        include: { students: { select: { id: true } } },
+      })
+      if (!classCheck) {
+        return NextResponse.json({ error: 'Class not found' }, { status: 404 })
+      }
+      rosters.set(requestedClassId, new Set(classCheck.students.map((s) => s.id)))
+
+      // AttendanceTaker enforcement: an active assignment for this class
+      // (or school-wide), or the leadership role fallback above.
+      const mayMark = await mayMarkAttendance({ tenantId, schoolId, userId, role, classId: requestedClassId })
+      if (!mayMark) {
+        return NextResponse.json(
+          {
+            error: `You are not assigned to mark attendance for class ${requestedClassId}`,
+          },
+          { status: 403 },
+        )
+      }
     }
 
     const results = []
     for (const record of records) {
-      if (!validStudentIds.has(record.studentId)) {
+      if (!rosters.get(record.classId)?.has(record.studentId)) {
         results.push({ studentId: record.studentId, error: 'Student not in this class' })
         continue
       }

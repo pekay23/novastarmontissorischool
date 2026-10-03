@@ -7,33 +7,50 @@ import {
   resolveVisibility,
   attendanceVisibilityWhere,
   visibilityDeniesAll,
+  type Visibility,
 } from '@/lib/visibility'
 import { normaliseNullableText, normalisePeriod } from '../route'
+import { isUniqueConstraintViolation, duplicateResponse } from '@/lib/prisma-conflict'
 import { z } from 'zod'
 import { logError } from '@/lib/logger'
 
 /**
- * Prisma `P2002` is a unique-constraint violation.
+ * The one predicate every handler in this file reads and writes through.
  *
- * `period` is part of `@@unique([tenantId, studentId, date, period])`,
- * so a PATCH that moves a record onto a period another row of the same
- * student and day already holds is an expected client outcome — the
- * row it wants exists — and is a 409, not a server fault. See the same
- * helper and rationale in `api/attendance/route.ts`, which it duplicates
- * rather than sharing across a new module.
+ * Two things have to be in it, and the mutation handlers used to carry only the
+ * first:
+ *
+ * - school scope, which for `AttendanceStudent` arrives through the `class`
+ *   relation because the model has no `schoolId` column of its own;
+ * - row scope, which is the caller's resolved `Visibility`.
+ *
+ * The row scope composes under `AND` rather than as a spread. A spread lets any
+ * later property on the object silently overwrite the scope, so the filter a
+ * caller can be trusted with stops being the filter that runs; under `AND` an
+ * out-of-scope record simply does not match.
+ *
+ * Built once and shared by GET, PATCH and DELETE so the three cannot drift: the
+ * defect this exists to close was that the mutation handlers applied a weaker
+ * `where` than the read handler in the same file, and a single builder makes
+ * that divergence impossible to reintroduce silently. The returned type is the
+ * unique-where input, so the same object can be handed to `findFirst`, `update`
+ * and `delete` — the write carries the scope rather than merely trusting the
+ * read that preceded it.
  */
-function isUniqueConstraintViolation(
-  err: unknown,
-): err is Prisma.PrismaClientKnownRequestError {
-  return err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002'
-}
-
-/** The 409 body. Same `{ error }` shape as every other response here. */
-function duplicateResponse() {
-  return NextResponse.json(
-    { error: 'A record with these values already exists' },
-    { status: 409 },
-  )
+function scopedAttendanceWhere(input: {
+  id: string
+  tenantId: string
+  schoolId: string
+  visibility: Visibility
+}): Prisma.AttendanceStudentWhereUniqueInput {
+  const where: Prisma.AttendanceStudentWhereUniqueInput = {
+    id: input.id,
+    tenantId: input.tenantId,
+    class: { schoolId: input.schoolId },
+  }
+  const scope = attendanceVisibilityWhere(input.visibility)
+  if (Object.keys(scope).length > 0) where.AND = [scope]
+  return where
 }
 
 const UpdateAttendanceSchema = z.object({
@@ -63,23 +80,8 @@ export async function GET(
     }
 
     const { id } = await params
-    // School scope arrives through the class relation (AttendanceStudent
-    // has no schoolId column) and row scope through the visibility filter.
-    // The visibility filter composes under `AND` rather than as a spread,
-    // the same idiom as `GET /api/attendance`: a spread lets any later
-    // property on this `where` silently overwrite the scope, so the filter
-    // a caller can be trusted with stops being the filter that runs. Under
-    // `AND` an out-of-scope record is simply not found.
-    const where: Prisma.AttendanceStudentWhereInput = {
-      id,
-      tenantId,
-      class: { schoolId },
-    }
-    const scope = attendanceVisibilityWhere(visibility)
-    if (Object.keys(scope).length > 0) where.AND = [scope]
-
     const record = await prisma.attendanceStudent.findFirst({
-      where,
+      where: scopedAttendanceWhere({ id, tenantId, schoolId, visibility }),
       include: {
         student: { select: { firstName: true, lastName: true, studentId: true } },
         class: { select: { name: true } },
@@ -102,11 +104,24 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const { schoolId, tenantId, userId } = await getTenantContext()
+    const ctx = await getTenantContext()
+    const { schoolId, tenantId, userId } = ctx
     if (!schoolId) return NextResponse.json({ error: 'No school assigned' }, { status: 400 })
 
     // RBAC
     if (!(await hasPermission(userId, 'attendance:edit', tenantId, schoolId))) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
+    // Row scope, under the key the write itself is gated on. `hasPermission`
+    // answers "may this caller edit attendance at all"; `attendance:edit` is a
+    // key a classroom teacher holds, and for that role `scopeFor` resolves to
+    // `class` — so without this a teacher can edit any record in the school by
+    // id. The action's own key is used rather than the read key because the
+    // catalog's scope is a property of the permission, and the role default
+    // narrows an unmapped key rather than falling through to the catalog's `all`.
+    const visibility = await resolveVisibility(ctx, 'attendance:edit')
+    if (visibilityDeniesAll(visibility)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
@@ -117,9 +132,8 @@ export async function PATCH(
       return NextResponse.json({ error: 'Invalid input', details: parseResult.error.issues }, { status: 400 })
     }
 
-    const existing = await prisma.attendanceStudent.findFirst({
-      where: { id, tenantId },
-    })
+    const where = scopedAttendanceWhere({ id, tenantId, schoolId, visibility })
+    const existing = await prisma.attendanceStudent.findFirst({ where })
     if (!existing) return NextResponse.json({ error: 'Attendance record not found' }, { status: 404 })
 
     const data = parseResult.data
@@ -133,8 +147,11 @@ export async function PATCH(
     if (data.notes !== undefined) updateData.notes = normaliseNullableText(data.notes)
     updateData.markedById = userId
 
+    // The same scoped predicate, not `{ id, tenantId }`. An existence check that
+    // was scoped but a write that was not is the defect this closes: the record
+    // would have been proved in scope and then rewritten regardless.
     const updated = await prisma.attendanceStudent.update({
-      where: { id, tenantId },
+      where,
       data: updateData,
     })
     return NextResponse.json({ success: true, attendance: updated })
@@ -158,7 +175,8 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const { schoolId, tenantId, userId } = await getTenantContext()
+    const ctx = await getTenantContext()
+    const { schoolId, tenantId, userId } = ctx
     if (!schoolId) return NextResponse.json({ error: 'No school assigned' }, { status: 400 })
 
     // RBAC
@@ -166,11 +184,22 @@ export async function DELETE(
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
+    // Row scope under the delete key, same reason as PATCH above. No role that
+    // resolves to a limited scope holds `attendance:delete` today, so this
+    // clause is inert for the seeded roles — but it is the gate that would hold
+    // if one were granted, and a mutation handler that resolves no visibility is
+    // exactly the shape that made this defect a class rather than an incident.
+    const visibility = await resolveVisibility(ctx, 'attendance:delete')
+    if (visibilityDeniesAll(visibility)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
     const { id } = await params
-    const existing = await prisma.attendanceStudent.findFirst({ where: { id, tenantId } })
+    const where = scopedAttendanceWhere({ id, tenantId, schoolId, visibility })
+    const existing = await prisma.attendanceStudent.findFirst({ where })
     if (!existing) return NextResponse.json({ error: 'Attendance record not found' }, { status: 404 })
 
-    await prisma.attendanceStudent.delete({ where: { id, tenantId } })
+    await prisma.attendanceStudent.delete({ where })
     return NextResponse.json({ success: true })
   } catch (error) {
     if (error instanceof Error && error.name === 'UnauthorizedError') {

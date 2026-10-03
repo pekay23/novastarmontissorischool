@@ -65,11 +65,24 @@ export async function GET(_req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const { schoolId, tenantId, userId } = await getTenantContext()
+    const ctx = await getTenantContext()
+    const { schoolId, tenantId, userId } = ctx
     if (!schoolId) return NextResponse.json({ error: 'No school assigned' }, { status: 400 })
 
     // RBAC
     if (!(await hasPermission(userId, 'class:create', tenantId, schoolId))) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
+    // A creation has no existing row to narrow, so the only row-level fact
+    // available is whether the caller reaches anything at all. `class:create`
+    // resolves to `class` for a classroom teacher, and `resolveVisibility`
+    // resolves a teacher with no `Staff` link — or with no classes — to an
+    // empty set rather than to `null`, so this refuses the broken-identity case
+    // instead of letting it widen to the whole school. An unrestricted role
+    // resolves to `all` and passes through untouched.
+    const visibility = await resolveVisibility(ctx, 'class:create')
+    if (visibilityDeniesAll(visibility)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 

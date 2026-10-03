@@ -85,9 +85,10 @@ export const SubjectSchema = ConfigEntityBaseSchema.extend({
 })
 
 // --- Grading (GradingLevel defined before GradingScale to avoid forward ref) ---
-// `point` is the grade point on a 0-4 scale. It is the value a term report and a
-// transcript average actually need; `label` is only display text, which is why
-// every grade in the product used to come out empty.
+// A band is a percentage range plus the text and colour the school wants shown
+// for it. There is no grade point: percentage is the unit of grading, `order`
+// sequences the bands, and the 0-4 point that used to sit here existed only to
+// feed the 0-4 average this product no longer reports.
 const gradingLevelShape = {
   id: z.string().cuid(),
   gradingScaleId: z.string(),
@@ -95,7 +96,6 @@ const gradingLevelShape = {
   label: z.string(),
   minScore: z.number().int().min(0).max(100),
   maxScore: z.number().int().min(0).max(100),
-  point: z.number().min(0).max(4).default(0),
   color: z.string(),
   description: z.string().nullable().optional(),
   order: z.number().int(),
@@ -126,6 +126,39 @@ export const GradingLevelCreateSchema = z.object(gradingLevelShape)
 
 export type GradingLevel = z.infer<typeof GradingLevelSchema>
 
+/**
+ * The edit path's half of the band rule.
+ *
+ * `assertBandOrder` guards the create schema, and it used to guard nothing else:
+ * a single PATCH could set `minScore` above `maxScore` and invert a seeded band,
+ * which makes `resolveGradeBand` swallow a range of percentages and label it
+ * backwards — silently, because an inverted band is still a band.
+ *
+ * Coverage ACROSS the scale is the other half and cannot live here: no single row
+ * is exhaustive, `0-49` alone is a hole and a valid bottom half at the same time.
+ * That half is the registry entry's `writeValidation` and the shared validator it
+ * dispatches to (`gradingScaleBandWriteRule` in @novastar/shared-utils).
+ */
+export const GradingLevelUpdateSchema = z
+  .object({
+    gradingScaleId: z.string().optional(),
+    key: z.string().optional(),
+    label: z.string().optional(),
+    minScore: z.number().int().min(0).max(100).optional(),
+    maxScore: z.number().int().min(0).max(100).optional(),
+    color: z.string().optional(),
+    order: z.number().int().optional(),
+    description: z.string().nullable().optional(),
+  })
+  .superRefine((value, ctx) => {
+    // Only judged when the patch carries both bounds: a patch that moves one
+    // boundary of a stored band is the normal way to retune a scale, and its
+    // resulting range is the cross-row check's business, not this one's.
+    if (value.minScore !== undefined && value.maxScore !== undefined) {
+      assertBandOrder({ minScore: value.minScore, maxScore: value.maxScore }, ctx)
+    }
+  })
+
 export const GradingScaleSchema = ConfigEntityBaseSchema.extend({
   name: z.string(),
   description: z.string().nullable().optional(),
@@ -135,6 +168,14 @@ export const GradingScaleSchema = ConfigEntityBaseSchema.extend({
 })
 
 // --- Assessment ---
+// `defaultWeight` is a RELATIVE weight, not a share of the terminal mark. A
+// school's terminal figure is a normalised weighted mean
+// (`sum(pct x weight) / sum(weight)`, see `computeAcademicSummary`), so only the
+// ratio between components matters and the set need not sum to 1 — it usually
+// cannot, because SBA repeats three times in a term. The 0..1 cap below is a
+// sanity bound on a single row, not a promise that a school's seven types add up
+// to 1; a head teacher retunes these at Settings and the report shows the
+// resulting shares next to each component.
 export const AssessmentTypeConfigSchema = ConfigEntityBaseSchema.extend({
   code: z.string(),
   name: z.string(),

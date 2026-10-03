@@ -73,11 +73,22 @@ const CreateEventSchema = z.object({
 
 export async function POST(req: NextRequest) {
   try {
-    const { schoolId, tenantId, userId } = await getTenantContext()
+    const ctx = await getTenantContext()
+    const { schoolId, tenantId, userId } = ctx
     if (!schoolId) return NextResponse.json({ error: 'No school assigned' }, { status: 400 })
 
     // RBAC
     if (!(await hasPermission(userId, 'event:create', tenantId, schoolId))) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
+    // Fail closed, as in `PATCH /api/events/[id]`. A creation has no row to
+    // narrow and `Event` has no class relation, so resolving the caller's reach
+    // and refusing when it is empty is the whole of the row-level guarantee
+    // available at this boundary. See the PATCH handler for why `event:create`
+    // resolving to `class` is a catalog gap rather than intent.
+    const visibility = await resolveVisibility(ctx, 'event:create')
+    if (visibilityDeniesAll(visibility)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 

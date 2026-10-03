@@ -25,6 +25,21 @@ export function DataTabled<TData>({ columns, data }: DataTabledProps<TData>) {
   return (
     <div className="rounded-md border">
       <table className="w-full">
+        {/* Without this the table renders rows only and every ColumnDef.header is
+            discarded — column labels silently never appear. */}
+        <thead>
+          {table.getHeaderGroups().map((headerGroup) => (
+            <tr key={headerGroup.id} className="border-b">
+              {headerGroup.headers.map((header) => (
+                <th key={header.id} className="p-2 text-left font-medium">
+                  {header.isPlaceholder
+                    ? null
+                    : flexRender(header.column.columnDef.header, header.getContext())}
+                </th>
+              ))}
+            </tr>
+          ))}
+        </thead>
         <tbody>
           {table.getRowModel().rows?.length ? (
             table.getRowModel().rows.map((row) => (

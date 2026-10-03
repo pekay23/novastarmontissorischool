@@ -36,6 +36,15 @@ export { Popover, PopoverContent, PopoverTrigger } from './src/components/popove
 export { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from './src/components/accordion'
 export { DatePicker } from './src/components/date-picker'
 export { DataTabled } from './src/components/data-table'
+export {
+  TimetableGrid,
+  WEEKDAYS,
+  sortTimetablePeriods,
+  groupTimetablePeriods,
+  type TimetablePeriod,
+  type TimetableDay,
+  type TimetableGridProps,
+} from './src/components/timetable-grid'
 
 // Toast
 export {

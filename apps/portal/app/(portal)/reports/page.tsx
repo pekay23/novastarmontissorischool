@@ -24,6 +24,7 @@ import {
   SelectValue,
 } from '@novastar/shared-ui'
 import { ReportType } from '@novastar/database'
+import { contrastTextColor } from '@novastar/shared-utils'
 import { BarChart3, Download, X, Printer } from 'lucide-react'
 
 const REPORT_TYPE_LABELS: Record<ReportType, { label: string; desc: string; implemented: boolean }> = {
@@ -47,6 +48,16 @@ const IMPLEMENTED_REPORT_TYPES = (Object.keys(REPORT_TYPE_LABELS) as ReportType[
   (type) => REPORT_TYPE_LABELS[type].implemented,
 )
 
+/**
+ * Credited attendance days, without a trailing ".00".
+ *
+ * `presentDays` is fractional by design — one `HALF_DAY` credits 0.5 — so two
+ * fixed decimals would render a whole term as "62.00" and one decimal would
+ * render 62 as "62.0". Integers drop the decimal point; fractions keep one.
+ */
+const formatDays = (days: number): string =>
+  Number.isInteger(days) ? String(days) : days.toFixed(1)
+
 interface StudentOption {
   id: string
   firstName: string
@@ -57,11 +68,49 @@ interface StudentOption {
 interface ReportSummary {
   totalAssessments: number
   gradedAssessments: number
-  gpa: number | null
+  /** 0-100, weighted across every graded assessment. */
+  weightedPercentage: number | null
+  /** 0-100, mean of the per-subject percentages. */
   overallPercentage: number | null
+  /** How the weighted mean was composed, by assessment type. */
+  weighting: ReportWeighting
+  subjectCount: number
   attendanceRate: number | null
   totalAttendanceDays: number
+  /** Credited days, fractional: one HALF_DAY credits 0.5. */
   presentDays: number
+  excusedDays: number
+}
+
+/** One continuous-assessment component, as the school configured it. */
+interface ReportWeightingComponent {
+  code: string | null
+  name: string
+  count: number
+  weight: number
+  weightShare: number | null
+  percentage: number | null
+}
+
+interface ReportWeighting {
+  rule: string
+  totalWeight: number
+  components: ReportWeightingComponent[]
+}
+
+/**
+ * A band of the school's own grading scale, resolved from the percentage.
+ *
+ * Coloured by the band's own `color`, never by the size of the score: bands are
+ * school-configured and the seeded JHS scale runs the other way (grade 9 is the
+ * worst result), so colouring by magnitude would mislabel half the school.
+ */
+interface ReportBand {
+  key: string
+  label: string
+  color: string
+  minScore: number
+  maxScore: number
 }
 
 interface ReportAssessment {
@@ -69,12 +118,14 @@ interface ReportAssessment {
   name: string
   subject: string
   subjectCode: string | null
+  subjectId: string | null
   assessmentType: string
   weight: number
   maxScore: number
   score: number | null
   percentage: number | null
   grade: string | null
+  band: ReportBand | null
   isGraded: boolean
   assessmentDate: string
   term: string | null
@@ -90,8 +141,17 @@ interface ReportStudent {
   classLevel: string | null
 }
 
+/** The school's own scale for this class, or null when none applies. */
+interface ReportGrading {
+  scaleId: string
+  name: string
+  description: string | null
+  appliesToLevels: string[]
+}
+
 interface ReportData {
   student: ReportStudent
+  grading: ReportGrading | null
   summary: ReportSummary
   assessments: ReportAssessment[]
 }
@@ -189,12 +249,22 @@ export default function ReportsPage() {
     })
   }
 
-  const gradeColor = (percentage: number | null): string => {
-    if (percentage === null) return 'bg-gray-100 text-gray-800'
-    if (percentage >= 80) return 'bg-green-100 text-green-800'
-    if (percentage >= 70) return 'bg-blue-100 text-blue-800'
-    if (percentage >= 60) return 'bg-amber-100 text-amber-800'
-    return 'bg-red-100 text-red-800'
+  /**
+   * A band badge in the school's own colour, with the text contrast decided from
+   * that colour. Never coloured by the size of the score: the bands are the
+   * school's, and the seeded JHS scale is better the lower the grade number.
+   */
+  const BandBadge = ({ band }: { band: ReportBand | null }) => {
+    if (!band) return <span className="text-muted-foreground">-</span>
+    return (
+      <span
+        className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"
+        style={{ backgroundColor: band.color, color: contrastTextColor(band.color) }}
+        title={`${band.minScore}-${band.maxScore}%`}
+      >
+        {band.label}
+      </span>
+    )
   }
 
   return (
@@ -379,49 +449,113 @@ export default function ReportsPage() {
                   </p>
                 </div>
 
-                {/* Summary */}
+                {/* Summary. Percentage leads: it is the unit primary and JHS
+                     report in, and every label names its range. The grade-point
+                     average this used to show is gone with the column it read. */}
                 <Card>
                   <CardHeader>
                     <CardTitle className="text-lg">Summary</CardTitle>
+                    {reportData.grading && (
+                      <CardDescription>
+                        Bands: {reportData.grading.name}
+                        {reportData.grading.description
+                          ? ` — ${reportData.grading.description}`
+                          : ''}
+                      </CardDescription>
+                    )}
                   </CardHeader>
                   <CardContent>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
                       <div>
-                        <p className="text-2xl font-bold">
-                          {reportData.summary.gpa ?? '-'}
-                        </p>
-                        <p className="text-xs text-muted-foreground">GPA</p>
-                      </div>
-                      <div>
-                        <p className="text-2xl font-bold">
-                          {reportData.summary.overallPercentage
+                        <p className="text-3xl font-bold">
+                          {reportData.summary.overallPercentage !== null
                             ? `${reportData.summary.overallPercentage}%`
                             : '-'}
                         </p>
                         <p className="text-xs text-muted-foreground">
-                          Overall %
+                          Overall % (0&ndash;100)
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          mean of {reportData.summary.subjectCount} subject
+                          average
+                          {reportData.summary.subjectCount === 1 ? '' : 's'}
                         </p>
                       </div>
                       <div>
-                        <p className="text-2xl font-bold">
-                          {reportData.summary.attendanceRate
+                        <p className="text-3xl font-bold">
+                          {reportData.summary.weightedPercentage !== null
+                            ? `${reportData.summary.weightedPercentage}%`
+                            : '-'}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          Weighted % (0&ndash;100)
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          mean mark, weighted
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-3xl font-bold">
+                          {reportData.summary.attendanceRate !== null
                             ? `${reportData.summary.attendanceRate}%`
                             : '-'}
                         </p>
                         <p className="text-xs text-muted-foreground">
-                          Attendance
+                          Attendance (0&ndash;100)
                         </p>
                       </div>
                       <div>
-                        <p className="text-2xl font-bold">
+                        <p className="text-3xl font-bold">
                           {reportData.summary.gradedAssessments}
                           /{reportData.summary.totalAssessments}
                         </p>
                         <p className="text-xs text-muted-foreground">
-                          Assessments
+                          Assessments graded
                         </p>
                       </div>
                     </div>
+
+                    {/* The weights behind the weighted figure, so the number can
+                        be checked rather than believed. */}
+                    {reportData.summary.weighting.components.length > 0 && (
+                      <div className="mt-4">
+                        <p className="text-xs text-muted-foreground mb-1">
+                          Overall mark by component
+                        </p>
+                        <table className="w-full border-collapse text-sm">
+                          <thead>
+                            <tr className="border-b">
+                              <th className="text-left py-1">Component</th>
+                              <th className="text-right py-1">Entries</th>
+                              <th className="text-right py-1">Weight</th>
+                              <th className="text-right py-1">Share</th>
+                              <th className="text-right py-1">%</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {reportData.summary.weighting.components.map((component) => (
+                              <tr key={component.code ?? component.name} className="border-t">
+                                <td className="py-1">{component.name}</td>
+                                <td className="py-1 text-right text-muted-foreground">
+                                  {component.count}
+                                </td>
+                                <td className="py-1 text-right">{component.weight.toFixed(2)}</td>
+                                <td className="py-1 text-right">
+                                  {component.weightShare !== null
+                                    ? `${component.weightShare}%`
+                                    : '-'}
+                                </td>
+                                <td className="py-1 text-right">
+                                  {component.percentage !== null
+                                    ? `${component.percentage}%`
+                                    : '-'}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
 
@@ -473,16 +607,7 @@ export default function ReportsPage() {
                                   : '-'}
                               </td>
                               <td className="py-2 text-center">
-                                {a.grade ? (
-                                  <Badge
-                                    variant="outline"
-                                    className={gradeColor(a.percentage)}
-                                  >
-                                    {a.grade}
-                                  </Badge>
-                                ) : (
-                                  '-'
-                                )}
+                                <BandBadge band={a.band} />
                               </td>
                               <td className="py-2 text-muted-foreground">
                                 {a.term || '-'}
@@ -509,20 +634,20 @@ export default function ReportsPage() {
                           {reportData.summary.totalAttendanceDays}
                         </p>
                         <p className="text-xs text-muted-foreground">
-                          Total Days
+                          Days Recorded
                         </p>
                       </div>
                       <div>
                         <p className="text-xl font-bold">
-                          {reportData.summary.presentDays}
+                          {formatDays(reportData.summary.presentDays)}
                         </p>
                         <p className="text-xs text-muted-foreground">
-                          Present
+                          Days Credited
                         </p>
                       </div>
                       <div>
                         <p className="text-xl font-bold">
-                          {reportData.summary.attendanceRate
+                          {reportData.summary.attendanceRate !== null
                             ? `${reportData.summary.attendanceRate}%`
                             : '-'}
                         </p>
@@ -531,6 +656,13 @@ export default function ReportsPage() {
                         </p>
                       </div>
                     </div>
+                    {reportData.summary.excusedDays > 0 && (
+                      <p className="mt-3 text-xs text-muted-foreground text-center">
+                        {reportData.summary.excusedDays} day
+                        {reportData.summary.excusedDays === 1 ? '' : 's'} excused
+                        and excluded from the rate.
+                      </p>
+                    )}
                   </CardContent>
                 </Card>
               </div>

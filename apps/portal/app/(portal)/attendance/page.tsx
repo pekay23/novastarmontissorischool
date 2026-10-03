@@ -90,7 +90,7 @@ export default function AttendancePage() {
                       size="sm"
                       onClick={() => {
                         const today = new Date().toISOString().split('T')[0]
-                        router.push(`/attendance?class=${cls.id}&date=${today}`)
+                        router.push(`/attendance/mark?class=${cls.id}&date=${today}`)
                       }}
                     >
                       Mark Attendance

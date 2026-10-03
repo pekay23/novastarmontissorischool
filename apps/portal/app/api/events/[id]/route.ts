@@ -2,7 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getTenantContext } from '@/lib/tenant'
 import { hasPermission } from '@novastar/auth'
-import { resolveVisibility, visibilityDeniesAll } from '@/lib/visibility'
+import {
+  resolveVisibility,
+  visibilityDeniesAll,
+} from '@/lib/visibility'
 import { z } from 'zod'
 import { logError } from '@/lib/logger'
 
@@ -61,11 +64,30 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const { schoolId, tenantId, userId } = await getTenantContext()
+    const ctx = await getTenantContext()
+    const { schoolId, tenantId, userId } = ctx
     if (!schoolId) return NextResponse.json({ error: 'No school assigned' }, { status: 400 })
 
     // RBAC
     if (!(await hasPermission(userId, 'event:edit', tenantId, schoolId))) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
+    // Row scope under the key this write is gated on. `Event` has no class
+    // relation, so there is no row clause to compose and the fail-closed check
+    // is the whole of what the visibility layer can enforce here: a caller whose
+    // reach resolves to nothing is refused rather than allowed to fall through
+    // to school-wide.
+    //
+    // `ROLE_READ_SCOPE.CLASSROOM_TEACHER` maps `event:read` to `all` explicitly
+    // but leaves `event:edit` unmapped, so `event:edit` inherits the role
+    // default `class` — a scope the model has no column for. Closing that
+    // properly is a one-line addition of `'event:edit': 'all'` (and
+    // `'event:create': 'all'`) beside the other communication keys in
+    // `packages/shared-types/permission-keys.ts`, which is outside this
+    // handler's ownership. Until then this guard is the narrowest true answer.
+    const visibility = await resolveVisibility(ctx, 'event:edit')
+    if (visibilityDeniesAll(visibility)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
