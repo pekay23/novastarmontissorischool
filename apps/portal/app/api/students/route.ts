@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
+import type { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { getTenantContext } from '@/lib/tenant'
 import { hasPermission } from '@novastar/auth'
+import {
+  resolveVisibility,
+  studentVisibilityWhere,
+  visibilityDeniesAll,
+} from '@/lib/visibility'
 import { z } from 'zod'
 import { logError } from '@/lib/logger'
 
@@ -20,13 +26,31 @@ const StudentSchema = z.object({
 
 export async function GET(req: NextRequest) {
   try {
-    const { schoolId, tenantId } = await getTenantContext()
+    const ctx = await getTenantContext()
+    const { schoolId, tenantId, userId } = ctx
     if (!schoolId) return NextResponse.json({ error: 'No school assigned' }, { status: 400 })
+
+    // RBAC: may this caller read students at all?
+    if (!(await hasPermission(userId, 'student:read', tenantId, schoolId))) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
+    // Row scope: which students may they read? A parent holds `student:read`
+    // but is entitled to their own children only, so the gate above is not
+    // sufficient on its own.
+    const visibility = await resolveVisibility(ctx, 'student:read')
+    if (visibilityDeniesAll(visibility)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
 
     const { searchParams } = new URL(req.url)
     const classId = searchParams.get('classId')
 
-    const where: Record<string, unknown> = { schoolId, tenantId }
+    const where: Prisma.StudentWhereInput = {
+      schoolId,
+      tenantId,
+      ...studentVisibilityWhere(visibility),
+    }
     if (classId) where.classId = classId
 
     const students = await prisma.student.findMany({

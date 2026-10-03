@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getTenantContext } from '@/lib/tenant'
 import { hasPermission } from '@novastar/auth'
+import { calculatePercentage, determineGrade } from '@novastar/shared-utils'
 import { z } from 'zod'
 import { logError } from '@/lib/logger'
 
@@ -86,7 +87,9 @@ export async function POST(
 
     const { id: assessmentId } = await params
 
-    // Verify assessment belongs to this school/tenant
+    // Verify assessment belongs to this school/tenant. The class's level
+    // comes with the same join the student check already needs, so the
+    // grading-scale lookup below does not re-query the assessment.
     const assessment = await prisma.assessment.findFirst({
       where: { id: assessmentId, schoolId, tenantId },
       include: {
@@ -95,6 +98,7 @@ export async function POST(
             class: {
               include: {
                 students: { select: { id: true } },
+                level: { select: { name: true, code: true } },
               },
             },
           },
@@ -119,11 +123,48 @@ export async function POST(
       return NextResponse.json({ error: 'Student is not enrolled in this class' }, { status: 403 })
     }
 
-    // Calculate percentage
+    // Shared helper so rounding is consistent everywhere a score is stored.
     const maxScore = Number(assessment.maxScore)
-    const percentage = (rawScore / maxScore) * 100
+    const percentage = calculatePercentage(rawScore, maxScore)
 
-    // Upsert the score
+    // Resolve the grading scale that applies to the class's level: prefer a
+    // scale whose `appliesToLevels` names the level, then the tenant's
+    // default. The seed stores level *codes* in `appliesToLevels` (e.g.
+    // 'B1'..'B9'), so the code is matched first and the name second. With
+    // no matching scale and no default the write still succeeds — the
+    // grade simply stays null rather than failing a save over configuration.
+    const level = assessment.classSubject.class.level
+    const levelKeys = level ? [level.code, level.name] : []
+    const scales = await prisma.gradingScale.findMany({
+      where: { tenantId, OR: [{ schoolId }, { schoolId: null }] },
+      include: { levels: { orderBy: { order: 'asc' } } },
+    })
+    const scale =
+      scales.find((s) => levelKeys.some((key) => s.appliesToLevels.includes(key))) ??
+      scales.find((s) => s.isDefault) ??
+      null
+
+    // Deliberately the band's `key`, not its `label`: `determineGrade`
+    // returns the label in all three of `grade`, `key` and `label`, and
+    // the UI colour maps in `grades/[id]/scores` and
+    // `reports/[studentId]` are keyed on the bare letter ('A'..'F').
+    // Storing the label would render those badges grey.
+    const grade = scale
+      ? determineGrade(
+          percentage,
+          scale.levels.map((l) => ({
+            minScore: l.minScore,
+            maxScore: l.maxScore,
+            key: l.key,
+            label: l.label,
+          })),
+        )?.key ?? null
+      : null
+    const gradingScaleId = scale?.id ?? null
+
+    // Upsert the score. `grade` and `gradingScaleId` are set on BOTH
+    // branches: the update branch previously hardcoded `grade: null`,
+    // which blanked any stored grade on every save.
     const score = await prisma.score.upsert({
       where: {
         tenantId_assessmentId_studentId: {
@@ -135,7 +176,8 @@ export async function POST(
       update: {
         rawScore,
         percentage,
-        grade: null,
+        grade,
+        gradingScaleId,
         notes: notes || undefined,
       },
       create: {
@@ -144,7 +186,8 @@ export async function POST(
         studentId,
         rawScore,
         percentage,
-        grade: null,
+        grade,
+        gradingScaleId,
         notes: notes || undefined,
       },
     })

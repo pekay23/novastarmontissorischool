@@ -2,30 +2,59 @@
 -- Tenant id is a cuid() string, not a uuid: compare as text.
 --
 -- ---------------------------------------------------------------------------
--- NOT SAFE TO APPLY AS-IS. Read this before running.
+-- STATUS: ALREADY APPLIED. This file is a record of what is in place, not a
+-- pending change.
 --
--- This file is deliberately NOT in prisma/migrations/, so `prisma migrate
--- deploy` will not pick it up. Applying it today would take down all 51
--- tables, because:
+-- An earlier version of this header claimed the opposite -- that the SQL was
+-- not in prisma/migrations/ so `migrate deploy` would ignore it, and that
+-- applying it would take down all 51 tables. Both claims were false. Verified
+-- read-only against the live database on 2026-10-03:
 --
---   packages/database/index.ts uses PrismaNeon (@prisma/adapter-neon), the
---   Neon serverless HTTP driver. That driver is stateless: every query is a
---   separate HTTP request to a pooled endpoint, so there is no session to
---   hang `SET app.current_tenant_id` on. current_setting() therefore always
---   returns NULL, every policy evaluates false, and all reads and writes
---   return zero rows.
+--   * the `app` schema exists, along with app.current_tenant_id() returning
+--     text and app.is_tenant_bypass() returning boolean;
+--   * 51 of the 56 tables have ENABLE ROW LEVEL SECURITY and FORCE ROW LEVEL
+--     SECURITY, each carrying one `tenant_isolation` policy FOR ALL TO public.
 --
--- To make this applicable, one of these must happen first:
+-- Re-running this file is idempotent and safe: CREATE SCHEMA IF NOT EXISTS,
+-- CREATE OR REPLACE FUNCTION, and DROP POLICY IF EXISTS before each CREATE
+-- POLICY. `migrate deploy` genuinely does not read this file -- that part was
+-- right -- so any schema change to a covered table needs a matching edit here or
+-- the policy set silently drifts behind the datamodel.
 --
---   1. Switch to a stateful driver (PrismaPg / node-postgres / the Neon
---      WebSocket driver) and set app.current_tenant_id per connection inside
---      a transaction, or
---   2. Keep the HTTP driver and wrap each tenant-scoped unit of work in
+-- WHY NOTHING BROKE, and why that is not a reason to rely on RLS:
+-- the portal connects as `neondb_owner`, which has rolbypassrls = true. A
+-- BYPASSRLS role skips every policy, so these 51 policies have never filtered a
+-- production query. Effective tenant isolation today comes from two other
+-- places, neither of them this file:
+--
+--   1. explicit `where: { tenantId }` clauses in application code, and
+--   2. the connection role's BYPASSRLS.
+--
+-- So RLS here is a defence-in-depth layer and nothing more: the backstop that
+-- would still hold if some query forgot its tenant filter, but only once the
+-- connection stops bypassing it. It is not currently load-bearing.
+--
+-- NAMED FOLLOW-UP, not done: no application code calls
+-- app.current_tenant_id(). Its only input is
+-- current_setting('app.current_tenant_id', true), which returns NULL unless a
+-- caller sets it, and the policy is written to match no tenant when that is
+-- NULL. The moment the connection role loses BYPASSRLS, every read returns
+-- zero rows and every write is rejected. Before that role change, something has
+-- to set the GUC per unit of work, and the current driver cannot do it:
+-- packages/database/index.ts uses PrismaNeon (@prisma/adapter-neon), the Neon
+-- serverless HTTP driver, which is stateless -- every query is a separate HTTP
+-- request to a pooled endpoint, so there is no session to hang the setting on.
+-- Either
+--
+--   1. switch to a stateful driver (PrismaPg / node-postgres / the Neon
+--      WebSocket driver) and SET app.current_tenant_id per connection inside a
+--      transaction, or
+--   2. keep the HTTP driver and wrap each tenant-scoped unit of work in
 --      prisma.$transaction(async tx => { await tx.$executeRaw`SELECT
 --      set_config('app.current_tenant_id', ${tenantId}, true)`; ... }),
---      so the setting is scoped to the transaction rather than the session.
+--      which scopes the setting to the transaction rather than the session.
 --
--- Until then tenant isolation is enforced in application code only, via
+-- Until then tenant isolation is enforced in application code, via
 -- getTenantContext() in apps/portal/lib/tenant.ts.
 -- ---------------------------------------------------------------------------
 
@@ -454,4 +483,75 @@ CREATE POLICY tenant_isolation ON "AuditLog"
   FOR ALL
   USING (app.is_tenant_bypass() OR "tenantId" = app.current_tenant_id())
   WITH CHECK (app.is_tenant_bypass() OR "tenantId" = app.current_tenant_id());
+
+-- ---------------------------------------------------------------------------
+-- Coverage added 2026-10-03 for the tenant-scoped tables that arrived after the
+-- original 51. A cross-check of every model in schema.prisma against this file
+-- found exactly four tenant-scoped tables with no policy, and they are these:
+-- GradingLevel and Syllabus became tenant-scoped in
+-- 20261003000000_unifiedtransform_port_wave0 (GradingLevel gained a tenantId;
+-- Syllabus is new and carries one), and SystemConfig and SystemError arrived
+-- tenant-scoped in 20261002103000_platform_config.
+-- ---------------------------------------------------------------------------
+
+ALTER TABLE "GradingLevel" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "GradingLevel" FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "GradingLevel";
+CREATE POLICY tenant_isolation ON "GradingLevel"
+  FOR ALL
+  USING (app.is_tenant_bypass() OR "tenantId" = app.current_tenant_id())
+  WITH CHECK (app.is_tenant_bypass() OR "tenantId" = app.current_tenant_id());
+
+ALTER TABLE "Syllabus" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "Syllabus" FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "Syllabus";
+CREATE POLICY tenant_isolation ON "Syllabus"
+  FOR ALL
+  USING (app.is_tenant_bypass() OR "tenantId" = app.current_tenant_id())
+  WITH CHECK (app.is_tenant_bypass() OR "tenantId" = app.current_tenant_id());
+
+ALTER TABLE "SystemConfig" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "SystemConfig" FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "SystemConfig";
+CREATE POLICY tenant_isolation ON "SystemConfig"
+  FOR ALL
+  USING (app.is_tenant_bypass() OR "tenantId" = app.current_tenant_id())
+  WITH CHECK (app.is_tenant_bypass() OR "tenantId" = app.current_tenant_id());
+
+ALTER TABLE "SystemError" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "SystemError" FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation ON "SystemError";
+CREATE POLICY tenant_isolation ON "SystemError"
+  FOR ALL
+  USING (app.is_tenant_bypass() OR "tenantId" = app.current_tenant_id())
+  WITH CHECK (app.is_tenant_bypass() OR "tenantId" = app.current_tenant_id());
+
+-- ---------------------------------------------------------------------------
+-- Tables deliberately left without a tenant policy.
+--
+-- A tenant_isolation policy needs a tenantId column to compare against. These
+-- tables have none, so there is nothing to scope them by. No policy is written
+-- for them, and none should be: reaching a parent table from inside a policy to
+-- reach a tenant would be a behaviour change, not a fix, and the columns each
+-- table would need do not exist in schema.prisma.
+--
+--   Passkey          -- keyed by userId -> User, and its isolation is
+--                       inherited from User: a passkey is only reachable
+--                       through a user the caller can already read. Adding a
+--                       tenantId would duplicate User.tenantId and could drift
+--                       from it. Note that FORCE RLS on User therefore already
+--                       governs it indirectly once BYPASSRLS goes away.
+--   PasskeyChallenge -- a short-lived WebAuthn challenge, identified by a
+--                       random challenge string rather than by a tenant. Its
+--                       userId is nullable precisely because a challenge is
+--                       issued before the user is known, so there is no tenant
+--                       to scope it to. Its lifetime is bounded by expiresAt.
+--   LogEntry         -- a process-wide structured log, deliberately not
+--                       tenant-scoped in schema.prisma.
+--
+-- Also global by design and likewise uncovered: Tenant (the tenant record
+-- itself, which a tenant policy could not meaningfully scope), plus Account,
+-- Session and VerificationToken, which are Auth.js bookkeeping keyed by token
+-- rather than by tenant.
+-- ---------------------------------------------------------------------------
 

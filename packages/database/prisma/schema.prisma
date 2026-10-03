@@ -28,6 +28,7 @@ model Tenant {
   subjects              Subject[]
   classes               Class[]
   gradingScales         GradingScale[]
+  gradingLevels         GradingLevel[]
   assessmentTypeConfigs AssessmentTypeConfig[]
   feeCategories         FeeCategory[]
   paymentMethodConfigs  PaymentMethodConfig[]
@@ -48,6 +49,7 @@ model Tenant {
   houses                House[]
   brandings             Branding[]
   configEntities        ConfigEntity[]
+  syllabi               Syllabus[]
   systemConfigs         SystemConfig[]
   systemErrors          SystemError[]
 }
@@ -95,6 +97,7 @@ model School {
   assessments      Assessment[]
   brandings        Branding[]
   configEntities   ConfigEntity[]
+  syllabi          Syllabus[]
 
   @@unique([tenantId, code])
 }
@@ -140,6 +143,7 @@ model Term {
   feeStructures  FeeStructure[]
   enrollments    Enrollment[]
   timetables     Timetable[]
+  syllabi        Syllabus[]
 
   @@unique([tenantId, schoolId, name, academicYearId])
 }
@@ -283,8 +287,12 @@ model ClassSubject {
   isActive         Boolean          @default(true)
   assessments      Assessment[]
   timetableEntries TimetableEntry[]
+  syllabi          Syllabus[]
 
   @@unique([tenantId, classId, subjectId])
+  // Teacher workspace and timetable both filter by teacher; without this the
+  // query has no supporting index.
+  @@index([tenantId, teacherId])
 }
 
 // ============ CONFIGURABLE GRADING ============
@@ -308,15 +316,25 @@ model GradingScale {
 
 model GradingLevel {
   id             String       @id @default(cuid())
+  tenantId       String
+  tenant         Tenant       @relation(fields: [tenantId], references: [id])
   gradingScaleId String
   gradingScale   GradingScale @relation(fields: [gradingScaleId], references: [id])
   key            String
   label          String
   minScore       Int
   maxScore       Int
+  point          Decimal      @default(0) @db.Decimal(4, 2)
   color          String
   description    String?
   order          Int
+
+  // Band lookup is first-match (see `determineGrade` in shared-utils), so a
+  // duplicate key or a duplicate order position makes the winning band a
+  // function of row order rather than of the score. These two uniques are what
+  // turn "silently arbitrary" into a rejected write.
+  @@unique([gradingScaleId, key])
+  @@unique([gradingScaleId, order])
 }
 
 // ============ CONFIGURABLE ASSESSMENT TYPES ============
@@ -834,9 +852,14 @@ model AttendanceStudent {
   student    Student          @relation(fields: [studentId], references: [id])
   classId    String
   class      Class            @relation(fields: [classId], references: [id])
-  date       DateTime
+date       DateTime
   status     AttendanceStatus
-  period     String?
+  // NOT NULL with an empty-string default, not a nullable column: the unique
+  // constraint below includes `period`, and PostgreSQL treats every NULL as
+  // distinct, so a nullable `period` made the constraint unreachable and every
+  // re-save of the same student/day inserted a duplicate row. `''` is the
+  // whole-day sentinel, so it keeps the unique index meaningful.
+  period     String        @default("")
   markedById String
   markedBy   User             @relation(fields: [markedById], references: [id])
   notes      String?
@@ -853,7 +876,8 @@ model AttendanceStaff {
   staff      Staff            @relation(fields: [staffId], references: [id])
   date       DateTime
   status     AttendanceStatus
-  period     String?
+  // See AttendanceStudent.period — the same nullable-period defect applied here.
+  period     String           @default("")
   markedById String?
   markedBy   User?            @relation(fields: [markedById], references: [id])
   notes      String?
@@ -1189,6 +1213,32 @@ model TimetableEntry {
   updatedAt      DateTime     @updatedAt
 
   @@unique([tenantId, timetableId, dayOfWeek, startTime, classSubjectId])
+}
+
+// ============ SYLLABI ============
+// Per-term, per-class-subject topic lists. `Subject.description` covers what a
+// subject is; a syllabus covers what will be taught, and when.
+model Syllabus {
+  id             String        @id @default(cuid())
+  tenantId       String
+  tenant         Tenant        @relation(fields: [tenantId], references: [id])
+  schoolId       String?
+  school         School?       @relation(fields: [schoolId], references: [id])
+  classSubjectId String
+  classSubject   ClassSubject  @relation(fields: [classSubjectId], references: [id])
+  termId         String
+  term           Term          @relation(fields: [termId], references: [id])
+  title          String
+  body           String?       @db.Text
+  topics         String[]
+  status         ContentStatus @default(DRAFT)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  // One syllabus document per subject per term. Titles are unique within that
+  // scope so re-running a seed or an import cannot silently fork a document.
+  @@unique([tenantId, classSubjectId, termId, title])
+  @@index([tenantId, termId])
 }
 
 // ============ LEAVE MANAGEMENT ============

@@ -166,7 +166,9 @@ export default function GradesScorePage({ params }: { params: Promise<{ id: stri
       if (res.ok) {
         const data = await res.json()
         const newScore = data.score
-        const percentage = (rawScore / maxScore) * 100
+        // Reflect what the API returned — including the derived
+        // percentage and grade band — rather than recomputing locally.
+        const percentage = newScore.percentage ?? (rawScore / maxScore) * 100
 
         setScores(prev => {
           const existing = prev.find(s => s.studentId === studentId)
@@ -175,6 +177,7 @@ export default function GradesScorePage({ params }: { params: Promise<{ id: stri
               ...s,
               rawScore: newScore.rawScore,
               percentage,
+              grade: newScore.grade ?? null,
               notes: newScore.notes,
             } : s)
           } else {
@@ -184,7 +187,7 @@ export default function GradesScorePage({ params }: { params: Promise<{ id: stri
               student: students.find(s => s.id === studentId)!,
               rawScore: newScore.rawScore,
               percentage,
-              grade: null,
+              grade: newScore.grade ?? null,
               isApproved: false,
               notes: newScore.notes,
             }]

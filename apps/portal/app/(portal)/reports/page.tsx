@@ -26,16 +26,26 @@ import {
 import { ReportType } from '@novastar/database'
 import { BarChart3, Download, X, Printer } from 'lucide-react'
 
-const REPORT_TYPE_LABELS: Record<ReportType, { label: string; desc: string }> = {
-  ACADEMIC_REPORT: { label: 'Academic Report', desc: 'Student academic performance report card' },
-  TRANSCRIPT: { label: 'Transcript', desc: 'Official student transcript' },
-  FEE_STATEMENT: { label: 'Fee Statement', desc: 'Student fee invoice and payment history' },
-  ATTENDANCE_REPORT: { label: 'Attendance Report', desc: 'Student attendance summary' },
-  STAFF_PERFORMANCE: { label: 'Staff Performance', desc: 'Teacher/staff performance review' },
-  FINANCIAL_SUMMARY: { label: 'Financial Summary', desc: 'School finances overview' },
-  ENROLLMENT_STATS: { label: 'Enrollment Statistics', desc: 'Student enrollment by class/year' },
-  CUSTOM: { label: 'Custom Report', desc: 'User-defined custom report' },
+const REPORT_TYPE_LABELS: Record<ReportType, { label: string; desc: string; implemented: boolean }> = {
+  ACADEMIC_REPORT: { label: 'Academic Report', desc: 'Student academic performance report card', implemented: true },
+  TRANSCRIPT: { label: 'Transcript', desc: 'Official student transcript', implemented: false },
+  FEE_STATEMENT: { label: 'Fee Statement', desc: 'Student fee invoice and payment history', implemented: false },
+  ATTENDANCE_REPORT: { label: 'Attendance Report', desc: 'Student attendance summary', implemented: false },
+  STAFF_PERFORMANCE: { label: 'Staff Performance', desc: 'Teacher/staff performance review', implemented: false },
+  FINANCIAL_SUMMARY: { label: 'Financial Summary', desc: 'School finances overview', implemented: false },
+  ENROLLMENT_STATS: { label: 'Enrollment Statistics', desc: 'Student enrollment by class/year', implemented: false },
+  CUSTOM: { label: 'Custom Report', desc: 'User-defined custom report', implemented: false },
 }
+
+/**
+ * Only these types have a backing generator. The rest are declared in
+ * `REPORT_TYPE_LABELS` for display but deliberately excluded from the
+ * Generate selector: previously every type silently hit the academic
+ * route, so choosing "Fee Statement" returned an academic report card.
+ */
+const IMPLEMENTED_REPORT_TYPES = (Object.keys(REPORT_TYPE_LABELS) as ReportType[]).filter(
+  (type) => REPORT_TYPE_LABELS[type].implemented,
+)
 
 interface StudentOption {
   id: string
@@ -135,6 +145,14 @@ export default function ReportsPage() {
       return
     }
 
+    if (!REPORT_TYPE_LABELS[selectedReportType].implemented) {
+      toast.error({
+        title: 'Not available',
+        description: `${REPORT_TYPE_LABELS[selectedReportType].label} generation is not implemented yet`,
+      })
+      return
+    }
+
     setLoading(true)
     try {
       const res = await fetch(`/api/reports/academic/${selectedStudent}`)
@@ -226,9 +244,9 @@ export default function ReportsPage() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {Object.entries(REPORT_TYPE_LABELS).map(([type, info]) => (
+                  {IMPLEMENTED_REPORT_TYPES.map((type) => (
                     <SelectItem key={type} value={type}>
-                      {info.label}
+                      {REPORT_TYPE_LABELS[type].label}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -321,6 +339,9 @@ export default function ReportsPage() {
                     </p>
                   </div>
                 </div>
+                <Badge variant={info.implemented ? 'default' : 'secondary'}>
+                  {info.implemented ? 'Available' : 'Not implemented'}
+                </Badge>
               </div>
             ))}
           </div>

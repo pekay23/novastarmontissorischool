@@ -1,9 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { ENTITY_CONFIG_MAP } from '@novastar/shared-types'
 import { hasPermission } from '@novastar/auth'
 import { getTenantContext } from '@/lib/tenant'
 import { logError } from '@/lib/logger'
+
+/**
+ * Prisma `P2002` is a unique-constraint violation.
+ *
+ * A PATCH that moves a record onto a value another record already holds is an
+ * expected client outcome for the entities behind this generic route with real
+ * unique constraints — `timetable_entry`, `attendance_taker`, `timetable`,
+ * `syllabus`. See the identical helper and rationale in
+ * `config/[entityType]/route.ts`, which this file deliberately duplicates rather
+ * than sharing across a new module.
+ */
+function isUniqueConstraintViolation(err: unknown): err is Prisma.PrismaClientKnownRequestError {
+  return err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002'
+}
 
 /**
  * Builds a Prisma `where` clause for a single entity lookup.
@@ -150,6 +165,12 @@ export async function PATCH(
     if (error instanceof Error && error.name === 'ServerConfigError') {
       logError('ServerConfig', error)
       return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    }
+    if (isUniqueConstraintViolation(error)) {
+      return NextResponse.json(
+        { error: 'A record with these values already exists' },
+        { status: 409 },
+      )
     }
     logError('ConfigEntity', error)
     return NextResponse.json({ error: 'Failed to update entity' }, { status: 500 })

@@ -10,6 +10,7 @@ import {
   LayoutDashboard, Users, GraduationCap, BookOpen,
   Calendar, Clock, FileText, Settings, LogOut, Menu,
   Bell, Search, Shield, School, LibraryBig, Package,
+  CalendarDays, NotebookText, TrendingUp,
 } from 'lucide-react'
 import { Button, cn, ToastProvider, ConfirmProvider, useToast } from '@novastar/shared-ui'
 import { useState } from 'react'
@@ -21,6 +22,9 @@ const navigation = [
   { name: 'Enrollment', href: '/enrollment', icon: School },
   { name: 'Attendance', href: '/attendance', icon: Clock },
   { name: 'Grades', href: '/grades', icon: BookOpen },
+  { name: 'Timetable', href: '/timetable', icon: CalendarDays },
+  { name: 'Syllabus', href: '/syllabus', icon: NotebookText },
+  { name: 'Promotions', href: '/promotions', icon: TrendingUp },
   { name: 'Reports', href: '/reports', icon: FileText },
   { name: 'Calendar', href: '/calendar', icon: Calendar },
   { name: 'Announcements', href: '/announcements', icon: Bell },
@@ -83,6 +87,15 @@ export default function PortalLayout({
   const visibleNav = navigation.filter((item) => {
     if (SETTINGS_ROLES.has(userRole)) return true
     if (item.href === '/settings') return false
+    // Timetable, Syllabus and Promotions are deliberately NOT gated
+    // here. The nav is not an authorization boundary — every one of
+    // those pages' data routes is permission-gated (`timetable:read`
+    // for the timetable, which `CLASSROOM_TEACHER` holds with
+    // class-level scope), exactly as Grades and Attendance already
+    // appear for every role while their APIs refuse unauthorized
+    // callers. Hiding them here would need a second role-keyed
+    // mechanism alongside `SETTINGS_ROLES`; the existing single
+    // mechanism gates only Settings.
     return true
   })
 

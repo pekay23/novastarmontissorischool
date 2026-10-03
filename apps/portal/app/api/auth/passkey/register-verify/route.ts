@@ -1,15 +1,29 @@
 import { NextResponse } from 'next/server'
 import { verifyRegistrationResponse } from '@simplewebauthn/server'
 import { prisma } from '@/lib/prisma'
+import { getCachedSessionAndTenant } from '@/lib/auth/session-context'
 import { rpConfig } from '@/lib/auth/passkey-config'
 
+/**
+ * Completes passkey registration for the *caller*.
+ *
+ * The credential is stored against the authenticated session's user, and the
+ * consumed challenge must already name that same user. This route used to take
+ * an `email` from the body and look the subject up by it, so an unauthenticated
+ * caller who knew an address could enrol an authenticator onto that account and
+ * then exchange it for a `pk_` bridge token through
+ * `POST /api/auth/passkey/login-verify`. Both the `email` and the
+ * subject lookup are gone.
+ */
 export async function POST(req: Request) {
   try {
-    const body = await req.json()
-    const { credential, email, name } = body
+    const { userId } = await getCachedSessionAndTenant()
 
-    if (!credential || !email) {
-      return new NextResponse('Missing credential or email', { status: 400 })
+    const body = await req.json()
+    const { credential, name } = body
+
+    if (!credential) {
+      return new NextResponse('Missing credential', { status: 400 })
     }
 
     // Extract challenge from clientDataJSON
@@ -31,15 +45,10 @@ export async function POST(req: Request) {
       return new NextResponse('Challenge expired or not found', { status: 401 })
     }
 
-    const user = await prisma.user.findFirst({
-      where: { email },
-    })
-
-    if (!user) {
-      return new NextResponse('User not found', { status: 404 })
-    }
-
-    if (storedChallenge.userId && storedChallenge.userId !== user.id) {
+    // A challenge minted for somebody else must not enrol onto this session,
+    // even though the signature below would verify: the authenticator is proved,
+    // not the person.
+    if (storedChallenge.userId && storedChallenge.userId !== userId) {
       return new NextResponse('Challenge-user mismatch', { status: 401 })
     }
 
@@ -59,7 +68,7 @@ export async function POST(req: Request) {
 
     await prisma.passkey.create({
       data: {
-        userId: user.id,
+        userId,
         credentialId: credential.id,
         publicKey: Buffer.from(publicKey).toString('base64'),
         counter: BigInt(counter),
@@ -70,6 +79,9 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ success: true })
   } catch (error) {
+    if (error instanceof Error && error.name === 'UnauthorizedError') {
+      return new NextResponse('Unauthorized', { status: 401 })
+    }
     console.error('[PASSKEY_REGISTER_VERIFY]', error)
     return new NextResponse('Internal Error', { status: 500 })
   }

@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
+import type { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { getTenantContext } from '@/lib/tenant'
 import { hasPermission } from '@novastar/auth'
+import {
+  resolveVisibility,
+  staffVisibilityWhere,
+  visibilityDeniesAll,
+} from '@/lib/visibility'
 import { z } from 'zod'
 import { logError } from '@/lib/logger'
 
@@ -20,11 +26,30 @@ const StaffSchema = z.object({
 
 export async function GET(_req: NextRequest) {
   try {
-    const { schoolId, tenantId } = await getTenantContext()
+    const ctx = await getTenantContext()
+    const { schoolId, tenantId, userId } = ctx
     if (!schoolId) return NextResponse.json({ error: 'No school assigned' }, { status: 400 })
 
+    // RBAC
+    if (!(await hasPermission(userId, 'teacher:read', tenantId, schoolId))) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
+    // A classroom teacher may read the staff directory, but only themselves and
+    // the colleagues who teach their own classes.
+    const visibility = await resolveVisibility(ctx, 'teacher:read')
+    if (visibilityDeniesAll(visibility)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
+    const where: Prisma.StaffWhereInput = {
+      schoolId,
+      tenantId,
+      ...(await staffVisibilityWhere(tenantId, visibility)),
+    }
+
     const staff = await prisma.staff.findMany({
-      where: { schoolId, tenantId },
+      where,
       include: {
         user: { select: { name: true, email: true } },
         department: { select: { name: true } },
@@ -35,6 +60,9 @@ export async function GET(_req: NextRequest) {
   } catch (error) {
     if (error instanceof Error && error.name === 'UnauthorizedError') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+    if (error instanceof Error && error.name === 'ForbiddenError') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
     logError('Staff GET', error)
     return NextResponse.json({ error: 'Failed to fetch staff' }, { status: 500 })

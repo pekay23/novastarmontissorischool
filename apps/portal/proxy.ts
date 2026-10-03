@@ -9,9 +9,16 @@
  * false positive.
  *
  * Runs on every matched request and enforces, in order:
- * - Per-client-IP rate limiting (100 req/min API, 300 req/min pages)
+ * - Per-client-IP rate limiting (20 req/min auth, 100 req/min API, 300 req/min pages)
  * - Session authentication via next-auth
  * - Role-based path authorization
+ *
+ * Rate limiting runs BEFORE the public-path short-circuit. It used to run after
+ * it, which left every route under `/api/auth` both unauthenticated and
+ * completely unthrottled — `/api/auth/totp` and the passkey registration pair
+ * were reachable at unlimited rate from any address. Ordering the limiter first
+ * is what makes the public-path exemption mean "no session required" rather
+ * than "no limits".
  *
  * Tenant isolation is NOT enforced here: `token.schoolId` is a claim snapshot,
  * so per-request tenant scoping is resolved downstream in getTenantContext()
@@ -22,13 +29,18 @@ import { withAuth } from 'next-auth/middleware'
 import { NextResponse } from 'next/server'
 import { checkRateLimit, clientIdentifier } from '@/lib/rate-limit'
 
-// Paths that don't require authentication
+// Paths that don't require authentication. These are exempted from the SESSION
+// check only — the rate limiter above still applies to them.
 const publicPaths = ['/login', '/api/auth', '/api/health', '/_next', '/favicon.ico', '/logo.svg']
 
 // Rate limits, per client IP, per minute.
 const API_RATE_LIMIT = 100
 const PAGE_RATE_LIMIT = 300
 const RATE_LIMIT_WINDOW_MS = 60_000
+// `/api/auth/*` gets its own, much tighter budget than the general API limit.
+// The sign-in, passkey and TOTP endpoints under it are the credential surface,
+// so 100/minute from one address is far too generous for them.
+const AUTH_RATE_LIMIT = 20
 
 // Role-based permissions — keys MUST match the DB Role.name values from
 // tools/seed/index.ts: HEADMASTER, ASSISTANT_HEAD, HEAD_TEACHER,
@@ -50,7 +62,11 @@ const PERMISSIONS: Record<string, string[]> = {
     'dashboard', 'students', 'grades', 'attendance',
   ],
   ACCOUNTANT: ['dashboard', 'fees', 'payments', 'reports', 'students'],
-  ADMIN_STAFF: ['dashboard', 'students_view', 'announcements'],
+  // No `students_view` entry: section matching is `section === p ||
+  // section.startsWith(p)` against the first path segment, so `'students_view'`
+  // could never match `'students'` and sat in the list as a dead entry while
+  // ADMIN_STAFF was actually denied `/api/students` — a role PARENT was allowed.
+  ADMIN_STAFF: ['dashboard', 'announcements'],
   PARENT: ['dashboard', 'announcements', 'students'],
 }
 
@@ -66,15 +82,18 @@ export default withAuth(
     const token = (req as any).nextauth?.token
     const { pathname } = req.nextUrl
 
-    // Allow public paths before any limiting or authorization work.
-    if (publicPaths.some((p) => pathname.startsWith(p))) return NextResponse.next()
-
     // --- Rate limiting ---
+    // Before the public-path short-circuit, on purpose. The short-circuit
+    // returns before any limiting work, so `/api/auth/*` used to be reachable
+    // at unlimited rate; `/api/auth/totp` and the passkey registration pair were
+    // the consequence.
+    //
     // Uses the shared limiter in lib/rate-limit.ts, which is covered by
     // tests/rate-limit.test.ts. Its store is per-process; a multi-instance
     // deployment needs a shared store (Redis/Upstash) to enforce globally.
     const isApi = pathname.startsWith('/api/')
-    const max = isApi ? API_RATE_LIMIT : PAGE_RATE_LIMIT
+    const isAuthApi = pathname.startsWith('/api/auth')
+    const max = isAuthApi ? AUTH_RATE_LIMIT : isApi ? API_RATE_LIMIT : PAGE_RATE_LIMIT
     const { success, reset } = checkRateLimit(clientIdentifier(req), max, RATE_LIMIT_WINDOW_MS)
 
     if (!success) {
@@ -90,6 +109,10 @@ export default withAuth(
         headers: { 'Retry-After': String(retryAfterSeconds) },
       })
     }
+
+    // Allow public paths after limiting, so "public" means "no session needed"
+    // rather than "no limits".
+    if (publicPaths.some((p) => pathname.startsWith(p))) return NextResponse.next()
 
     if (!token) {
       const url = req.nextUrl.clone()

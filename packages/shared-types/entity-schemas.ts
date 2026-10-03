@@ -85,17 +85,46 @@ export const SubjectSchema = ConfigEntityBaseSchema.extend({
 })
 
 // --- Grading (GradingLevel defined before GradingScale to avoid forward ref) ---
-export const GradingLevelSchema = z.object({
+// `point` is the grade point on a 0-4 scale. It is the value a term report and a
+// transcript average actually need; `label` is only display text, which is why
+// every grade in the product used to come out empty.
+const gradingLevelShape = {
   id: z.string().cuid(),
   gradingScaleId: z.string(),
   key: z.string(),
   label: z.string(),
   minScore: z.number().int().min(0).max(100),
   maxScore: z.number().int().min(0).max(100),
+  point: z.number().min(0).max(4).default(0),
   color: z.string(),
   description: z.string().nullable().optional(),
   order: z.number().int(),
-})
+}
+
+// Load-bearing from the moment a grade is computed: `determineGrade` picks the
+// first band whose [minScore, maxScore] contains the score, so an inverted band
+// silently swallows a range of scores and never reports a mismatch.
+const assertBandOrder = (level: { minScore: number; maxScore: number }, ctx: { addIssue: (issue: { code: 'custom'; message: string; path: PropertyKey[] }) => void }) => {
+  if (level.minScore > level.maxScore) {
+    ctx.addIssue({
+      code: 'custom',
+      message: 'minScore must be less than or equal to maxScore',
+      path: ['minScore'],
+    })
+  }
+}
+
+export const GradingLevelSchema = z.object(gradingLevelShape).superRefine(assertBandOrder)
+
+// Zod 4 throws ".omit() cannot be used on object schemas containing refinements",
+// so this cannot be derived from GradingLevelSchema with `.omit({ id: true })`.
+// It is built from the same shape and the same check instead — a derived schema
+// would have to drop the check, and the check is the whole point.
+export const GradingLevelCreateSchema = z.object(gradingLevelShape)
+  .omit({ id: true })
+  .superRefine(assertBandOrder)
+
+export type GradingLevel = z.infer<typeof GradingLevelSchema>
 
 export const GradingScaleSchema = ConfigEntityBaseSchema.extend({
   name: z.string(),
@@ -148,3 +177,17 @@ export type StudentStatus = z.infer<typeof StudentStatusEnum>
 
 export const ContentStatusEnum = z.enum(['DRAFT', 'PUBLISHED', 'ARCHIVED'])
 export type ContentStatus = z.infer<typeof ContentStatusEnum>
+
+// --- Syllabi ---
+// Declared after ContentStatusEnum because it uses it as its lifecycle field,
+// matching the bottom-up dependency order the rest of this file follows.
+export const SyllabusSchema = ConfigEntityBaseSchema.extend({
+  classSubjectId: z.string(),
+  termId: z.string(),
+  title: z.string().min(1),
+  body: z.string().nullable().optional(),
+  topics: z.array(z.string()).default([]),
+  status: ContentStatusEnum.default('DRAFT'),
+})
+
+export type Syllabus = z.infer<typeof SyllabusSchema>

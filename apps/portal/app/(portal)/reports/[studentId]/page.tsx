@@ -5,6 +5,7 @@ import {
   Card, CardContent, CardHeader, CardTitle, CardDescription,
   Button, Badge, useToast,
   Label,
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
   Separator,
 } from '@novastar/shared-ui'
@@ -44,6 +45,7 @@ interface ReportSummary {
   gradedAssessments: number
   gpa: number | null
   overallPercentage: number | null
+  hasAttendanceData: boolean
   attendanceRate: number | null
   totalAttendanceDays: number
   presentDays: number
@@ -53,6 +55,16 @@ interface AcademicReport {
   student: ReportStudent
   summary: ReportSummary
   assessments: ReportAssessment[]
+}
+
+/** One row of `/api/enrollments` — the terms a student was enrolled in. */
+interface ReportEnrollment {
+  termId: string
+  term: {
+    id: string
+    name: string
+    academicYear: { name: string } | null
+  } | null
 }
 
 const gradeColors: Record<string, string> = {
@@ -74,7 +86,11 @@ export default function ReportCardPage({ params }: { params: Promise<{ studentId
   const [studentId, setStudentId] = useState<string | null>(null)
   const [report, setReport] = useState<AcademicReport | null>(null)
   const [loading, setLoading] = useState(true)
-  const [_selectedTerm, _setSelectedTerm] = useState<string>('current')
+  // Real term selector. 'current' is the implicit default view; any
+  // other value is sent to the API as `termId`, and the API resolves
+  // the class and attendance for that term via the student's enrollment.
+  const [selectedTerm, setSelectedTerm] = useState<string>('current')
+  const [termOptions, setTermOptions] = useState<Array<{ id: string; label: string }>>([])
 
   useEffect(() => {
     const getParams = async () => {
@@ -83,6 +99,32 @@ export default function ReportCardPage({ params }: { params: Promise<{ studentId
     }
     getParams()
   }, [params])
+
+  // Populate the selector from the student's enrollments — the terms
+  // they were actually assigned to a class in.
+  useEffect(() => {
+    if (!studentId) return
+    const loadTerms = async () => {
+      try {
+        const res = await fetch(`/api/enrollments?studentId=${encodeURIComponent(studentId)}`)
+        if (!res.ok) return
+        const data = await res.json()
+        const enrollments: ReportEnrollment[] = data.data || []
+        setTermOptions(
+          enrollments
+            .filter((e) => e.term)
+            .map((e) => ({
+              id: e.term!.id,
+              label: `${e.term!.academicYear?.name ?? '—'} — ${e.term!.name}`,
+            })),
+        )
+      } catch {
+        // The selector stays on the default view; the report fetch
+        // reports its own errors.
+      }
+    }
+    loadTerms()
+  }, [studentId])
 
   const fetchReport = useCallback(async (sid: string, termFilter: string) => {
     setLoading(true)
@@ -110,10 +152,10 @@ export default function ReportCardPage({ params }: { params: Promise<{ studentId
   useEffect(() => {
     if (!studentId) return
     const load = async () => {
-      await fetchReport(studentId, _selectedTerm)
+      await fetchReport(studentId, selectedTerm)
     }
     load()
-  }, [studentId, _selectedTerm, fetchReport])
+  }, [studentId, selectedTerm, fetchReport])
 
   const handlePrint = () => {
     window.print()
@@ -181,21 +223,35 @@ export default function ReportCardPage({ params }: { params: Promise<{ studentId
         }
       `}</style>
       <div className="space-y-4">
-        <div className="flex items-center justify-between no-print">
-          <Button variant="ghost" size="sm" asChild>
-            <Link href="/reports">&larr; Back to Reports</Link>
+      <div className="flex flex-wrap items-center justify-between gap-2 no-print">
+        <Button variant="ghost" size="sm" asChild>
+          <Link href="/reports">&larr; Back to Reports</Link>
+        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Term selector: picks which enrollment's term the report covers */}
+          <Select value={selectedTerm} onValueChange={setSelectedTerm}>
+            <SelectTrigger className="w-56">
+              <SelectValue placeholder="Select term" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="current">Current term</SelectItem>
+              {termOptions.map((t) => (
+                <SelectItem key={t.id} value={t.id}>
+                  {t.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button variant="outline" size="sm" onClick={handleExportPdf}>
+            <Download className="h-4 w-4 mr-2" />
+            Export PDF
           </Button>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={handleExportPdf}>
-              <Download className="h-4 w-4 mr-2" />
-              Export PDF
-            </Button>
-            <Button variant="outline" size="sm" onClick={handlePrint}>
-              <Printer className="h-4 w-4 mr-2" />
-              Print
-            </Button>
-          </div>
+          <Button variant="outline" size="sm" onClick={handlePrint}>
+            <Printer className="h-4 w-4 mr-2" />
+            Print
+          </Button>
         </div>
+      </div>
 
         <Card className="print:shadow-none print:border">
           <CardContent className="pt-6">

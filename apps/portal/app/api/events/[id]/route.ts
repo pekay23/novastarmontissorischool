@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getTenantContext } from '@/lib/tenant'
 import { hasPermission } from '@novastar/auth'
+import { resolveVisibility, visibilityDeniesAll } from '@/lib/visibility'
 import { z } from 'zod'
 import { logError } from '@/lib/logger'
 
@@ -23,8 +24,19 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const { schoolId, tenantId } = await getTenantContext()
+    const ctx = await getTenantContext()
+    const { schoolId, tenantId, userId } = ctx
     if (!schoolId) return NextResponse.json({ error: 'No school assigned' }, { status: 400 })
+
+    // RBAC
+    if (!(await hasPermission(userId, 'event:read', tenantId, schoolId))) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
+    const visibility = await resolveVisibility(ctx, 'event:read')
+    if (visibilityDeniesAll(visibility)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
 
     const { id } = await params
     const event = await prisma.event.findFirst({
@@ -35,6 +47,9 @@ export async function GET(
   } catch (error) {
     if (error instanceof Error && error.name === 'UnauthorizedError') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+    if (error instanceof Error && error.name === 'ForbiddenError') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
     logError('Event GET', error)
     return NextResponse.json({ error: 'Failed to fetch event' }, { status: 500 })

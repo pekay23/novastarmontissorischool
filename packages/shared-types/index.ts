@@ -71,6 +71,7 @@ export {
   SubjectCategoryEnum,
   SubjectSchema,
   GradingLevelSchema,
+  GradingLevelCreateSchema,
   GradingScaleSchema,
   SyllabusSchema,
   AssessmentTypeConfigSchema,
@@ -140,6 +141,17 @@ export type {
  * (`grade`, `mark`, `edit`, `pay`, `record`, `return`, `send`, `manage`,
  * `settings`, `write`) — including the two keys that gate score and attendance
  * writes.
+ *
+ * `resource` accepts two conventions on purpose. The database holds both:
+ *   - `finance:invoice` — written by the seed that predates this module, which
+ *     stored the whole `resource:subResource` pair in one column;
+ *   - `finance` — written by every seed that derives its rows from
+ *     `PERMISSION_CATALOG`, where `perm()` takes `parsed.resource`.
+ * Both shapes are live rows today, in `finance:invoice:*`, `inventory:item:*`,
+ * `library:book:*` and `library:loan:*`. Reconciling them is a data migration
+ * and a destructive decision for a human, so the validator deliberately
+ * tolerates both rather than invalidating rows that are already in production.
+ * Narrowing this to one convention must wait until the legacy rows are migrated.
  */
 export const PermissionSchema = ConfigEntityBaseSchema.extend({
   key: PermissionKeySchema,
@@ -153,11 +165,19 @@ export const PermissionSchema = ConfigEntityBaseSchema.extend({
   const parsed = parsePermissionKey(value.key)
   if (!parsed) return // already reported by PermissionKeySchema
 
-  if (value.resource !== parsed.resource) {
+  // A three-segment key carries two accepted resource spellings; a one- or
+  // two-segment key has no subResource, so only one spelling is possible.
+  const acceptedResources = parsed.subResource
+    ? [parsed.resource, `${parsed.resource}:${parsed.subResource}`]
+    : [parsed.resource]
+
+  if (!acceptedResources.includes(value.resource)) {
     ctx.addIssue({
       code: 'custom',
       path: ['resource'],
-      message: `resource "${value.resource}" does not match key "${value.key}" (expected "${parsed.resource}")`,
+      message:
+        `resource "${value.resource}" does not match key "${value.key}" ` +
+        `(expected one of ${acceptedResources.map((r) => `"${r}"`).join(' or ')})`,
     })
   }
   if (value.action !== parsed.action) {

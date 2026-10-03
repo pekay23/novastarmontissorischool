@@ -1,20 +1,36 @@
 import { NextRequest, NextResponse } from 'next/server'
+import type { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { getTenantContext } from '@/lib/tenant'
 import { hasPermission } from '@novastar/auth'
+import { resolveVisibility, visibilityDeniesAll } from '@/lib/visibility'
 import { z } from 'zod'
 import { logError } from '@/lib/logger'
 
 export async function GET(req: NextRequest) {
   try {
-    const { schoolId, tenantId } = await getTenantContext()
+    const ctx = await getTenantContext()
+    const { schoolId, tenantId, userId } = ctx
     if (!schoolId) return NextResponse.json({ error: 'No school assigned' }, { status: 400 })
+
+    // RBAC
+    if (!(await hasPermission(userId, 'announcement:read', tenantId, schoolId))) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
+    // School-wide announcements are not narrowed per role, but an
+    // unrecognised role resolves to `custom` and is refused rather than shown
+    // drafts it was never entitled to read.
+    const visibility = await resolveVisibility(ctx, 'announcement:read')
+    if (visibilityDeniesAll(visibility)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
 
     const { searchParams } = new URL(req.url)
     const status = searchParams.get('status')
 
-    const where: Record<string, unknown> = { schoolId, tenantId }
-    if (status) where.status = status
+    const where: Prisma.NewsWhereInput = { schoolId, tenantId }
+    if (status) where.status = status as Prisma.NewsWhereInput['status']
 
     const announcements = await prisma.news.findMany({
       where,
@@ -25,6 +41,9 @@ export async function GET(req: NextRequest) {
   } catch (error) {
     if (error instanceof Error && error.name === 'UnauthorizedError') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+    if (error instanceof Error && error.name === 'ForbiddenError') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
     logError('Announcements GET', error)
     return NextResponse.json({ error: 'Failed to fetch announcements' }, { status: 500 })

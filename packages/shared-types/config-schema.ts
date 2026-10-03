@@ -631,6 +631,32 @@ export const DEFAULT_ENTITY_REGISTRY = [
     allowDelete: true,
     hasPermissions: true,
   },
+  // Field list mirrors the `AttendanceTaker` model: id, tenantId, schoolId and
+  // the timestamps are assigned by the route, and `classId` is nullable — a null
+  // classId is a school-wide grant, which is why it is not `required`.
+  {
+    type: 'attendance_taker',
+    name: 'Attendance Taker',
+    namePlural: 'Attendance Takers',
+    description: 'Assign staff to mark student and staff attendance, per class or school-wide',
+    icon: 'clipboard-check',
+    color: '#0d9488',
+    fields: [
+      { key: 'schoolId', label: 'School', type: 'select' as const, required: true },
+      { key: 'classId', label: 'Class (blank for school-wide)', type: 'select' as const },
+      { key: 'staffId', label: 'Staff Member', type: 'select' as const, required: true },
+      { key: 'canMarkStudent', label: 'Can Mark Student Attendance', type: 'boolean' as const, default: true },
+      { key: 'canMarkStaff', label: 'Can Mark Staff Attendance', type: 'boolean' as const, default: false },
+      { key: 'isActive', label: 'Active', type: 'boolean' as const, default: true },
+    ],
+    allowAdd: true,
+    allowEdit: true,
+    allowDelete: true,
+    defaultSortBy: 'createdAt',
+    defaultSortOrder: 'desc',
+    filterFields: ['schoolId', 'classId', 'staffId', 'isActive'],
+    hasPermissions: true,
+  },
 ] as EntityDefinition[]
 
 export const CONFIG_VERSION = '1.0.0'

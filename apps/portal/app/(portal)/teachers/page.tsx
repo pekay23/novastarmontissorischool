@@ -1,6 +1,8 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import Link from 'next/link'
+import { useSession } from 'next-auth/react'
 import {
   Card, CardContent, CardHeader, CardTitle, Button, Badge,
   useToast, useConfirm,
@@ -27,10 +29,18 @@ interface Teacher {
 export default function TeachersPage() {
   const { toast } = useToast()
   const confirm = useConfirm()
+  const { data: session } = useSession()
   const [teachers, setTeachers] = useState<Teacher[]>([])
   const [loading, setLoading] = useState(true)
   const [formOpen, setFormOpen] = useState(false)
   const [editId, setEditId] = useState<string | null>(null)
+
+  // The session user's own email, matched against each row's
+  // `user.email` to decide which row is "me". Email is unique
+  // per tenant (`User @@unique([tenantId, email])`), and the
+  // staff list is tenant-scoped, so this identifies the session
+  // user's Staff row without any extra request.
+  const sessionEmail = (session?.user as { email?: string | null } | undefined)?.email ?? null
 
   const fetchTeachers = async () => {
     setLoading(true)
@@ -147,6 +157,14 @@ export default function TeachersPage() {
                         {t.firstName} {t.lastName}
                         {t.employeeId && (
                           <p className="text-xs text-muted-foreground">ID: {t.employeeId}</p>
+                        )}
+                        {sessionEmail && t.user?.email === sessionEmail && (
+                          <Link
+                            href="/teachers/me"
+                            className="mt-1 inline-block text-xs font-medium text-primary hover:underline"
+                          >
+                            My Workspace
+                          </Link>
                         )}
                       </td>
                       <td className="py-2 text-sm">{t.email}</td>

@@ -3,9 +3,50 @@ import { verifyAuthenticationResponse } from '@simplewebauthn/server'
 import { prisma } from '@/lib/prisma'
 import { rpConfig } from '@/lib/auth/passkey-config'
 import crypto from 'crypto'
+import { checkRateLimit, clientIdentifier } from '@/lib/rate-limit'
 import { createAuditLog, AuditLogAction } from '@/lib/audit/logger'
 
+/**
+ * Pre-authenticated by design: the WebAuthn signature is the credential. It is
+ * rate limited here for the same reason as `login-options` — `proxy.ts` exempted
+ * all of `/api/auth/*` from its limiter, so nothing else throttled it.
+ */
+const PASSKEY_ATTEMPTS = 10
+const PASSKEY_WINDOW_MS = 5 * 60 * 1000
+
+/**
+ * Every `UserStatus` other than `ACTIVE` refuses a passkey login. Written as a
+ * positive test against `ACTIVE` rather than a list of the three known-bad
+ * values, so a status added to the enum later is refused by default instead of
+ * silently admitted. `isActive` is a second, independent column and is checked
+ * with it.
+ */
+function canPasskeyLogin(user: { status: string; isActive: boolean }): boolean {
+  return user.status === 'ACTIVE' && user.isActive
+}
+
 export async function POST(req: Request) {
+  const { success, reset } = checkRateLimit(
+    `passkey:login-verify:${clientIdentifier(req)}`,
+    PASSKEY_ATTEMPTS,
+    PASSKEY_WINDOW_MS,
+  )
+  if (!success) {
+    const retryAfter = Math.max(1, Math.ceil((reset - Date.now()) / 1000))
+    return new NextResponse(
+      JSON.stringify({ error: 'Too many passkey attempts. Please try again later.' }),
+      {
+        status: 429,
+        headers: {
+          'Content-Type': 'application/json',
+          'Retry-After': String(retryAfter),
+          'X-RateLimit-Limit': String(PASSKEY_ATTEMPTS),
+          'X-RateLimit-Remaining': '0',
+        },
+      },
+    )
+  }
+
   try {
     const body = await req.json()
     const { credential } = body
@@ -66,6 +107,14 @@ export async function POST(req: Request) {
 
     const { newCounter } = verification.authenticationInfo
 
+    // Refuse a suspended/archived/deleted account BEFORE any write. Mutating the
+    // credential counter of an account that may not sign in would leave the
+    // stored counter ahead of the authenticator's, which invalidates the
+    // credential on the account's next legitimate login.
+    if (!canPasskeyLogin(passkey.user)) {
+      return new NextResponse('Account is not active', { status: 403 })
+    }
+
     await prisma.passkey.update({
       where: { id: passkey.id },
       data: {
@@ -73,10 +122,6 @@ export async function POST(req: Request) {
         lastUsedAt: new Date(),
       },
     })
-
-    if (passkey.user.status !== 'ACTIVE') {
-      return new NextResponse('Account is not active', { status: 403 })
-    }
 
     // Generate a one-time bridge token prefixed with 'pk_' for NextAuth
     const bridgeToken = 'pk_' + crypto.randomBytes(32).toString('hex')

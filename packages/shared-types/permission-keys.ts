@@ -100,12 +100,22 @@ export const PERMISSION_ACTIONS = [
   'update',
   'edit',
   'delete',
+  'execute',
   'approve',
   'delegate',
   'export',
   'grade',
   'mark',
   'pay',
+  // `payment` is a legacy-grammar concession, not a verb the platform needs.
+  // The two-segment key `finance:payment` derives the action `payment`, and that
+  // key is live: it gates POST /api/finance/invoices/[id]/payments and is
+  // asserted by tests/middleware.test.ts. Renaming it to `finance:payment:pay`
+  // would orphan the granted key in every live `Role.permissions` array and
+  // quietly open that route. Do not "clean this up" — it exists so the key can
+  // stay. See `PERMISSION_CATALOG` below.
+  'payment',
+  'publish',
   'record',
   'return',
   'send',
@@ -116,6 +126,14 @@ export const PERMISSION_ACTIONS = [
 ] as const
 export type PermissionAction = (typeof PERMISSION_ACTIONS)[number]
 export const PermissionActionEnum = z.enum(PERMISSION_ACTIONS)
+
+/**
+ * Runtime membership check for permission actions. Backs the narrowing guard
+ * below so `perm()` fails at module load when a catalog key derives an action
+ * outside the enum, rather than relying on a blind cast that hides the mistake
+ * from the compiler.
+ */
+const PERMISSION_ACTION_SET: ReadonlySet<string> = new Set(PERMISSION_ACTIONS)
 
 export const PERMISSION_CATEGORIES = [
   'academic',
@@ -162,6 +180,20 @@ export interface PermissionDefinition {
   description: string
 }
 
+/**
+ * Narrow `string` to the action enum.
+ *
+ * The key grammar is a regex, not an enum, so `parsePermissionKey` can only
+ * promise `string`. That value therefore has to be narrowed, and the previous
+ * `as PermissionAction` cast narrowed nothing: it silenced the compiler on the
+ * one catalog row whose derived action was outside the enum (`finance:payment`),
+ * which is exactly the class of defect the enum exists to prevent. Narrowing
+ * keeps the compiler useful and still fails loudly at module load.
+ */
+function isPermissionAction(action: string): action is PermissionAction {
+  return PERMISSION_ACTION_SET.has(action)
+}
+
 function perm(
   key: string,
   category: PermissionCategory,
@@ -173,10 +205,16 @@ function perm(
     // Fail at module load rather than shipping a malformed key to the database.
     throw new Error(`Malformed permission key in catalog: ${key}`)
   }
+  if (!isPermissionAction(parsed.action)) {
+    throw new Error(
+      `Permission key "${key}" derives action "${parsed.action}", which is not in ` +
+        'PERMISSION_ACTIONS. Add the verb to the enum or correct the key — do not cast.',
+    )
+  }
   return {
     key,
     resource: parsed.resource,
-    action: parsed.action as PermissionAction,
+    action: parsed.action,
     category,
     description,
     scope,
@@ -190,7 +228,9 @@ function perm(
  * live `Permission` row or `Role.permissions` entry is invalidated. The second
  * block adds the `*:read` keys that resources were missing — without them a
  * route can only be guarded with an unrelated key, which is how 21 GET
- * handlers ended up unguarded.
+ * handlers ended up unguarded. The third group adds keys for capabilities that
+ * exist as models and routes but had no key at all (`timetable`, `grading`,
+ * `promotion`, `assessment:publish`, `report:export`).
  */
 export const PERMISSION_CATALOG: readonly PermissionDefinition[] = [
   // --- academic: term/calendar level ---
@@ -205,6 +245,7 @@ export const PERMISSION_CATALOG: readonly PermissionDefinition[] = [
   perm('assessment:update', 'academic', 'Update assessments'),
   perm('assessment:delete', 'academic', 'Delete assessments'),
   perm('assessment:grade', 'academic', 'Grade assessments'),
+  perm('assessment:publish', 'academic', 'Publish or unpublish an assessment to parents'),
   // --- academic: attendance ---
   perm('attendance:read', 'academic', 'Read attendance records'),
   perm('attendance:mark', 'academic', 'Mark attendance'),
@@ -216,6 +257,11 @@ export const PERMISSION_CATALOG: readonly PermissionDefinition[] = [
   perm('class:edit', 'academic', 'Edit classes'),
   perm('class:delete', 'academic', 'Delete classes'),
   perm('term:read', 'academic', 'Read academic terms and years'),
+  perm('timetable:read', 'academic', 'Read weekly timetables'),
+  perm('timetable:update', 'academic', 'Create, edit and delete timetable entries'),
+  perm('grading:read', 'academic', 'Read grading scales and grade bands'),
+  perm('grading:update', 'academic', 'Create, edit and delete grading scales and bands'),
+  perm('promotion:execute', 'academic', 'Promote a class cohort to the next class'),
   // --- finance ---
   perm('finance:create', 'finance', 'Create financial records'),
   perm('finance:read', 'finance', 'Read financial records'),
@@ -224,6 +270,11 @@ export const PERMISSION_CATALOG: readonly PermissionDefinition[] = [
   perm('finance:approve', 'finance', 'Approve financial records'),
   perm('finance:invoice:create', 'finance', 'Create invoices'),
   perm('finance:invoice:delete', 'finance', 'Delete invoices'),
+  // LEGACY GRAMMAR — DO NOT RENAME. This is a two-segment key, so its derived
+  // action is `payment` rather than `pay`. It is granted in live `Role.permissions`
+  // arrays and gates POST /api/finance/invoices/[id]/payments, so renaming it to
+  // `finance:payment:pay` would silently open that route. `payment` is therefore
+  // in PERMISSION_ACTIONS purely so this row survives its own grammar.
   perm('finance:payment', 'finance', 'Make payments'),
   perm('finance:payment:record', 'finance', 'Record payments'),
   // --- staff ---
@@ -270,6 +321,7 @@ export const PERMISSION_CATALOG: readonly PermissionDefinition[] = [
   perm('reports:read', 'reports', 'Read reports'),
   perm('reports:export', 'reports', 'Export reports'),
   perm('report:read', 'reports', 'Read a student academic report'),
+  perm('report:export', 'reports', 'Export report data'),
   // --- system ---
   perm('system:manage', 'system', 'Manage system settings'),
   perm('system:settings', 'system', 'Manage system settings'),
@@ -295,6 +347,21 @@ export const PERMISSION_CATALOG_BY_KEY: ReadonlyMap<string, PermissionDefinition
 export type RoleGrantRule = (permission: PermissionDefinition) => boolean
 
 /**
+ * Academic keys a `CLASSROOM_TEACHER` must not hold, even though they are in the
+ * `academic` category.
+ *
+ * The rule below grants that role the whole academic category minus `delete`,
+ * which is the right default for teaching (grade, mark, publish assessments) but
+ * wrong for school-wide configuration and cohort decisions. Without this,
+ * introducing `grading:update` and `promotion:execute` would have handed every
+ * classroom teacher the ability to rewrite the grading policy and promote an
+ * entire class. `grading:read` and `timetable:update` stay granted: a teacher
+ * needs to see the bands they mark against, and building their own class's
+ * timetable is their job.
+ */
+const CLASSROOM_TEACHER_EXCLUDED = new Set(['grading:update', 'promotion:execute'])
+
+/**
  * Grant rules per role. These reproduce the previous inline `Array.filter`
  * chains in `tools/seed/index.ts` exactly, extended with the new `*:read` keys.
  */
@@ -304,7 +371,9 @@ export const ROLE_GRANT_RULES: Record<PlatformRoleName, RoleGrantRule> = {
   HEAD_TEACHER: (p) =>
     p.category === 'academic' || p.category === 'student' || p.category === 'communication',
   CLASSROOM_TEACHER: (p) =>
-    (p.category === 'academic' && p.action !== 'delete') ||
+    (p.category === 'academic' &&
+      p.action !== 'delete' &&
+      !CLASSROOM_TEACHER_EXCLUDED.has(p.key)) ||
     (p.category === 'student' && p.action === 'read') ||
     (p.category === 'communication' && p.action !== 'delete'),
   ACCOUNTANT: (p) => p.category === 'finance' || p.category === 'reports',
@@ -337,8 +406,11 @@ export function permissionsForRole(
  * (leaks the whole roster) or "withhold the key" (breaks the feature), which
  * is why `GET /api/students` returned every student in the school to parents.
  *
- * Anything not listed resolves to the permission's own `scope`, which is
- * `all` for the whole catalog today.
+ * Resolution order is explicit key override, then `ROLE_DEFAULT_SCOPE`, then
+ * the permission's own `scope`. The middle step exists because the previous
+ * fallback was the catalog's `all`, which made an omitted entry a silent
+ * decision to expose the entire school. `PARENT` and `CLASSROOM_TEACHER` are
+ * inherently limited roles, so for them an omission must narrow, not widen.
  */
 export const ROLE_READ_SCOPE: Partial<
   Record<PlatformRoleName, Partial<Record<string, PermissionScope>>>
@@ -346,19 +418,72 @@ export const ROLE_READ_SCOPE: Partial<
   PARENT: {
     'student:read': 'own',
     'enrollment:read': 'own',
+    // Attendance for a parent's own child, not the class. `ROLE_GRANT_RULES`
+    // does not grant PARENT any attendance key today, so these are inert --
+    // but without them, granting one later would have handed every parent in
+    // the school the attendance register.
+    'attendance:read': 'own',
+    'attendance:mark': 'own',
+    // School-wide by nature: a parent must see the notices addressed to the
+    // whole school. Narrowing these to `own` would show them nothing.
+    'communication:read': 'all',
+    'announcement:read': 'all',
+    'event:read': 'all',
   },
   CLASSROOM_TEACHER: {
     'student:read': 'class',
     'attendance:read': 'class',
     'attendance:mark': 'class',
     'attendance:edit': 'class',
+    // A teacher owns their own class's schedule, not the school's. Without this
+    // the key's own `all` scope hands every teacher every timetable.
+    'timetable:read': 'class',
+    // Makes `staffVisibilityWhere` reachable: it narrows the directory to the
+    // caller plus the colleagues who teach the caller's own classes. Nothing
+    // resolved to `class` for this key before, so the builder was dead code and
+    // `GET /api/teachers` returned every employee in the school, contact
+    // details included, to any classroom teacher.
+    'teacher:read': 'class',
+    // Not class data. Every teacher reads the same notices, events and
+    // messages, so these stay school-wide.
+    'communication:read': 'all',
+    'communication:create': 'all',
+    'communication:update': 'all',
+    'communication:send': 'all',
+    'announcement:read': 'all',
+    'announcement:create': 'all',
+    'announcement:edit': 'all',
+    'event:read': 'all',
   },
 }
 
+/**
+ * The scope a role falls back to when no explicit override exists.
+ *
+ * Only the inherently limited roles get a narrowing default. Roles that are
+ * meant to see the whole school keep `all`, which is also the catalog default,
+ * so this table changes nothing for them.
+ */
+export const ROLE_DEFAULT_SCOPE: Record<PlatformRoleName, PermissionScope> = {
+  HEADMASTER: 'all',
+  ASSISTANT_HEAD: 'all',
+  HEAD_TEACHER: 'all',
+  ACCOUNTANT: 'all',
+  ADMIN_STAFF: 'all',
+  CLASSROOM_TEACHER: 'class',
+  PARENT: 'own',
+}
+
 export function scopeFor(roleName: string | null | undefined, permissionKey: string): PermissionScope {
+  // No role means no claim on anything.
   if (!roleName) return 'custom'
-  const narrowing = ROLE_READ_SCOPE[roleName as PlatformRoleName]
-  const narrowed = narrowing?.[permissionKey]
+  const role = roleName as PlatformRoleName
+  const narrowed = ROLE_READ_SCOPE[role]?.[permissionKey]
   if (narrowed) return narrowed
+  // A role that is inherently limited narrows by default, so an unmapped key
+  // fails closed. An unrecognised role is not in ROLE_DEFAULT_SCOPE and so
+  // falls through to the catalog scope, which is the documented behaviour.
+  const roleDefault = ROLE_DEFAULT_SCOPE[role]
+  if (roleDefault) return roleDefault
   return PERMISSION_CATALOG_BY_KEY.get(permissionKey)?.scope ?? 'all'
 }

@@ -11,7 +11,8 @@ import {
   FeeCategorySchema,
   PaymentMethodConfigSchema,
   AssessmentTypeConfigSchema,
-  GradingLevelSchema,
+  GradingLevelCreateSchema,
+  SyllabusSchema,
   PhaseEnum,
   TermStatusEnum,
   SubjectCategoryEnum,
@@ -26,6 +27,10 @@ import {
 // create/update Zod schemas, sort fields, and scoping metadata.
 // Used by config/[entityType]/route.ts and config/[entityType]/[id]/route.ts
 // ---------------------------------------------------------------------------
+
+/** `HH:mm`, 00:00-23:59. Validated at the boundary because timetable columns are
+ *  stored as text and sort as text. */
+const HHMM_REGEX = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Expected HH:mm')
 
 export type EntityApiConfig = {
   /** Entity type key (URL segment) */
@@ -54,6 +59,8 @@ export const TENANT_ONLY_ENTITY_TYPES = new Set([
   'grading_level',
   'subject_level',
   'fee_line_item',
+  'timetable',
+  'timetable_entry',
 ])
 
 /**
@@ -78,6 +85,7 @@ export const SOFT_DELETE_ENTITY_TYPES = new Set([
   'house',
   'class',
   'subject_level',
+  'attendance_taker',
 ])
 
 /**
@@ -267,20 +275,120 @@ export const ENTITY_CONFIG_MAP: Record<string, EntityApiConfig> = {
   grading_level: {
     type: 'grading_level',
     model: 'gradingLevel',
-    fields: ['id', 'gradingScaleId', 'key', 'label', 'minScore', 'maxScore', 'color', 'description', 'order', 'createdAt', 'updatedAt'],
-    createSchema: GradingLevelSchema.omit({ id: true }),
+    fields: ['id', 'gradingScaleId', 'key', 'label', 'minScore', 'maxScore', 'point', 'color', 'description', 'order', 'createdAt', 'updatedAt'],
+    createSchema: GradingLevelCreateSchema,
     updateSchema: z.object({
       gradingScaleId: z.string().optional(),
       key: z.string().optional(),
       label: z.string().optional(),
       minScore: z.number().int().min(0).max(100).optional(),
       maxScore: z.number().int().min(0).max(100).optional(),
+      point: z.number().min(0).max(4).optional(),
       color: z.string().optional(),
       order: z.number().int().optional(),
       description: z.string().nullable().optional(),
     }),
-    allowedSortFields: ['order', 'key', 'minScore', 'createdAt'],
+    allowedSortFields: ['order', 'key', 'minScore', 'point', 'createdAt'],
     schoolScoped: false,
+    softDelete: true,
+  },
+
+  // Per-term topic lists for a class subject. `softDelete` is false because the
+  // model carries a `status` enum and no `isActive` column: `SOFT_DELETE_ENTITY_TYPES`
+  // excludes status-lifecycle models, and the [id] route would otherwise push
+  // `isActive: true` into a where clause on a column that does not exist.
+  syllabus: {
+    type: 'syllabus',
+    model: 'syllabus',
+    fields: ['id', 'classSubjectId', 'termId', 'title', 'body', 'topics', 'status', 'createdAt', 'updatedAt'],
+    createSchema: SyllabusSchema.omit({
+      id: true, tenantId: true, schoolId: true, createdAt: true, updatedAt: true,
+    }),
+    updateSchema: z.object({
+      classSubjectId: z.string().optional(),
+      termId: z.string().optional(),
+      title: z.string().min(1).optional(),
+      body: z.string().nullable().optional(),
+      topics: z.array(z.string()).optional(),
+      status: ContentStatusEnum.optional(),
+    }),
+    allowedSortFields: ['title', 'status', 'termId', 'classSubjectId', 'createdAt'],
+    schoolScoped: true,
+    softDelete: false,
+  },
+
+  // Neither Timetable nor TimetableEntry has a schoolId column, so both are
+  // tenant-scoped: the generic route must not push schoolId into the where clause.
+  timetable: {
+    type: 'timetable',
+    model: 'timetable',
+    fields: ['id', 'classId', 'termId', 'name', 'isPublished', 'createdAt', 'updatedAt'],
+    createSchema: z.object({
+      classId: z.string(),
+      termId: z.string(),
+      name: z.string().min(1),
+      isPublished: z.boolean().default(false),
+    }),
+    updateSchema: z.object({
+      classId: z.string().optional(),
+      termId: z.string().optional(),
+      name: z.string().optional(),
+      isPublished: z.boolean().optional(),
+    }),
+    allowedSortFields: ['name', 'isPublished', 'createdAt'],
+    schoolScoped: false,
+    softDelete: false,
+  },
+
+  timetable_entry: {
+    type: 'timetable_entry',
+    model: 'timetableEntry',
+    fields: ['id', 'timetableId', 'classSubjectId', 'dayOfWeek', 'startTime', 'endTime', 'room', 'createdAt', 'updatedAt'],
+    createSchema: z.object({
+      timetableId: z.string(),
+      classSubjectId: z.string(),
+      dayOfWeek: z.number().int().min(1).max(7),
+      // startTime is part of the unique constraint and is compared as text, so a
+      // malformed value would both collide wrongly and sort wrongly. The columns
+      // are documented "HH:mm"; enforce it at the boundary instead of in the DB.
+      startTime: HHMM_REGEX,
+      endTime: HHMM_REGEX,
+      room: z.string().nullable().optional(),
+    }),
+    updateSchema: z.object({
+      timetableId: z.string().optional(),
+      classSubjectId: z.string().optional(),
+      dayOfWeek: z.number().int().min(1).max(7).optional(),
+      startTime: HHMM_REGEX.optional(),
+      endTime: HHMM_REGEX.optional(),
+      room: z.string().nullable().optional(),
+    }),
+    allowedSortFields: ['dayOfWeek', 'startTime', 'endTime', 'createdAt'],
+    schoolScoped: false,
+    softDelete: false,
+  },
+
+  // Has both a schoolId column and an isActive column, so it is school-scoped
+  // and soft-deletable.
+  attendance_taker: {
+    type: 'attendance_taker',
+    model: 'attendanceTaker',
+    fields: ['id', 'classId', 'staffId', 'canMarkStudent', 'canMarkStaff', 'isActive', 'createdAt', 'updatedAt'],
+    createSchema: z.object({
+      classId: z.string().nullable().optional(),
+      staffId: z.string(),
+      canMarkStudent: z.boolean().default(true),
+      canMarkStaff: z.boolean().default(false),
+    }),
+    updateSchema: z.object({
+      classId: z.string().nullable().optional(),
+      staffId: z.string().optional(),
+      canMarkStudent: z.boolean().optional(),
+      canMarkStaff: z.boolean().optional(),
+      isActive: z.boolean().optional(),
+    }),
+    allowedSortFields: ['staffId', 'classId', 'isActive', 'createdAt'],
+    schoolScoped: true,
     softDelete: true,
   },
 

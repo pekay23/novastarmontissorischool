@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
+import type { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { getTenantContext } from '@/lib/tenant'
 import { hasPermission } from '@novastar/auth'
+import { resolveVisibility, visibilityDeniesAll } from '@/lib/visibility'
 import { z } from 'zod'
 import { InventoryStatus } from '@novastar/database'
 import { logError } from '@/lib/logger'
@@ -21,9 +23,20 @@ const InventoryItemSchema = z.object({
 
 export async function GET(req: NextRequest) {
   try {
-    const { schoolId, tenantId } = await getTenantContext()
+    const ctx = await getTenantContext()
+    const { schoolId, tenantId, userId } = ctx
     if (!schoolId) {
       return NextResponse.json({ error: 'No school assigned' }, { status: 400 })
+    }
+
+    // RBAC
+    if (!(await hasPermission(userId, 'inventory:read', tenantId, schoolId))) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
+    const visibility = await resolveVisibility(ctx, 'inventory:read')
+    if (visibilityDeniesAll(visibility)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
     const { searchParams } = new URL(req.url)
@@ -31,7 +44,7 @@ export async function GET(req: NextRequest) {
     const categoryId = searchParams.get('categoryId')
     const lowStock = searchParams.get('lowStock') === 'true'
 
-    const where: Record<string, unknown> = { schoolId, tenantId }
+    const where: Prisma.InventoryItemWhereInput = { schoolId, tenantId }
 
     if (search) {
       where.OR = [
@@ -55,6 +68,9 @@ export async function GET(req: NextRequest) {
   } catch (error) {
     if (error instanceof Error && error.name === 'UnauthorizedError') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+    if (error instanceof Error && error.name === 'ForbiddenError') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
     logError('Inventory GET', error)
     return NextResponse.json({ error: 'Failed to fetch inventory' }, { status: 500 })

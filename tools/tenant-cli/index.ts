@@ -202,5 +202,14 @@ const { ArgMap, UsageError } = await import("./commands/shared");
   }
 }
 
-const exitCode = await main(process.argv.slice(2));
-if (exitCode !== 0) process.exit(exitCode);
+// Only dispatch when this file is the process entry point. Without the guard,
+// `import ... from '@novastar/tenant-cli'` would run the CLI -- and potentially
+// call `process.exit()` -- as a side effect of module initialisation. The
+// provisioning API is re-exported below precisely so consumers can import the
+// package root safely.
+export { provisionTenant, type ProvisionInput, type ProvisionedTenant } from "./provision";
+
+if (import.meta.main) {
+  const code = await main(process.argv.slice(2));
+  process.exitCode = code;
+}

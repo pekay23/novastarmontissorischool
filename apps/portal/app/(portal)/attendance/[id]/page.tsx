@@ -136,12 +136,52 @@ export default function AttendanceMarkPage({ params }: { params: Promise<{ id: s
     init()
   }, [params, searchParams, fetchAttendanceRecord, fetchStudentsForClass, fetchExistingAttendance])
 
+  /**
+   * Upsert the in-progress state for one rostered student.
+   *
+   * The roster — not the previously saved records — is the
+   * source of truth. A student with no saved record has no
+   * entry in `records`, and `Array.prototype.map` only visits
+   * existing entries, so a plain `map` made every per-student
+   * edit (and "mark all ABSENT") a no-op for unmarked
+   * students: an unmarked student could not be marked ABSENT
+   * without first saving a PRESENT row. Upserting by student
+   * id means the first edit to an unmarked student creates the
+   * entry, defaulting to the same all-present the table shows.
+   */
+  const upsertRecord = useCallback((studentId: string, patch: Partial<AttendanceRecord>) => {
+    setRecords(prev => {
+      const index = prev.findIndex(r => r.studentId === studentId)
+      if (index === -1) {
+        const student = students.find(s => s.id === studentId)
+        if (!student) return prev
+        return [
+          ...prev,
+          {
+            id: '',
+            studentId,
+            student,
+            status: 'PRESENT',
+            period: '',
+            notes: '',
+            markedBy: null,
+            createdAt: new Date().toISOString(),
+            ...patch,
+          },
+        ]
+      }
+      const next = [...prev]
+      next[index] = { ...next[index], ...patch }
+      return next
+    })
+  }, [students])
+
   const handleMarkAll = (status: 'PRESENT' | 'ABSENT' | 'LATE' | 'EXCUSED' | 'HALF_DAY') => {
-    setRecords(prev => prev.map(r => ({
-      ...r,
-      status,
-      period: period || null,
-    })))
+    // The whole roster, not just already-saved rows — an
+    // unmarked student must be writable too.
+    for (const student of students) {
+      upsertRecord(student.id, { status, period: period || '' })
+    }
   }
 
   const handleMarkAllFromCheckbox = (checked: boolean) => {
@@ -316,11 +356,7 @@ export default function AttendanceMarkPage({ params }: { params: Promise<{ id: s
                         checked={student.status === 'PRESENT'}
                         onChange={(e) => {
                           const newStatus = e.target.checked ? 'PRESENT' : 'ABSENT'
-                          setRecords(prev => prev.map(r =>
-                            r.studentId === student.id
-                              ? { ...r, status: newStatus }
-                              : r
-                          ))
+                          upsertRecord(student.id, { status: newStatus })
                         }}
                         className="rounded"
                       />
@@ -335,11 +371,7 @@ export default function AttendanceMarkPage({ params }: { params: Promise<{ id: s
                       <select
                         value={student.status}
                         onChange={(e) => {
-                          setRecords(prev => prev.map(r =>
-                            r.studentId === student.id
-                              ? { ...r, status: e.target.value as 'PRESENT' | 'ABSENT' | 'LATE' | 'EXCUSED' | 'HALF_DAY' }
-                              : r
-                          ))
+                          upsertRecord(student.id, { status: e.target.value as 'PRESENT' | 'ABSENT' | 'LATE' | 'EXCUSED' | 'HALF_DAY' })
                         }}
                         className={`w-full px-2 py-1 border rounded ${statusColors[student.status]}`}
                       >
@@ -354,11 +386,7 @@ export default function AttendanceMarkPage({ params }: { params: Promise<{ id: s
                       <Input
                         value={student.period}
                         onChange={(e) => {
-                          setRecords(prev => prev.map(r =>
-                            r.studentId === student.id
-                              ? { ...r, period: e.target.value }
-                              : r
-                          ))
+                          upsertRecord(student.id, { period: e.target.value })
                         }}
                         placeholder="Period"
                       />
@@ -367,11 +395,7 @@ export default function AttendanceMarkPage({ params }: { params: Promise<{ id: s
                       <Input
                         value={student.notes}
                         onChange={(e) => {
-                          setRecords(prev => prev.map(r =>
-                            r.studentId === student.id
-                              ? { ...r, notes: e.target.value }
-                              : r
-                          ))
+                          upsertRecord(student.id, { notes: e.target.value })
                         }}
                         placeholder="Notes"
                       />

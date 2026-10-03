@@ -1,10 +1,40 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import { hasPermission } from '@novastar/auth'
 import { getTenantContext } from '@/lib/tenant'
 import { logError } from '@/lib/logger'
 import { ENTITY_CONFIG_MAP } from '@novastar/shared-types'
+
+/**
+ * Prisma `P2002` is a unique-constraint violation.
+ *
+ * Four entities behind this generic route carry real unique constraints —
+ * `timetable_entry` (`@@unique([tenantId, timetableId, dayOfWeek, startTime,
+ * classSubjectId])`), `attendance_taker` (`@@unique([tenantId, schoolId,
+ * classId, staffId])`), `timetable` and `syllabus` — so a duplicate POST is an
+ * expected client outcome, not a server fault. Reported as a 500 it both
+ * misreports the fault and buries ordinary use in the error log and on the
+ * platform-errors page.
+ *
+ * Duplicated rather than shared with `config/[entityType]/[id]/route.ts`: the two
+ * files already carry byte-identical catch blocks, and a shared helper would be a
+ * new module outside this change's ownership. `Prisma.PrismaClientKnownRequestError`
+ * is matched by `instanceof` rather than by duck-typing `err.code`, which would
+ * also catch an unrelated error object that happens to carry a `code` field.
+ */
+function isUniqueConstraintViolation(err: unknown): err is Prisma.PrismaClientKnownRequestError {
+  return err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002'
+}
+
+/** The 409 body. Same `{ error }` shape as every other response in this file. */
+function duplicateResponse() {
+  return NextResponse.json(
+    { error: 'A record with these values already exists' },
+    { status: 409 },
+  )
+}
 
 const paginationSchema = z.object({
   page: z.coerce.number().int().positive().default(1),
@@ -170,6 +200,9 @@ export async function POST(
       logError('ServerConfig', error)
       return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
     }
+    // Before the generic 500: a duplicate is a client error, and the catch-all
+    // would otherwise report it as an outage.
+    if (isUniqueConstraintViolation(error)) return duplicateResponse()
     logError('ConfigEntity', error)
     return NextResponse.json({ error: 'Failed to create entity' }, { status: 500 })
   }

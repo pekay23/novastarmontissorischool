@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
+import type { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { getTenantContext } from '@/lib/tenant'
 import { hasPermission } from '@novastar/auth'
+import {
+  resolveVisibility,
+  classVisibilityWhere,
+  visibilityDeniesAll,
+} from '@/lib/visibility'
 import { z } from 'zod'
 import { logError } from '@/lib/logger'
 
@@ -18,12 +24,29 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const { schoolId, tenantId } = await getTenantContext()
+    const ctx = await getTenantContext()
+    const { schoolId, tenantId, userId } = ctx
     if (!schoolId) return NextResponse.json({ error: 'No school assigned' }, { status: 400 })
 
+    // RBAC
+    if (!(await hasPermission(userId, 'class:read', tenantId, schoolId))) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
+    const visibility = await resolveVisibility(ctx, 'class:read')
+    if (visibilityDeniesAll(visibility)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
     const { id } = await params
+    const where: Prisma.ClassWhereInput = {
+      id,
+      schoolId,
+      tenantId,
+      ...classVisibilityWhere(visibility),
+    }
     const cls = await prisma.class.findFirst({
-      where: { id, schoolId, tenantId },
+      where,
       include: {
         _count: { select: { students: true } },
         level: { select: { name: true } },
@@ -35,6 +58,9 @@ export async function GET(
   } catch (error) {
     if (error instanceof Error && error.name === 'UnauthorizedError') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+    if (error instanceof Error && error.name === 'ForbiddenError') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
     logError('Class GET', error)
     return NextResponse.json({ error: 'Failed to fetch class' }, { status: 500 })

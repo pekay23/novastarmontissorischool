@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
+import type { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { getTenantContext } from '@/lib/tenant'
 import { hasPermission } from '@novastar/auth'
+import {
+  resolveVisibility,
+  enrollmentVisibilityWhere,
+  visibilityDeniesAll,
+} from '@/lib/visibility'
 import { z } from 'zod'
 import { logError } from '@/lib/logger'
 
@@ -13,8 +19,19 @@ const CreateEnrollmentSchema = z.object({
 
 export async function GET(req: NextRequest) {
   try {
-    const { schoolId, tenantId } = await getTenantContext()
+    const ctx = await getTenantContext()
+    const { schoolId, tenantId, userId } = ctx
     if (!schoolId) return NextResponse.json({ error: 'No school assigned' }, { status: 400 })
+
+    // RBAC
+    if (!(await hasPermission(userId, 'enrollment:read', tenantId, schoolId))) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
+    const visibility = await resolveVisibility(ctx, 'enrollment:read')
+    if (visibilityDeniesAll(visibility)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
 
     const { searchParams } = new URL(req.url)
     const termId = searchParams.get('termId')
@@ -22,7 +39,15 @@ export async function GET(req: NextRequest) {
     const studentId = searchParams.get('studentId')
     const active = searchParams.get('active')
 
-    const where: Record<string, unknown> = { schoolId, tenantId }
+    // `Enrollment` has no `schoolId` column, so school scope arrives through
+    // its required `student` relation. The visibility filter also constrains
+    // `student` for an `own`-scoped caller, so the two are composed with `AND`
+    // rather than spread — a shallow merge would let the school filter drop
+    // the parent filter.
+    const where: Prisma.EnrollmentWhereInput = {
+      tenantId,
+      AND: [{ student: { schoolId } }, enrollmentVisibilityWhere(visibility)],
+    }
     if (termId) where.termId = termId
     if (classId) where.classId = classId
     if (studentId) where.studentId = studentId
@@ -56,6 +81,9 @@ export async function GET(req: NextRequest) {
   } catch (error) {
     if (error instanceof Error && error.name === 'UnauthorizedError') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+    if (error instanceof Error && error.name === 'ForbiddenError') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
     logError('Enrollments GET', error)
     return NextResponse.json({ error: 'Failed to fetch enrollments' }, { status: 500 })

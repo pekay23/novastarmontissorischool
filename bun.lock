@@ -64,6 +64,7 @@
         "@novastar/shared-ui": "workspace:*",
         "@novastar/shared-utils": "workspace:*",
         "@novastar/sync-engine": "workspace:*",
+        "@novastar/testing": "workspace:*",
         "@prisma/client": "^7.10.0",
         "@radix-ui/react-dialog": "^1.1.23",
         "@simplewebauthn/server": "^13.3.3",
@@ -240,6 +241,7 @@
         "zod": "^4.4.3",
       },
       "devDependencies": {
+        "@types/bun": "^1.4.2",
         "typescript": "npm:@typescript/typescript6@^6.0.2",
       },
     },
@@ -325,6 +327,7 @@
         "@novastar/shared-types": "workspace:*",
       },
       "devDependencies": {
+        "@eslint/js": "^9.39.5",
         "@playwright/test": "^1.63.0",
         "@testing-library/jest-dom": "^7.0.1",
         "@testing-library/react": "^16.3.3",
@@ -334,6 +337,7 @@
         "eslint": "^9.39.5",
         "msw": "^2.11.0",
         "typescript": "npm:@typescript/typescript6@^6.0.2",
+        "typescript-eslint": "^8.71.0",
         "zod": "^4.4.3",
       },
       "peerDependencies": {

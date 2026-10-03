@@ -3,7 +3,7 @@
   "compilerOptions": {
     "lib": ["esnext"],
     "noEmit": true,
-    "types": ["node"],
+    "types": ["bun", "node"],
     "paths": {
       "@novastar/*": ["../../packages/*/index.ts"]
     }
