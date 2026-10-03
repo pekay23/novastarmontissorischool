@@ -1,6 +1,13 @@
 import { PrismaClient } from '@prisma/client'
 import { PrismaNeon } from '@prisma/adapter-neon'
 
+// Re-exported so callers reach the deadline through the package entry point
+// rather than a deep import, which is not part of any published surface here.
+// `db-timeout.ts` is pure — constants, a class and three functions — so pulling
+// it in adds no import-time work and no database access, which is what keeps it
+// safe against the lazy `Proxy` and the build-time mock below.
+export { DB_QUERY_TIMEOUT_MS, DbTimeoutError, isDbTimeout, withDbTimeout } from './db-timeout'
+
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined
 }

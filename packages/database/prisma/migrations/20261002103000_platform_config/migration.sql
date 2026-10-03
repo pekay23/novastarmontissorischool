@@ -17,17 +17,19 @@
 -- docs/technical/2026-10-01_000000-build-plan-tools-migrate.md), apply schema
 -- changes with `prisma db push`, which is diff-based and idempotent.
 --
--- This migration is purely additive — no DROPs and no column type changes, and
--- every new NOT NULL column carries a DEFAULT, so it is safe against a
--- database that already contains rows.
+-- This migration is additive — no DROPs, no column type changes, and every new
+-- NOT NULL column carries a DEFAULT — so it is safe against a database that
+-- already contains rows. The two `User` unique indexes on the new
+-- `passkeyBridgeToken` / `verifyToken` columns are likewise safe: both columns
+-- are new, so every existing row holds NULL, and PostgreSQL unique indexes
+-- treat NULLs as distinct.
 --
--- One exception to "safe against existing rows": the two foreign keys added at
--- the end do validate them. They require every `SystemConfig.tenantId` and
--- `SystemError.tenantId` to match an existing `Tenant.id`, and both are created
--- with no rows, so this only bites a database that already carries orphaned
--- rows from a tenant deleted outside the schema. Clear them first:
---   DELETE FROM "SystemConfig" WHERE "tenantId" NOT IN (SELECT id FROM "Tenant");
---   DELETE FROM "SystemError"  WHERE "tenantId" NOT IN (SELECT id FROM "Tenant");
+-- The tenant foreign keys added at the end cannot fail here: `SystemConfig` and
+-- `SystemError` are both created empty earlier in this same file. They exist to
+-- stop orphans appearing later. Only if these tables were instead created by a
+-- separate `prisma db push` that predates the FKs could existing rows violate
+-- them, and the remedy is to inspect them, not to delete blindly:
+--   SELECT * FROM "SystemConfig" WHERE "tenantId" NOT IN (SELECT id FROM "Tenant");
 
 -- CreateEnum
 CREATE TYPE "UserStatus" AS ENUM ('ACTIVE', 'SUSPENDED', 'ARCHIVED', 'DELETED');
@@ -95,6 +97,7 @@ CREATE TABLE "SystemConfig" (
     "isEditable" BOOLEAN NOT NULL DEFAULT true,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "version" INTEGER NOT NULL DEFAULT 0,
 
     CONSTRAINT "SystemConfig_pkey" PRIMARY KEY ("id")
 );

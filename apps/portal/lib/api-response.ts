@@ -52,10 +52,11 @@ export async function toErrorResponse(
   //
   // Bounded by `withinPersistTimeout` rather than by `logSystemError`'s own
   // deadline, because the expensive part is not always the insert: resolving
-  // the tenant reads the session, and the auth `jwt` callback may run an
-  // un-timed `user.findUnique` when the token is due for revalidation. A
-  // deadline around the insert alone would leave this response waiting on
-  // whatever that query takes.
+  // the tenant reads the session, and the auth `jwt` callback may run a
+  // `user.findUnique` before the token is due for revalidation. That query is
+  // bounded by `withDbTimeout` in `session-context`, but bounded is not
+  // instant, and a deadline around the insert alone would leave this response
+  // waiting on whatever that lookup costs on top of its own.
   await withinPersistTimeout(persist(scope, err, context))
 
   return new NextResponse('Internal Error', { status: 500 })
@@ -93,8 +94,17 @@ async function withinPersistTimeout(work: Promise<void>): Promise<void> {
  *
  * Never rejects. `getTokenTenantId()` reads the session rather than the
  * database directly, but it is not free: the auth `jwt` callback can run a
- * `user.findUnique` with no timeout of its own. That is why the caller wraps
- * this whole function in a deadline instead of relying on `logSystemError`'s.
+ * `user.findUnique` before the token is due for revalidation, and that lookup
+ * carries its own deadline. A caller still has to bound the whole path rather
+ * than relying on `logSystemError`'s, because the two costs are paid in series.
+ *
+ * The stored `errorType` is `err.name`, which is what keeps the two kinds of
+ * failure apart on the errors page. A `DbTimeoutError` from a query that never
+ * answered is recorded under its own name and is therefore visibly an outage,
+ * where a driver error or an ordinary bug is recorded under its own. Both are
+ * 500s, and both are logged the same way; nothing about the response contract
+ * changes, because the distinction an operator needs belongs in the record, not
+ * in the status code a client can see.
  */
 async function persist(
   scope: string,

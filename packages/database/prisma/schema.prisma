@@ -1414,6 +1414,13 @@ model SystemConfig {
   isEditable  Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @default(now()) @updatedAt
+  // Optimistic-concurrency token for cross-tab writes. The default only ever
+  // applies to the column's initial value, so `create` sets 1 explicitly and an
+  // absent row reads as 0: a created row must be distinguishable from no row at
+  // all, or a first write would look like it matched a precondition of 0 that
+  // was never issued. Every later write increments, and deleting the row returns
+  // the flag to 0 — which is how a reset invalidates another tab's precondition.
+  version     Int      @default(0)
 
   @@unique([tenantId, key])
   @@index([tenantId, category])

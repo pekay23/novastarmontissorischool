@@ -3,34 +3,55 @@
  *
  * Only HEADMASTER role can access. Mutations are audit-logged.
  *
- * Response: `{ flag: { key, value, reset, isOverridden, updatedAt } }`.
- * `reset` reports what the client asked for; `isOverridden` and `updatedAt`
- * report what is actually stored, because `SystemConfig` holds overrides only
- * and a save of the registry default correctly stores no row. `updatedAt` is
- * therefore the persisted override row's timestamp as an ISO string, and
- * `null` whenever no row survives. `value` is the value the flag resolves to,
- * which is the submitted one unless the submission was the default. The stored
- * pair comes from the write itself, so they cannot disagree: a successful write
- * never reports `isOverridden: true` alongside a null timestamp.
+ * Response: `{ flag: { key, value, reset, isOverridden, updatedAt, version } }`.
+ * `reset` reports what the client asked for; `isOverridden`, `updatedAt` and
+ * `version` report what is actually stored, because `SystemConfig` holds
+ * overrides only and a save of the registry default correctly stores no row.
+ * `updatedAt` is therefore the persisted override row's timestamp as an ISO
+ * string, and `null` whenever no row survives. `value` is the value the flag
+ * resolves to, which is the submitted one unless the submission was the default.
+ * The stored triple comes from the write itself, so they cannot disagree: a
+ * successful write never reports `isOverridden: true` alongside a null timestamp.
+ *
+ * `version` is the optimistic-concurrency token: `0` when no override row
+ * exists, `1` on the row a first write creates, and one more on every later
+ * write. Send it back as `expectedVersion` on the next request.
+ *
+ * Errors: `404` unknown flag, `400` malformed body or a value the flag's own
+ * registry schema refuses, `403` a non-HEADMASTER caller or a read-only flag,
+ * and `409` when `expectedVersion` no longer matches — whose body is
+ * `{ error, details: { currentVersion } }`, the same `{ error, details? }` shape
+ * the 400s use, carrying the version that is actually stored so the client can
+ * resync and retry. `expectedVersion` is optional throughout: a request that
+ * omits it asks for no precondition and keeps last-write-wins semantics.
+ *
  * `ConfigFlag` and `PatchedFlagResponse` in the settings page mirror this
  * shape.
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { Prisma } from '@prisma/client'
-import { prisma } from '@/lib/prisma'
 import { getCachedSessionAndTenant } from '@/lib/auth/session-context'
 import { logAuditEvent, AuditLogAction } from '@/lib/audit/logger'
 import { toErrorResponse } from '@/lib/api-response'
 import { isPlatformAdmin } from '@/lib/constants/platform-roles'
-import {
-  FEATURE_FLAGS,
-  type FeatureFlagKey,
-  type FeatureFlagWriteResult,
-  clearFeatureFlagOverride,
-  isFeatureFlagWritable,
-  setFeatureFlag,
-} from '@/lib/system-config'
+import { FEATURE_FLAGS, type FeatureFlagKey, applyFeatureFlagChange } from '@/lib/system-config'
+
+/**
+ * The optimistic-concurrency precondition, on both branches below: a write and a
+ * reset can each be made stale by another tab, and a reset that lands after
+ * someone else already reset is still a change that was made blind.
+ *
+ * Optional, and that is deliberate. A precondition nobody supplies would break
+ * every existing client, and making it mandatory would turn "the server refuses
+ * a write based on state the client never read" into a rule the API cannot
+ * state. Absent means "not requested" — the write proceeds on last-write-wins,
+ * which is what the API has always done; present means "refuse unless the stored
+ * version still matches". Non-negative because the column is non-negative, so a
+ * negative value could only ever be a client bug and is rejected as a bad body
+ * rather than reported as a conflict it can never satisfy.
+ */
+const expectedVersionSchema = z.number().int().nonnegative().optional()
 
 /**
  * Body of a PATCH, as a union because the two cases are not the same request:
@@ -41,8 +62,12 @@ import {
  * registry schema below, not here.
  */
 const patchBodySchema = z.discriminatedUnion('reset', [
-  z.object({ reset: z.literal(true) }),
-  z.object({ reset: z.literal(false).optional(), value: z.unknown() }),
+  z.object({ reset: z.literal(true), expectedVersion: expectedVersionSchema }),
+  z.object({
+    reset: z.literal(false).optional(),
+    value: z.unknown(),
+    expectedVersion: expectedVersionSchema,
+  }),
 ])
 
 export async function PATCH(req: NextRequest, context: { params: Promise<{ key: string }> }) {
@@ -57,7 +82,6 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ key: 
     }
 
     const { key } = await context.params
-    flagKey = key
 
     // `Object.hasOwn`, not a bare lookup: the registry is a plain object
     // literal, so `FEATURE_FLAGS[key]` resolves inherited keys — `__proto__`,
@@ -69,6 +93,10 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ key: 
     }
     const flag = key as FeatureFlagKey
     const definition = FEATURE_FLAGS[flag]
+    // Only now, once the key is known to be a real flag: the catch block
+    // interpolates this into the stored `endpoint`, and an arbitrary URL segment
+    // has no business being written into a row an operator later reads back.
+    flagKey = key
 
     const body = patchBodySchema.safeParse(await req.json().catch(() => ({})))
     if (!body.success) {
@@ -88,62 +116,72 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ key: 
       newValue = result.data
     }
 
-    // The UI disables controls for read-only flags, but a crafted request
-    // bypasses that entirely — enforce it here or the column is theatre.
-    if (!(await isFeatureFlagWritable(session.tenantId, flag))) {
-      return NextResponse.json({ error: `Feature flag '${key}' is read-only` }, { status: 403 })
-    }
-
     // What the flag holds once this request is applied: the submitted value on
     // a write, the registry default when the request asked for a reset. A save
-    // that lands on the default also resolves to the default, because
-    // `setFeatureFlag` treats that as a reset rather than a write.
+    // that lands on the default also resolves to the default, because the write
+    // treats that as a reset rather than a write.
     const resetRequested = body.data.reset === true
     const resolvedValue = resetRequested ? definition.defaultValue : newValue
 
-    // Read the stored value BEFORE the write. This is the whole fix for the
-    // audit line: after an `upsert` the read returns the value just written, so
-    // "from" was always "to" and every entry read "updated from X to X"; after a
-    // reset there is no row left to read at all. Ordering, not concurrency, is
-    // what was wrong. Two overlapping PATCHes can still both report the same
-    // starting value while the second overwrote the first — closing that would
-    // need a transaction around the read and the write, which is not worth the
-    // cost for an audit line about a boolean switch.
-    const previous = await prisma.systemConfig.findUnique({
-      where: { tenantId_key: { tenantId: session.tenantId, key: flag } },
-      select: { value: true },
-    })
-    // No row means the flag was at its default, and a stored `null` is not a
-    // meaningful override — the same fallback `resolveFeatureFlags` applies, so
-    // the audit line and the read path agree on what the previous value was.
-    const from = previous?.value ?? definition.defaultValue
+    // Gate, precondition, previous-value read and write, as one transaction.
+    // Nothing above this line has touched storage, so every status code decided
+    // so far — 403, 400, 404 — still costs zero writes.
+    //
+    // The read the audit line needs is no longer a separate concern from
+    // ordering: it is the same read that enforces the gate, and it is inside the
+    // same transaction as the write, so "from" cannot be a read-back of the
+    // value just written and cannot observe a concurrent reset.
+    const change = await applyFeatureFlagChange(
+      session.tenantId,
+      flag,
+      resolvedValue,
+      body.data.expectedVersion
+    )
 
-    // One write, and only two possible stored states: an override row holding
-    // `resolvedValue`, or no row at all. Reset removes the override so the flag
-    // falls back to its registry default, and `setFeatureFlag` deletes the same
-    // row when a save lands on the default — so the two share the deletion, the
-    // audit rule and the response instead of forking into separate paths.
-    const saved: FeatureFlagWriteResult = resetRequested
-      ? {
-          isOverridden: false,
-          updatedAt: null,
-          removed: await clearFeatureFlagOverride(session.tenantId, flag),
-        }
-      : await setFeatureFlag(session.tenantId, flag, newValue)
+    // The UI disables controls for read-only flags, but a crafted request
+    // bypasses that entirely — enforce it here or the column is theatre.
+    if (change.status === 'read-only') {
+      return NextResponse.json({ error: `Feature flag '${key}' is read-only` }, { status: 403 })
+    }
 
-    // Record only what actually changed. An override is written by definition;
-    // a removal is worth an audit line only if a row was there to remove, because
-    // "reset to default" for a flag that was already at its default would tell
-    // an auditor an override was reverted when no row ever existed. That leaves
-    // the honest no-op — nothing stored, nothing needing storage — with no entry
-    // at all rather than a misleading "updated from false to false".
-    if (saved.isOverridden || saved.removed > 0) {
+    // Another tab wrote between this client's read and this request, so applying
+    // the change now would silently discard that write. 409 with the stored
+    // version is the only answer that lets the client recover: it can resync and
+    // decide again, rather than either losing its edit or replaying it over the
+    // top of somebody else's.
+    if (change.status === 'conflict') {
+      return NextResponse.json(
+        {
+          error: `Feature flag '${key}' was changed by another session`,
+          details: { currentVersion: change.currentVersion },
+        },
+        { status: 409 }
+      )
+    }
+
+    const { previousValue: from, isOverridden, updatedAt, version } = change
+
+    // Record only what actually changed. Storage must have moved AND the value
+    // the reader would report must have moved. Either half alone is not enough:
+    // an upsert always fires, so saving the value a flag already holds would log
+    // "updated from true to true" — the exact noise this line exists to avoid.
+    // And "reset to default" for a flag that was already at its default would
+    // tell an auditor an override was reverted when no row ever existed. What is
+    // left is the honest no-op: nothing stored, nothing needing storage.
+    //
+    // `removed` is reached through the `isOverridden` discriminant rather than
+    // destructured, because the result type only carries it on the arm where a
+    // deletion happened: an override has no row count to report, and widening
+    // the type with a `removed: 0` placeholder would hide exactly the case this
+    // half of the guard exists for.
+    const storageMoved = isOverridden || change.removed > 0
+    if (storageMoved && from !== resolvedValue) {
       await logAuditEvent({
         userId: session.userId,
         action: AuditLogAction.SYSTEM_UPDATE,
         entity: 'feature_flag',
         entityId: flag,
-        description: saved.isOverridden
+        description: isOverridden
           ? `Feature flag '${key}' updated from ${JSON.stringify(from)} to ${JSON.stringify(resolvedValue)}`
           : `Feature flag '${key}' reset to default`,
         // `logger.ts` hashes `changes` into the entry's chain hash, and this
@@ -174,8 +212,12 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ key: 
         // save reads as "Default" — a success, just not a stored one.
         value: resolvedValue,
         reset: resetRequested,
-        isOverridden: saved.isOverridden,
-        updatedAt: saved.updatedAt ? saved.updatedAt.toISOString() : null,
+        isOverridden,
+        updatedAt: updatedAt ? updatedAt.toISOString() : null,
+        // The token to send back as `expectedVersion` next time. Straight from
+        // the write, so a client that stores it is holding the version that is
+        // actually in the database rather than one it predicted.
+        version,
       },
     })
   } catch (error) {

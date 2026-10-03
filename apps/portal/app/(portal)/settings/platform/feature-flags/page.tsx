@@ -11,7 +11,14 @@ interface FlagDefinition {
   defaultValue: unknown
 }
 
-/** Mirrors `ResolvedFlag` from `lib/system-config.ts`. */
+/**
+ * Mirrors `ResolvedFlag` from `lib/system-config.ts`.
+ *
+ * `version` is the optimistic-concurrency token for the stored state: `0` when
+ * no override row exists, otherwise the row's own counter. It is sent back as
+ * `expectedVersion` on every PATCH, so a write based on state this page has not
+ * seen is refused rather than silently applied over someone else's change.
+ */
 interface ConfigFlag {
   key: string
   value: unknown
@@ -20,6 +27,7 @@ interface ConfigFlag {
   isOverridden: boolean
   isEditable: boolean
   updatedAt: string | null
+  version: number
 }
 
 interface ConfigResponse {
@@ -27,7 +35,14 @@ interface ConfigResponse {
   definitions: Record<string, FlagDefinition>
 }
 
-/** Mirrors the `{ flag }` body returned by `PATCH /api/system/config/[key]`. */
+/**
+ * Mirrors the `{ flag }` body returned by `PATCH /api/system/config/[key]`.
+ *
+ * `version` comes from the write rather than from this page, so it is the
+ * version actually stored — which is what makes the next precondition correct.
+ * A `409` carries no `flag` body: its shape is
+ * `{ error, details: { currentVersion } }`.
+ */
 interface PatchedFlagResponse {
   flag: {
     key: string
@@ -35,6 +50,7 @@ interface PatchedFlagResponse {
     reset: boolean
     isOverridden: boolean
     updatedAt: string | null
+    version: number
   }
 }
 
@@ -118,26 +134,64 @@ export default function FeatureFlagsPage() {
    * falls back to its registry default, and carries no value: writing the
    * default back instead would leave a permanent override shadowing any future
    * change to that default. A write carries the value to store.
+   *
+   * Every request carries the `version` this page last rendered as an
+   * `expectedVersion` precondition. That is what turns a second tab saving the
+   * same flag from a silent last-write-wins into a refused write: the request
+   * this page is built on described a state that has since moved, so applying
+   * it would discard whatever replaced it — and the audit trail would show one
+   * change where two were made.
    */
   const persistFlag = async (key: string, body: { value?: unknown; reset: boolean }) => {
     const seq = (requestSeqRef.current[key] ?? 0) + 1
     requestSeqRef.current[key] = seq
     setSaving((prev) => ({ ...prev, [key]: true }))
     try {
+      const current = config?.flags.find((f) => f.key === key)
+      // Omitted rather than defaulted when this page holds no row for the key: a
+      // made-up 0 would manufacture a conflict against a flag that is genuinely
+      // overridden, and omitting it keeps the request valid for any server that
+      // treats the precondition as optional.
+      const precondition = current ? { expectedVersion: current.version } : {}
       const res = await fetch(`/api/system/config/${key}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+        body: JSON.stringify({ ...body, ...precondition }),
       })
+      // Nothing was written, so there is nothing to retry: resync and let the
+      // Head of School decide again. Replaying the request would overwrite the
+      // change it just collided with, which is the exact failure the precondition
+      // exists to prevent.
+      if (res.status === 409) {
+        const conflict = (await res.json().catch(() => ({}))) as {
+          details?: { currentVersion?: number }
+        }
+        // A newer PATCH for this key has landed, so this conflict describes a
+        // state that is already superseded and its message would be noise.
+        if (requestSeqRef.current[key] === seq) {
+          toast.error({
+            title: 'Changed elsewhere',
+            description:
+              `Feature flag '${key}' was changed in another session` +
+              (conflict.details?.currentVersion !== undefined
+                ? ` (now at version ${conflict.details.currentVersion}).`
+                : '.') +
+              ' Reloading the current value.',
+          })
+          void fetchConfig()
+        }
+        return
+      }
       if (!res.ok) throw new Error('Failed to save')
       const data: PatchedFlagResponse = await res.json()
       // A newer PATCH for this key has landed while this one was in flight, so
       // whatever the server stored by now is not what this response describes:
       // drop it and let the newer request's response stand.
       if (requestSeqRef.current[key] !== seq) return
-      // Trust the server's view of the flag: the persisted timestamp and
-      // whether an override row now exists are exactly what the Override badge
-      // and the timestamp render, and only the server knows either.
+      // Trust the server's view of the flag: the persisted timestamp, whether an
+      // override row now exists, and the version to send next time are exactly
+      // what the Override badge, the timestamp and the next precondition render,
+      // and only the server knows any of them.
       setConfig((prev) =>
         prev
           ? {
@@ -149,6 +203,10 @@ export default function FeatureFlagsPage() {
                       value: data.flag.value,
                       isOverridden: data.flag.isOverridden,
                       updatedAt: data.flag.updatedAt,
+                      // Keep the token as fresh as the rest of the stored state,
+                      // so the next precondition is built from what is really
+                      // stored rather than from the value this page started at.
+                      version: data.flag.version,
                     }
                   : f
               ),

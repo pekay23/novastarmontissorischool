@@ -2,6 +2,7 @@ import { cache } from 'react'
 import { getServerSession } from 'next-auth'
 import { authOptions, ExtendedUser } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
+import { withDbTimeout } from '@novastar/database'
 import { UnauthorizedError } from '@/lib/tenant'
 import { parsePlatformRole } from '@/lib/constants/platform-roles'
 
@@ -38,15 +39,33 @@ export const getCachedSessionAndTenant = cache(async () => {
   // Available without a database round-trip.
   const claimedTenantId = user.tenantId
 
-  const dbUser = await prisma.user.findUnique({
-    where: { id: user.id },
-    select: {
-      tenantId: true,
-      schoolId: true,
-      role: { select: { name: true } },
-      status: true,
-    },
-  })
+  // Bounded, and the bound is the point of the line. This is the only database
+  // read on the request path, it runs on every request, and the Neon adapter has
+  // no timeout option — so a database that accepts the connection and then goes
+  // quiet would otherwise hold the request open indefinitely. An open request is
+  // the worst possible failure for this function specifically: the caller's
+  // `toErrorResponse` never runs, so the outage is recorded nowhere, which is
+  // the one thing the error log exists to prevent.
+  //
+  // A `DbTimeoutError` is deliberately NOT translated into an
+  // `UnauthorizedError`. The caller is authenticated and the session is valid;
+  // the database is what is unavailable, and reporting that as a 401 would both
+  // misreport the fault and invite the client to re-authenticate against a
+  // working identity provider. It propagates instead, and `toErrorResponse`
+  // records it under its own `errorType`, which is what lets the errors page
+  // tell an outage apart from a genuine authentication failure.
+  const dbUser = await withDbTimeout(
+    prisma.user.findUnique({
+      where: { id: user.id },
+      select: {
+        tenantId: true,
+        schoolId: true,
+        role: { select: { name: true } },
+        status: true,
+      },
+    }),
+    'user.findUnique'
+  )
 
   if (!dbUser) {
     throw new UnauthorizedError()
