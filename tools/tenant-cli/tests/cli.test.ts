@@ -82,6 +82,7 @@ describe("--help with no database", () => {
       "suspend",
       "reactivate",
       "user",
+      "operator",
     ]) {
       expect(stdout).toContain(command);
     }

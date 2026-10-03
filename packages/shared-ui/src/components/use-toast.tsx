@@ -4,8 +4,20 @@ import * as React from 'react'
 import { cva, type VariantProps } from 'class-variance-authority'
 import { X } from 'lucide-react'
 
+/*
+ * No enter/exit animation classes here on purpose.
+ *
+ * This string used to carry `data-[state=open]:animate-in`,
+ * `data-[state=closed]:animate-out` and the matching `fade-*` utilities. They
+ * named two different things that do not exist: those utilities ship with the
+ * `tailwindcss-animate` plugin, which is not a dependency of this repo, and
+ * `ToastItem` below renders no `data-state` attribute, so the variants could
+ * never match even with the plugin installed. Both facts were confirmed before
+ * the classes were removed: the class names reached the DOM and Tailwind
+ * silently emitted no rule for them.
+ */
 export const toastVariants = cva(
-  'group pointer-events-auto flex w-full max-w-sm cursor-pointer gap-3 overflow-hidden rounded-md border p-4 shadow-lg transition-all data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
+  'group pointer-events-auto flex w-full max-w-sm cursor-pointer gap-3 overflow-hidden rounded-md border p-4 shadow-lg transition-all',
   {
     variants: {
       variant: {

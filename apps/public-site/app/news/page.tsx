@@ -23,7 +23,7 @@ export default async function NewsPage() {
   return (
     <div className="min-h-screen">
       <section className="bg-gradient-to-b from-primary/10 to-transparent py-16 md:py-20">
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="container">
           <h1 className="text-responsive-h1 font-heading text-primary mb-4">Latest News</h1>
           <p className="text-lg text-muted-foreground max-w-2xl">
             Stay updated with the latest happenings at Novastar Montessori School.
@@ -32,7 +32,7 @@ export default async function NewsPage() {
       </section>
 
       <section className="section-y">
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="container">
           {news.length === 0 ? (
             <div className="mx-auto max-w-2xl rounded-xl border border-border bg-surface p-10 text-center">
               <h2 className="mb-2 font-heading text-xl font-semibold text-primary">

@@ -51,7 +51,13 @@ Rules:
 - Internal cross-package dependencies use `workspace:*`. External React/React
   DOM peers stay in `peerDependencies`; internal edges belong in
   `dependencies`.
-- Empty directories (`apps/super-admin/`, `packages/testing/`, `tools/migrate/`,
-  `tools/sync-cli/`, `tools/tenant-cli/`) are intentional placeholders. Do not
-  delete them. A build plan for each lives in `docs/technical/`.
+- **Those five directories are built, not placeholders.** An earlier revision of
+  this file described `apps/super-admin/`, `packages/testing/`,
+  `tools/migrate/`, `tools/sync-cli/` and `tools/tenant-cli/` as "intentional
+  empty placeholders". As of 2026-10-03 that is false and following it would
+  delete working code: `apps/super-admin` is a full app with its own auth and
+  cross-tenant console, and the other four are implemented workspace members
+  with source and test suites. The build plans under `docs/technical/` repeat
+  the same stale claim. `tools/seed/` is the only one of the six still lacking
+  a `package.json`, so no `typecheck` task reaches it.
 

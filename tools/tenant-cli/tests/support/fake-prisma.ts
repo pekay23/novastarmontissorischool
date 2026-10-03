@@ -164,10 +164,13 @@ export class FakeDatabase {
         if (!where) throw new Error(`FakeDatabase: update on ${delegate} without a where clause.`);
         const key = canonical(where);
         // Rows are stored under the selector that created them, so an update by
-        // primary key has to fall back to a scan.
+        // primary key has to fall back to a scan. `seed` keys rows by whatever unique
+        // columns the caller chose, so `where: { id }` -- what every production
+        // update-by-row looks like -- needs its own fallback comparing the row's id
+        // to the requested one.
         let storageKey = rows.has(key) ? key : undefined;
-        if (storageKey === undefined) {
-          storageKey = [...rows.entries()].find(([, row]) => canonical(row.id) === key)?.[0];
+        if (storageKey === undefined && where.id !== undefined) {
+          storageKey = [...rows.entries()].find(([, row]) => row.id === where.id)?.[0];
         }
         if (storageKey === undefined) throw new Error(`FakeDatabase: no ${delegate} row for ${key}`);
         const updated = { ...(rows.get(storageKey) as Row), ...(args.data as Row) };

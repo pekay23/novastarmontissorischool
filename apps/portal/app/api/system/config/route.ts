@@ -11,13 +11,16 @@
  *
  * PATCH /api/system/config/:key — see ./[key]/route.ts
  *
- * Only users with HEADMASTER role can access.
+ * Only users with HEADMASTER role can access. The list is then filtered to the
+ * flags that role can actually write through `PATCH /api/system/config/:key`, so
+ * the caller is never offered a switch the write route would refuse — which is
+ * how `admissions_open` (owned by `PATCH /api/admissions/status`) drops out.
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { getCachedSessionAndTenant } from '@/lib/auth/session-context'
 import { toErrorResponse } from '@/lib/api-response'
 import { isPlatformAdmin } from '@/lib/constants/platform-roles'
-import { resolveFeatureFlags, featureFlagDefinitions } from '@/lib/system-config'
+import { resolveFeatureFlags, featureFlagDefinitions, manageableFlagKeys } from '@/lib/system-config'
 
 export async function GET(_req: NextRequest) {
   // Hoisted so the catch block can attribute the failure to a tenant.
@@ -29,7 +32,12 @@ export async function GET(_req: NextRequest) {
       return new NextResponse('Forbidden', { status: 403 })
     }
 
-    const flags = await resolveFeatureFlags(session.tenantId)
+    // A pure, in-memory filter over the resolved list — no gate lookup per flag,
+    // so the read still costs exactly one query for the whole catalogue.
+    const manageable = new Set<string>(manageableFlagKeys(session.role))
+    const flags = (await resolveFeatureFlags(session.tenantId)).filter((flag) =>
+      manageable.has(flag.key)
+    )
 
     return NextResponse.json({
       flags,

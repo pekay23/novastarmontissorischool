@@ -1,4 +1,4 @@
-﻿generator client {
+generator client {
   provider        = "prisma-client-js"
   previewFeatures = ["multiSchema"]
 }
@@ -590,6 +590,50 @@ enum UserStatus {
   DELETED
 }
 
+// ============ PLATFORM OPERATORS (cross-tenant, tenantless) ============
+//
+// The identity behind `apps/super-admin`. A platform operator belongs to no
+// tenant, so there is no correct `User` row to create: `User.tenantId` is
+// non-null, and borrowing `HEADMASTER` would hand a cross-tenant account a
+// school-level role — the exact outcome the separate console exists to prevent.
+// This model is the deliberate alternative, and it is the reason the console is a
+// separate app rather than a route group inside the portal.
+//
+// Deliberately a separate row type rather than a `User` with a nullable tenantId:
+// nullability would make "belongs to no school" a value the database accepts
+// anywhere, and every portal query that assumes a tenant would have to defend
+// against it.
+//
+// `status` reuses `UserStatus` rather than declaring a second lifecycle enum, so
+// "suspended" means one thing platform-wide and a cross-app query needs one filter.
+// The lockout columns (`loginAttempts`, `lockedUntil`) are the same pair `User`
+// carries, for the same reason: one sweep and one policy for every credential in
+// the system, and no second set of thresholds to keep in step.
+model PlatformOperator {
+  id                 String     @id @default(cuid())
+  username           String     @unique
+  email              String     @unique
+  name               String?
+  passwordHash       String
+  status             UserStatus @default(ACTIVE)
+  capabilities       String[]
+  mustChangePassword Boolean    @default(false)
+  passwordChangedAt  DateTime?
+  lastLoginAt        DateTime?
+  loginAttempts      Int?       @default(0)
+  lockedUntil        DateTime?
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+  auditLogs          AuditLog[]
+
+  // Serves the lockout sweep — "every active operator whose lock has lapsed" —
+  // which is otherwise a sequential scan of the whole operator table on every
+  // administrative pass. Deliberately not a partial index: Prisma cannot express
+  // one, and `status` first is what makes the sweep's own `status = 'ACTIVE'`
+  // predicate the leading column of the scan.
+  @@index([status, lockedUntil])
+}
+
 model Account {
   id                String  @id @default(cuid())
   userId            String
@@ -886,7 +930,7 @@ model AttendanceStaff {
   staff      Staff            @relation(fields: [staffId], references: [id])
   date       DateTime
   status     AttendanceStatus
-  // See AttendanceStudent.period â€” the same nullable-period defect applied here.
+  // See AttendanceStudent.period — the same nullable-period defect applied here.
   period     String           @default("")
   markedById String?
   markedBy   User?            @relation(fields: [markedById], references: [id])
@@ -1419,6 +1463,17 @@ model AuditLog {
   schoolId  String
   userId    String?
   user      User?    @relation(fields: [userId], references: [id])
+  // The operator who acted, for entries written by the cross-tenant console.
+  //
+  // A sibling of `userId`, not a replacement: an operator has no `User` row, so
+  // before this column every console action was written with `userId: null` and
+  // the audit trail could say *that* something happened but never *who* did it.
+  // Pointing `userId` at the nearest school administrator would be worse than
+  // null — it would attribute a platform-wide action to a tenant member who did
+  // not perform it. So the two identities are separate columns and a console
+  // entry names exactly one of them.
+  operatorId String?
+  operator   PlatformOperator? @relation(fields: [operatorId], references: [id])
   action    String
   entity    String
    entityId  String?
@@ -1435,6 +1490,9 @@ model AuditLog {
 
    @@index([tenantId, schoolId, createdAt])
    @@index([tenantId, entity, entityId])
+  // "Everything this operator did" is the question the new column exists to
+  // answer, so it gets its own index rather than relying on a scan.
+   @@index([operatorId])
 }
 
 model Passkey {
@@ -1479,7 +1537,7 @@ model SystemConfig {
   // absent row reads as 0: a created row must be distinguishable from no row at
   // all, or a first write would look like it matched a precondition of 0 that
   // was never issued. Every later write increments, and deleting the row returns
-  // the flag to 0 â€” which is how a reset invalidates another tab's precondition.
+  // the flag to 0 — which is how a reset invalidates another tab's precondition.
   version     Int      @default(0)
 
   @@unique([tenantId, key])

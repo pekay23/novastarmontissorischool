@@ -1,12 +1,50 @@
 'use client'
 
-import { Suspense } from 'react'
-import { useState } from 'react'
-import { signIn } from 'next-auth/react'
+import { Suspense, useEffect, useState } from 'react'
+import { getProviders, signIn, type ClientSafeProvider } from 'next-auth/react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Button, Card, CardContent, CardHeader, CardTitle, CardDescription, Input } from '@novastar/shared-ui'
+import { rememberSchoolCodeForSso } from '@/lib/auth/sso-school-code'
+import { ssoProviderLabel, ssoRefusalMessage } from '@/lib/auth/sso'
 
 export const dynamic = 'force-dynamic'
+
+/**
+ * The providers this deployment has credentials for, read from NextAuth itself.
+ *
+ * `getProviders()` is the one source of truth: it reports the providers
+ * `authOptions.providers` actually contains, and a provider whose client id or
+ * secret is absent is never registered — so it never appears here and no button
+ * is rendered for it. Duplicating the list from `NEXT_PUBLIC_` variables would
+ * mean two declarations of what is configured, and the one that drifts is the one
+ * a visitor clicks.
+ *
+ * It is a fetch, so the section is empty until it resolves. That is the
+ * fail-closed direction: offering a button before the answer arrives would be
+ * offering one that might not work.
+ */
+function useConfiguredSsoProviders(): ClientSafeProvider[] {
+  const [providers, setProviders] = useState<ClientSafeProvider[] | null>(null)
+
+  useEffect(() => {
+    let active = true
+    getProviders()
+      .then((result) => {
+        if (active && result) setProviders(Object.values(result))
+      })
+      .catch(() => {
+        // A provider list that cannot be read is a list with no buttons in it.
+        // The credentials form is unaffected.
+        if (active) setProviders([])
+      })
+
+    return () => {
+      active = false
+    }
+  }, [])
+
+  return providers ?? []
+}
 
 function LoginContent() {
   const router = useRouter()
@@ -21,6 +59,27 @@ function LoginContent() {
   const [isLoading, setIsLoading] = useState(false)
   const [showTotp, setShowTotp] = useState(false)
   const [error, setError] = useState('')
+
+  const ssoProviders = useConfiguredSsoProviders()
+
+  /**
+   * Why the last single sign-in was turned down, if it was.
+   *
+   * Only this app's own `sso_` codes render anything. The same `error` parameter
+   * carries next-auth's codes (`AccessDenied`, `CredentialsSignin`, …), and those
+   * describe failures the form below already reports in its own words — a code
+   * this app does not recognise gets no banner at all rather than a guess.
+   *
+   * The sentence comes from `lib/auth/sso.ts`, the same table the server refused
+   * from, so the page never restates a rule and no free text is read out of the
+   * URL.
+   */
+  const ssoRefusal = (() => {
+    const code = searchParams.get('error')
+    if (!code || !code.startsWith('sso_')) return null
+
+    return ssoRefusalMessage(code, ssoProviderLabel(searchParams.get('provider') ?? ''))
+  })()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -40,12 +99,13 @@ function LoginContent() {
 
       if (result?.error) {
         const errMsg = result.error
-        // The server throws '2FA_REQUIRED' to signal a second factor step
+        // The server throws '2FA_REQUIRED' to signal a second factor step.
+        // Every other credential failure arrives as one generic sentence —
+        // `authorize()` answers a wrong password, a locked account and an unknown
+        // address identically, so that branch cannot become an existence oracle.
         if (errMsg === '2FA_REQUIRED') {
           setShowTotp(true)
           setError('')
-        } else if (errMsg === 'Account is temporarily locked. Please try again later.') {
-          setError(errMsg)
         } else {
           setError('Invalid credentials. Check your email, password and school code.')
         }
@@ -143,6 +203,26 @@ function LoginContent() {
     }
   }
 
+  /**
+   * Start a Google or Microsoft sign-in.
+   *
+   * The school code has to reach the server after the round trip, and the
+   * provider's callback carries nothing the visitor typed, so it is recorded in a
+   * short-lived cookie immediately before handing over. The button is disabled
+   * until it is: a school code typed after the redirect has started would be too
+   * late, and the server would refuse with "enter your school code" for something
+   * the visitor believes they did.
+   *
+   * `signIn` here is a full-page navigation rather than a fetch, so the cookie
+   * written in this tick travels to `/api/auth/signin/<provider>`, on to the
+   * provider, and back on the top-level GET that ends the flow.
+   */
+  const handleSsoLogin = (providerId: string) => {
+    setError('')
+    rememberSchoolCodeForSso(schoolCode)
+    void signIn(providerId, { callbackUrl: returnTo })
+  }
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-muted/40 p-4">
       <div className="w-full max-w-md">
@@ -163,6 +243,18 @@ function LoginContent() {
             </CardDescription>
           </CardHeader>
           <CardContent>
+            {/*
+              Above both forms, because a refusal arrives after a full round trip
+              to a provider and the visitor lands here with the two-factor step
+              reset — putting it inside either form would hide it whenever that
+              form was the one being shown.
+            */}
+            {ssoRefusal && (
+              <p role="alert" className="mb-4 text-sm text-destructive">
+                {ssoRefusal}
+              </p>
+            )}
+
             {!showTotp && (
               <form onSubmit={handleSubmit} className="space-y-4">
                 {/*
@@ -225,10 +317,23 @@ function LoginContent() {
                   </p>
                 )}
 
-                <Button type="submit" className="w-full" disabled={isLoading}>
-                  {isLoading ? 'Signing in...' : 'Sign In'}
-                </Button>
-              </form>
+<Button type="submit" className="w-full" disabled={isLoading}>
+              {isLoading ? 'Signing in...' : 'Sign In'}
+            </Button>
+
+            {/*
+              Recovery is unreachable by typing a URL, so the entry point has to be
+              on the page people land on when their password stops working.
+            */}
+            <p className="text-center text-sm">
+              <a
+                href="/forgot-password"
+                className="text-muted-foreground underline underline-offset-4 hover:text-foreground"
+              >
+                Forgot your password?
+              </a>
+            </p>
+          </form>
             )}
 
             {showTotp && (
@@ -288,6 +393,35 @@ function LoginContent() {
                 >
                   {isLoading ? 'Authenticating...' : 'Use Passkey'}
                 </Button>
+
+                {/*
+                  Only the providers NextAuth reports. Nothing here reads an
+                  environment variable: a provider whose credentials are absent is
+                  never registered, so it is never in this list and no button is
+                  drawn for it.
+
+                  The button text names the provider, which is also its accessible
+                  name — the icons these buttons usually carry are decorative, and
+                  an icon-only button would announce nothing.
+                */}
+                {ssoProviders.map((provider) => (
+                  <Button
+                    key={provider.id}
+                    variant="outline"
+                    className="w-full mt-2"
+                    onClick={() => handleSsoLogin(provider.id)}
+                    disabled={isLoading || !schoolCode.trim()}
+                    type="button"
+                  >
+                    Continue with {provider.name}
+                  </Button>
+                ))}
+
+                {ssoProviders.length > 0 && !schoolCode.trim() && (
+                  <p className="mt-2 text-center text-xs text-muted-foreground">
+                    Enter your school code above to use single sign-on.
+                  </p>
+                )}
               </>
             )}
           </CardContent>

@@ -2,6 +2,8 @@ import 'server-only'
 import { prisma } from '@/lib/prisma'
 import { Prisma } from '@prisma/client'
 import { z } from 'zod'
+import { ADMISSIONS_OPEN_DEFAULT, ADMISSIONS_OPEN_FLAG_KEY } from '@novastar/shared-types'
+import { PLATFORM_ADMIN_ROLES, type PlatformRole } from '@/lib/constants/platform-roles'
 
 /**
  * Feature flag definitions.
@@ -42,6 +44,19 @@ export interface FlagDefinition {
   defaultValue: unknown
   schema: z.ZodType
   isEditable: boolean
+  /**
+   * Roles permitted to change this flag through the generic
+   * `PATCH /api/system/config/:key` route.
+   *
+   * Absent means the platform-admin set (HEADMASTER alone) — the flag is
+   * platform infrastructure. Present means exactly those roles.
+   *
+   * An EMPTY array is the meaningful case: it means the flag is owned by a
+   * dedicated route elsewhere and no role may write it through this one, so the
+   * generic route refuses it and `resolveFeatureFlags` omits it from the read.
+   * That keeps one writer — and therefore one audit action — per flag.
+   */
+  manageRoles?: readonly PlatformRole[]
 }
 
 /**
@@ -94,10 +109,60 @@ export const FEATURE_FLAGS = {
     isEditable: true,
     schema: z.boolean(),
   },
+  // Keyed by the shared constant, not by a literal, because the public site
+  // reads this exact string to decide whether to publish the application form.
+  // A second spelling here would strand the portal's writes where the site does
+  // not look, with no error on either side. `manageRoles: []` moves the write to
+  // `PATCH /api/admissions/status`, which is the only place admissions state
+  // changes: one writer per flag means one audit action to read back.
+  [ADMISSIONS_OPEN_FLAG_KEY]: {
+    description: 'Enable admissions and enrollment',
+    category: 'academics',
+    defaultValue: ADMISSIONS_OPEN_DEFAULT,
+    isEditable: true,
+    manageRoles: [],
+    schema: z.boolean(),
+  },
 } as const satisfies Record<string, FlagDefinition>
 
 /** The registered flag keys. */
 export type FeatureFlagKey = keyof typeof FEATURE_FLAGS
+
+/**
+ * Whether `role` may write `flag` through the generic
+ * `PATCH /api/system/config/:key` route.
+ *
+ * `null` — an unauthenticated session, or a role name that is not a seeded
+ * platform role — is refused on BOTH paths, including the absent-`manageRoles`
+ * one. `PLATFORM_ADMIN_ROLES.includes(null)` would already be false, so going
+ * through `isPlatformAdmin` would give the same answer; the check is spelled
+ * out here because this function is the only gate on this route, and a role set
+ * that a later edit made `readonly (PlatformRole | null)[]` must not quietly
+ * become an allow-everything when `null` is the caller.
+ *
+ * The registry entry is widened to `FlagDefinition` before the property is read:
+ * the registry is an `as const` literal, so entries that declare no
+ * `manageRoles` make a direct access on the key union a compile error rather
+ * than the `undefined` that means "platform infrastructure".
+ */
+export function canManageFlag(flag: FeatureFlagKey, role: PlatformRole | null): boolean {
+  if (role === null) return false
+  const definition: FlagDefinition = FEATURE_FLAGS[flag]
+  return (definition.manageRoles ?? PLATFORM_ADMIN_ROLES).includes(role)
+}
+
+/**
+ * The flags `role` may write through the generic route, in registry order.
+ *
+ * Registry order rather than a sorted or filtered copy of some other list, so a
+ * client rendering the returned catalogue sees the same sequence as everyone
+ * reading the registry. `Object.keys` on a string-keyed object literal preserves
+ * insertion order; the cast is the same one `isFeatureFlagWritable` makes, and
+ * the entries it selects are all `Object.hasOwn`-checked by the registry itself.
+ */
+export function manageableFlagKeys(role: PlatformRole | null): FeatureFlagKey[] {
+  return (Object.keys(FEATURE_FLAGS) as FeatureFlagKey[]).filter((key) => canManageFlag(key, role))
+}
 
 export interface ResolvedFlag {
   key: string

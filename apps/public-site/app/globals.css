@@ -1,55 +1,98 @@
 @import "tailwindcss";
+@source "../../../packages/shared-ui/src";
 
 /*
- * Design tokens.
+ * Design tokens — "Warm Academic Prestige".
  *
  * Namespace: Tailwind v4 requires `--color-*` for utilities like `bg-primary`.
- * Values below are hex for brand colors, oklch for neutrals. Hex is simpler
- * and more maintainable than oklch for brand colors.
+ * This file is the ONLY place tokens are defined. `tailwind.config.mts` in this
+ * workspace is dead code: Tailwind v4 does not auto-load a JS config, and
+ * `app/globals.css` deliberately has no `@config` directive. Adding a token
+ * there generates nothing.
  *
- * Brand colors (from the school flier + concept designs):
- * - Primary: #5F1989 (purple) — logo, headlines, primary buttons
- * - Secondary: #44547C (slate) — icons, alternate details  
- * - Wine: #772D42 — dividers, quote frames, small accents
- * - Accent warm: #B94C25 (rust) — main CTA color, hover states
- * - Accent earth: #9D953C (olive) — tags, tiny details
+ * Source of truth: the Stitch design system attached to project
+ * 10796585189149547995 ("Novastar Montessori School Website"). Its own
+ * description reads: "the confluence of distinguished Montessori pedagogical
+ * heritage and vibrant Ghanaian warmth".
  *
- * Neutrals (oklch for perceptual uniformity):
- * - Background: #FFF9FC (tinted toward purple)
- * - Surface: #F6ECF3 (card backgrounds)
- * - Foreground: #2A1B30 (body text)
- * - Border: #E4D4E0 (hairlines)
- *
- * Dark mode: Primary shifts to a lighter purple for contrast.
+ * Brand roles:
+ * - Primary deep maroon #772836 — anchor. Buttons, active nav, heading text.
+ * - Maroon shade #5a1121 — the hero h1 and the deepest surface; #480c18 hover.
+ * - Wine tint #772d42 — interactive and focus states.
+ * - Trust navy slate #44547c — secondary structure, data tables, admin.
+ * - Terracotta #b94c25 — the one "pop" colour. Admissions CTAs, badges.
+ * - Ochre gold #635c1e — awards and honour accents.
+ * - Royal amethyst #5f1989 — leadership spotlights only. This was the previous
+ *   primary; the design system demotes it to an accent, so anything that used
+ *   to be "the brand colour" is now `--color-primary`.
  */
 @theme {
-  /* Brand: from the school flier, via concept color system */
-  --color-primary:      #5F1989;  /* Purple — logo, headlines, links */
-  --color-primary-dark: #43106B;
-  --color-primary-soft: #EFE0F6;
+  /* Consumed by `Skeleton` in @novastar/shared-ui. Declared per app because
+     `@theme` is scoped to the stylesheet that declares it. */
+  --animate-shimmer: shimmer 2s linear infinite;
 
-  --color-secondary:    #44547C;  /* Slate — icons, alternate section details */
+  /* Brand */
+  --color-primary:        #5a1121;  /* Deep maroon — hero h1, deepest surfaces */
+  --color-primary-dark:   #772836;  /* Anchor maroon — see the note below */
+  --color-primary-soft:   #f8eef1;  /* Tinted canvas: hero gradients, quiet badges */
 
-  --color-wine:      #772D42;  /* Wine — dividers, small accents */
+  /* NOTE ON THE INVERTED PAIR.
+     `--color-primary-dark` is LIGHTER than `--color-primary` (#772836 vs
+     #5a1121). That reads backwards, but every heading in `@layer base` resolves
+     to `var(--color-primary-dark)`, so this is the token that must hold the
+     design's anchor maroon for headings to look right. Do not "fix" the
+     lightness ordering without also changing that base rule. */
+  --color-primary-hover:  #480c18;  /* The design's own hover shade for maroon */
 
-  --color-accent-warm:      #B94C25;  /* Rust — the one "pop" color, CTAs */
-  --color-accent-warm-dark: #8A391B;
-  --color-accent-warm-light: #F7E0D3;
+  --color-secondary:      #44547c;  /* Trust navy slate — icons, alternate detail */
+  --color-wine:           #772d42;  /* Brighter wine tint — hover and focus */
+  --color-accent-amethyst: #5f1989; /* Leadership spotlights; was the old primary */
 
-  /* Olive — tags, small details.
-     Darkened from the flier's #9D953C: that value is only 3.09:1 on white, and
-     the SHS phase badge renders it at text-xs (WCAG 1.4.3 needs 4.5:1). */
-  --color-accent-earth:      #635C1E;
+  --color-accent-warm:      #b94c25;  /* Terracotta — the one "pop" colour, CTAs */
+  --color-accent-warm-dark: #8f3a19;
+  --color-accent-warm-light:#fbe6dc;
 
-  /* Neutrals — tinted toward primary purple */
-  --color-background: #FFF9FC;
-  --color-surface:   #F6ECF3;
-  --color-foreground: #2A1B30;
-  --color-muted:     #F2EEF6;
-  --color-muted-foreground: #5B4A58;
+  /* Ochre gold — tags, honours, tiny details.
+     Darkened from the design's #9d953c: that value is only 3.09:1 on white, and
+     it renders at text-xs on badges (WCAG 1.4.3 needs 4.5:1). */
+  --color-accent-earth:      #635c1e;
 
-  --color-border:       #E4D4E0;
-  --color-ring:      #B94C25;
+  /* Neutrals — the design's porcelain linen ramp, warmed toward maroon */
+  --color-background: #fff9fc;  /* Porcelain linen — the page canvas */
+  --color-surface:    #f8f2f5;  /* surface-container-low — card and band fills */
+  --color-foreground: #1d1b1d;  /* on-surface — body text */
+  --color-muted:      #f2ecef;  /* surface-container */
+  --color-muted-foreground: #544244;  /* on-surface-variant — secondary text */
+
+  --color-border: #dac0c2;  /* outline-variant — hairlines */
+  --color-ring:   #b94c25;  /* Terracotta focus ring, per the design's focus style */
+
+  /* The design's stepped surface ramp. Its markup alternates these to separate
+     bands without borders, so they need to exist as tokens rather than as
+     one-off hex values repeated across every page. */
+  --color-surface-container-lowest: #ffffff;
+  --color-surface-container-low:    #f8f2f5;
+  --color-surface-container:        #f2ecef;
+  --color-surface-container-high:   #ece3e7;
+  --color-surface-container-highest:#e3dae0;
+
+  /* The design's fixed role colours: pastel tints used as badge and icon-tile
+     fills behind a saturated foreground. The `-dim` variant is a deeper tint of
+     the same hue, for when a pastel tile has to carry a small amount of body
+     text rather than only a glyph — the plain fixed tint is too close to white
+     to clear 4.5:1 as text. */
+  --color-primary-fixed:     #ffd9dc;
+  --color-primary-fixed-dim: #f4bfc5;
+  --color-secondary-fixed:   #d9e2ff;
+  --color-tertiary-fixed:    #ffdbd0;
+
+  /* Low-emphasis container used for badges sitting on a solid --color-primary
+     band. It is a *lighter* wash of the maroon than the band it sits on, so it
+     reads as a raised chip rather than a recess — the light scheme keeps
+     --color-primary-foreground white and pairs them for 11.4:1. In dark mode
+     --color-primary-foreground flips to near-black, so the container has to flip
+     with it: a dark container under a dark foreground measured 1.26:1. */
+  --color-primary-container: #6b1d2e;
 
   /* Derived tokens.
      `@novastar/shared-ui`'s Button variants reference accent / accent-foreground
@@ -57,86 +100,134 @@
      token is absent, so an undefined token here means a button variant with no
      hover state rather than a build error. Keep these in sync with the
      neutrals above. */
-  --color-primary-foreground:   #FFFFFF;
-  --color-secondary-foreground: #FFFFFF;
-  --color-destructive-foreground: #FFFFFF;
+  --color-primary-foreground:   #ffffff;
+  --color-secondary-foreground: #ffffff;
+  --color-tertiary:             #581700;
+  --color-tertiary-container:   #b94c25;
+  --color-destructive-foreground: #ffffff;
 
-  --color-card:     #FFFFFF;
-  --color-popover:  #FFFFFF;
-  /* Form control borders. Not the hairline --color-border: that is 1.4:1, but
+  --color-card:    #ffffff;
+  --color-popover: #ffffff;
+  /* Form control borders. Not the hairline --color-border: that is 1.9:1, but
      the border is the only affordance marking a field's hit area and WCAG
      1.4.11 requires 3:1 for UI component boundaries. */
-  --color-input:    #8A6A80;
+  --color-input:   #8a6a70;
 
   /* Text that conveys a validation error. --color-destructive is a background
      tint (4.0:1 on white), which fails 1.4.3 for the 14px error messages that
      are the only non-color cue that a field is invalid. */
-  --color-error-text: #A82018;
+  --color-error-text: #a82018;
 
   /* Hover fill for outline/ghost buttons. Tinted toward primary so it reads as
      part of the palette instead of a generic grey. */
-  --color-accent:           #F2EEF6;
-  --color-accent-foreground: #2A1B30;
+  --color-accent:           #f2ecef;
+  --color-accent-foreground:#1d1b1d;
 
-  --color-success: oklch(0.55 0.13 150);
+  --color-success:    oklch(0.55 0.13 150);
   --color-destructive: oklch(0.52 0.19 27);
 
   /* Font variables — see layout.tsx for actual font loading */
-  --font-sans:   var(--font-mulish), -apple-system, Arial, sans-serif;
+  --font-sans:    var(--font-jakarta), -apple-system, Arial, sans-serif;
   --font-heading: var(--font-playfair), ui-serif, Georgia, serif;
 
   --radius-sm: 0.375rem;
   --radius-md: 0.625rem;
   --radius-lg: 1rem;
   --radius-xl: 1.5rem;
+  /*
+   * `--radius-2xl` and `--radius-3xl` have to be restated. Tailwind's own
+   * `--radius-2xl` defaults to 1rem, which is the same value as this file's
+   * `--radius-lg`, so `rounded-lg` and `rounded-2xl` render identically and a
+   * nested card ends up with a tighter corner than the container around it.
+   * The steps also have to stay monotonic: `2xl` and `3xl` sit above `xl`, not
+   * below it.
+   */
+  --radius-2xl: 1.75rem;
+  --radius-3xl: 2.25rem;
 }
 
-/* Dark mode variant (following the concept pattern) */
+/* Dark mode variant. The design ships light only, so this ramp is derived from
+   the same hues rather than specified by the design system. */
 @media (prefers-color-scheme: dark) {
   :root {
-    --color-background: #211526;
-    --color-foreground: #F6ECF3;
-    --color-muted-foreground: #C9B7C5;
-    --color-surface: #332039;
-    --color-border: #4A3350;
-    --color-primary: #B98CDD;
-    --color-primary-soft: #442B52;
-    --color-primary-foreground: #211526;
-    --color-card: #2A1B30;
-    --color-popover: #2A1B30;
-    --color-input: #7E5C74;
-    --color-accent: #442B52;
-    --color-accent-foreground: #F6ECF3;
-    --color-error-text: #FCA5A5;
+    --color-background: #1c0a0f;
+    --color-foreground: #f8f2f5;
+    --color-muted-foreground: #d3bfc5;
+    --color-surface: #2c1219;
+    --color-border: #5a3540;
+    --color-primary: #f0aeb6;
+    --color-primary-soft: #46202a;
+    --color-primary-foreground: #1c0a0f;
+    --color-card: #2c1219;
+    --color-popover: #2c1219;
+    --color-input: #9c7078;
+    --color-accent: #46202a;
+    --color-accent-foreground: #f8f2f5;
+    --color-error-text: #fca5a5;
 
     /* Required, not optional: every heading resolves to --color-primary-dark
        (see the base rules below) and the footer is bg-primary-dark. Leaving
-       this at its light-mode #43106B made every heading render at 1.27:1 on
-       the dark background — effectively invisible. */
-    --color-primary-dark: #B98CDD;
+       this at its light-mode value made every heading render at 1.27:1 on the
+       dark background — effectively invisible. */
+    --color-primary-dark: #f7c8ce;
+    --color-primary-hover: #f7c8ce;
 
     /* Tokens the light block defines that also need a dark value. Unset, they
        keep light-mode values and read as bright patches on a dark page. */
-    --color-secondary: #9FB0D6;
-    --color-secondary-foreground: #1B1F2B;
-    --color-wine: #D99AAF;
-    --color-muted: #3A2541;
-    --color-accent-warm: #E08154;
-    --color-accent-warm-dark: #F0A183;
-    --color-accent-warm-light: #4A2317;
-    --color-accent-earth: #C3BC7A;
-    --color-ring: #E08154;
-    --color-destructive: #F87171;
-    --color-destructive-foreground: #2A1B30;
-    --color-success: #6EE7A8;
+    --color-secondary: #9fb0d6;
+    --color-secondary-foreground: #1b1f2b;
+    --color-wine: #e8b4c0;
+    --color-accent-amethyst: #b98cdd;
+    --color-muted: #3a1b23;
+    --color-accent-warm: #e08154;
+    --color-accent-warm-dark: #f0a183;
+    --color-accent-warm-light: #4a2317;
+    --color-accent-earth: #c3bc7a;
+    --color-ring: #e08154;
+    --color-destructive: #f87171;
+    --color-destructive-foreground: #2c1219;
+    --color-success: #6ee7a8;
+
+    --color-surface-container-lowest: #2c1219;
+    --color-surface-container-low:    #351620;
+    --color-surface-container:        #3e1b26;
+    --color-surface-container-high:   #4a212d;
+    --color-surface-container-highest:#582634;
+
+    --color-primary-fixed:     #5a2430;
+    --color-primary-fixed-dim: #6e2f3d;
+    --color-secondary-fixed:   #2c3a5c;
+    --color-tertiary-fixed:    #5c2c1c;
+    /*
+     * Light chip, not a dark one. --color-primary-foreground is #1c0a0f in this
+     * scheme, so a dark container would put near-black text on near-black.
+     */
+    --color-primary-container: #f8f2f5;
+    --color-tertiary:          #f0a183;
+    --color-tertiary-container: #e08154;
   }
+}
+
+/*
+ * Paired with `--animate-shimmer` above. Starts at -100% to match the
+ * skeleton's own `-translate-x-full` offset, so the loop has no visible jump
+ * where 100% wraps back to 0%.
+ */
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
 }
 
 @layer base {
   html {
     scroll-behavior: smooth;
-    /* The header is sticky, so anchored sections must clear it. */
+    /* The header is sticky, so anchored sections must clear it. The desktop
+       header is taller than the mobile one because the utility bar in
+       `components/header.tsx` is hidden below `md`, so this tracks it. */
     scroll-padding-top: 5.5rem;
+    @media (width >= 48rem) {
+      scroll-padding-top: 7.25rem;
+    }
   }
 
   body {
@@ -177,32 +268,173 @@
 }
 
 @layer utilities {
-  .text-responsive-h1 { font-size: clamp(2rem, 5vw, 3.5rem); line-height: 1.08; }
-  .text-responsive-h2 { font-size: clamp(1.625rem, 3.6vw, 2.5rem); }
+  /*
+   * Responsive display sizes, retained for pre-existing page markup that still
+   * references the clamp-based names.
+   */
+  .text-responsive-h1 { font-size: clamp(2.25rem, 5vw, 3.375rem); line-height: 1.15; letter-spacing: -0.02em; }
+  .text-responsive-h2 { font-size: clamp(1.625rem, 3.6vw, 2.375rem); letter-spacing: -0.015em; }
   .text-responsive-h3 { font-size: clamp(1.25rem, 2.4vw, 1.75rem); }
 
+  /*
+   * The site's single page-width wrapper, and a complete one.
+   *
+   * Tailwind v4's `container` utility is NOT a layout primitive. The compiled
+   * rule is `width: 100%` plus a set of breakpoint `max-width` steps and nothing
+   * else — verified against real output with `node tools/check-css.mjs
+   * apps/public-site`, which prints:
+   *
+   *   .container { width: 100%; @media (width >= 40rem) { max-width: 40rem } … }
+   *
+   * Centring (`margin-inline: auto`) and gutters (`padding-inline`) are opt-in
+   * per usage in v4; they are not part of the utility. This file previously
+   * assumed otherwise and overrode only `max-width`, on the stated grounds that
+   * the other two properties "come from Tailwind's own rule".
+   *
+   * The consequence was two layout systems on one site. Sections using a bare
+   * `container` — the header, the footer, the home page, academics, the
+   * `HeroBand` — rendered flush against the left viewport edge, uncapped in
+   * width and with no gutter, while pages that spelled the gutter out by hand
+   * (`container mx-auto px-4 sm:px-6 lg:px-8`) were centred. That is the
+   * misalignment: the left edge of the content did not line up between pages.
+   *
+   * So both properties are defined here, once. The hand-written
+   * `mx-auto px-4 sm:px-6 lg:px-8` has been removed from every call site; do not
+   * put it back, because it would double the gutter on the left and restore the
+   * drift this removes.
+   *
+   * The 80rem cap replaces Tailwind's 96rem top step; the site is composed at
+   * 80rem. Because this rule is unlayered-by-media and sits after Tailwind's
+   * generated utilities, the plain `max-width` beats every one of its breakpoint
+   * steps — media queries add no specificity.
+   *
+   * One consequence to know: `max-w-*` loses to this rule, since a later
+   * same-specificity declaration wins. Narrowing a container therefore means
+   * nesting an inner `mx-auto max-w-*` element, not adding `max-w-*` alongside
+   * `container` (see `app/not-found.tsx`).
+   */
   .container {
     width: 100%;
     margin-inline: auto;
     max-width: 80rem;
     padding-inline: 1rem;
-  }
-  @media (min-width: 640px) { .container { padding-inline: 1.5rem; } }
-  @media (min-width: 1024px) { .container { padding-inline: 2rem; } }
-
-  /* Section rhythm. Used instead of ad-hoc py-* so vertical spacing is
-     consistent across pages. */
-  .section-y { padding-block: 4rem; }
-  @media (min-width: 768px) { .section-y { padding-block: 5.5rem; } }
-  @media (min-width: 1024px) { .section-y { padding-block: 7rem; } }
-
-  /* Respect users who ask for less motion. */
-  @media (prefers-reduced-motion: reduce) {
-    *, *::before, *::after {
-      animation-duration: 0.01ms !important;
-      animation-iteration-count: 1 !important;
-      transition-duration: 0.01ms !important;
-      scroll-behavior: auto !important;
+    @media (width >= 40rem) {
+      padding-inline: 1.5rem;
     }
+    @media (width >= 64rem) {
+      padding-inline: 2rem;
+    }
+  }
+}
+
+/*
+ * Custom utilities, declared with `@utility` rather than as bare classes in
+ * `@layer utilities`.
+ *
+ * Two reasons. A hand-written `.text-display-hero { … }` shares Tailwind's
+ * `text-*` namespace and resolves by source order, cannot be used with
+ * `@apply`, and silently emits nothing in a variant position
+ * (`md:text-display-hero` produces no rule at all). And `@utility` cannot be
+ * nested inside `@layer`, so these necessarily sit at the top level.
+ *
+ * `@utility` registers the name with Tailwind, so variants, `@apply` and the
+ * nested media queries below all behave.
+ */
+@utility text-display-hero {
+  font-size: 3.375rem;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  font-weight: 700;
+  @media (max-width: 639px) {
+    font-size: 2.25rem;
+    line-height: 1.22;
+  }
+}
+
+@utility text-headline-lg {
+  font-size: 2.375rem;
+  line-height: 1.21;
+  letter-spacing: -0.015em;
+  font-weight: 600;
+  @media (max-width: 639px) {
+    font-size: 1.75rem;
+    line-height: 1.29;
+  }
+}
+
+  @utility text-headline-md {
+    font-size: 1.75rem;
+    line-height: 1.29;
+    font-weight: 600;
+  }
+
+  @utility text-headline-sm {
+  font-size: 1.375rem;
+  line-height: 1.27;
+  font-weight: 600;
+}
+
+@utility text-title-lg {
+  font-size: 1.125rem;
+  line-height: 1.39;
+  font-weight: 700;
+}
+
+@utility text-title-md {
+  font-size: 1rem;
+  line-height: 1.375rem;
+  font-weight: 600;
+}
+
+@utility text-body-lg {
+  font-size: 1.0625rem;
+  line-height: 1.6875rem;
+}
+
+@utility text-label-md {
+  font-size: 0.75rem;
+  line-height: 1rem;
+  letter-spacing: 0.06em;
+  font-weight: 700;
+}
+
+@utility text-label-sm {
+  font-size: 0.6875rem;
+  line-height: 0.875rem;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+}
+
+/*
+ * The design's two signature cut-corner shapes. Both are decorative: they clip a
+ * solid fill only, so nothing inside them needs a text alternative.
+ */
+@utility shape-gold-cut {
+  clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 0 100%);
+}
+
+@utility shape-badge-slant {
+  clip-path: polygon(0 0, 100% 0, calc(100% - 10px) 100%, 0 100%);
+}
+
+/* Section rhythm. Used instead of ad-hoc py-* so vertical spacing is
+   consistent across pages. */
+@utility section-y {
+  padding-block: 4rem;
+  @media (min-width: 768px) {
+    padding-block: 5.5rem;
+  }
+  @media (min-width: 1024px) {
+    padding-block: 7rem;
+  }
+}
+
+/* Respect users who ask for less motion. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

@@ -3,6 +3,8 @@
 
 import { prisma } from '@novastar/database'
 import { Branding, News, Event, ClassLevel, Subject, PaymentMethodConfig } from '@prisma/client'
+import { SCHOOL_INFO } from './metadata'
+import { ADMISSIONS_OPEN_FLAG_KEY, ADMISSIONS_OPEN_DEFAULT } from '@novastar/shared-types'
 
 // Type-safe fetchers with fallbacks for build-time when DB unavailable
 async function safeFetch<T>(fn: () => Promise<T>, fallback: T): Promise<T> {
@@ -146,8 +148,29 @@ export async function getHeroContent(): Promise<{
   )
 }
 
-// Stats for homepage
+/*
+ * Stats for the homepage.
+ *
+ * The no-database branch deliberately reports no enrolment, staff or programme
+ * counts. It used to hardcode "500+ students", "40+ qualified teachers" and
+ * "10+ years of excellence" — invented institutional figures that a real
+ * school's homepage cannot substantiate, and which the static export published
+ * verbatim because no database was reachable at build time. It now falls back
+ * to the same verifiable facts the rest of the site states, so the numbers on
+ * the page never depend on whether a database happened to be configured.
+ *
+ * "Years since founding" is also computed from `SCHOOL_INFO.established` rather
+ * than from `tenant.createdAt`: the tenant row's creation timestamp is a
+ * database artefact, not the school's founding date, and the two disagreed.
+ */
 export async function getHomeStats(): Promise<Array<{ label: string; value: string }>> {
+  const fallback = [
+    { label: 'Guide to children in the early years', value: '1:6' },
+    { label: 'One school, Crèche to Junior High', value: 'Crèche–JHS' },
+    { label: 'Aligned to Ghana Education Service standards', value: 'GES' },
+    { label: 'Terms per academic year', value: '3' },
+  ]
+
   return safeFetch(
     async () => {
       const [studentCount, staffCount, programCount] = await Promise.all([
@@ -155,66 +178,92 @@ export async function getHomeStats(): Promise<Array<{ label: string; value: stri
         prisma.staff.count({ where: { tenant: { code: 'novastar' }, status: 'ACTIVE' } }),
         prisma.classLevel.count({ where: { tenant: { code: 'novastar' } } }),
       ])
-      const tenant = await prisma.tenant.findUnique({ where: { code: 'novastar' } })
-      const years = tenant ? new Date().getFullYear() - new Date(tenant.createdAt).getFullYear() : 10
+
+      /*
+       * An empty database must not render "0+ Students Enrolled" on a public
+       * page — the figure reads as a claim about the school, not about the
+       * build. Fall back to the verified facts instead.
+       */
+      if (studentCount === 0 && staffCount === 0 && programCount === 0) return fallback
+
       return [
-        { label: 'Students Enrolled', value: `${studentCount}+` },
-        { label: 'Qualified Teachers', value: `${staffCount}+` },
-        { label: 'Academic Programs', value: `${programCount}` },
-        { label: 'Years of Excellence', value: `${years}+` },
+        { label: 'Students enrolled', value: String(studentCount) },
+        { label: 'Teaching staff', value: String(staffCount) },
+        { label: 'Class levels', value: String(programCount) },
+        {
+          label: 'Years since founding',
+          value: String(new Date().getFullYear() - SCHOOL_INFO.established),
+        },
       ]
     },
-    [
-      { label: 'Students Enrolled', value: '500+' },
-      { label: 'Qualified Teachers', value: '40+' },
-      { label: 'Academic Programs', value: '5' },
-      { label: 'Years of Excellence', value: '10+' },
-    ]
+    fallback
   )
 }
 
-// Feature cards from branding or defaults
-export async function getFeatures(): Promise<Array<{ title: string; desc: string; icon: string }>> {
-  return safeFetch(
-    async () => [
-      {
-        title: 'Montessori Method',
-        desc: 'Child-centered learning through hands-on materials and practical activities',
-        icon: 'book-open',
-      },
-      {
-        title: 'GES Curriculum',
-        desc: 'Aligned with Ghana Education Service and NaCCA standards',
-        icon: 'graduation-cap',
-      },
-      {
-        title: 'Qualified Staff',
-        desc: 'Montessori-trained teachers with PEN certification',
-        icon: 'award',
-      },
-    ],
-    [
-      { title: 'Montessori Method', desc: 'Child-centered learning through hands-on materials and practical activities', icon: 'book-open' },
-      { title: 'GES Curriculum', desc: 'Aligned with Ghana Education Service and NaCCA standards', icon: 'graduation-cap' },
-      { title: 'Qualified Staff', desc: 'Montessori-trained teachers with PEN certification', icon: 'award' },
-    ]
-  )
-}
-
-// Testimonials from ConfigEntity or defaults.
-// One constant, not a copy per safeFetch branch: the two branches had drifted,
-// so the site could show different text depending on whether a database
-// happened to be reachable at build time.
-const DEFAULT_TESTIMONIALS = [
-  { name: 'Parent of KG2 Student', relation: 'Parent', quote: 'Since starting at Novastar, my daughter has become so much more independent and confident. The teachers are amazing!' },
-  { name: 'Parent of B3 Student', relation: 'Parent', quote: 'The blend of Montessori and Ghanaian curriculum gives our children the best of both worlds.' },
+/*
+ * Feature cards.
+ *
+ * `safeFetch` is called with the same array on both sides, so neither branch ever
+ * queries the CMS: `getFeatures` is a static list and has to be edited here.
+ *
+ * The third card previously read "Montessori-trained teachers with PEN
+ * certification". Both are credential claims about named real staff, with no
+ * registry or staff record behind them anywhere in the repository. It now
+ * describes the classroom instead, which is what a prospective parent is
+ * actually deciding about.
+ */
+const DEFAULT_FEATURES = [
+  {
+    title: 'Montessori Method',
+    desc: 'Child-centered learning through hands-on materials and practical activities',
+    icon: 'book-open',
+  },
+  {
+    title: 'GES Curriculum',
+    desc: 'Aligned with Ghana Education Service and NaCCA standards',
+    icon: 'graduation-cap',
+  },
+  {
+    title: 'Prepared Environment',
+    desc: 'Materials organised so each child can choose work and work independently',
+    icon: 'award',
+  },
 ]
 
-export async function getTestimonials(): Promise<Array<{ name: string; relation: string; quote: string }>> {
-  return safeFetch(
-    async () => DEFAULT_TESTIMONIALS,
-    DEFAULT_TESTIMONIALS
-  )
+export async function getFeatures(): Promise<Array<{ title: string; desc: string; icon: string }>> {
+  return safeFetch(async () => DEFAULT_FEATURES, DEFAULT_FEATURES)
+}
+
+/**
+ * Testimonials.
+ *
+ * Deliberately empty, and no longer a fallback over invented copy.
+ *
+ * This function used to return two written quotes attributed to "Parent of KG2
+ * Student" and "Parent of B3 Student" from a module constant — on both the
+ * success and the fallback branch, so the static export published them verbatim.
+ * Nothing in the repository backed them: no consent record, no parent supplied
+ * them, and no school had agreed to them. A quotation attributed to a named
+ * parent is a claim about that family, and a school website making one up is a
+ * worse failure than a missing section.
+ *
+ * There is also nowhere for a real testimonial to live yet. The comment above
+ * this used to say the quotes came from `ConfigEntity`, which was never true;
+ * that model is `@@unique([tenantId, type])` and holds one row per entity-type
+ * *definition* (its fields, permissions and icon) — it is the schema catalogue,
+ * not a content store, and putting quotes in it would mean either abusing a
+ * definition row or adding a second row per type against a unique index.
+ *
+ * So the section renders nothing until a consented store exists, and
+ * `app/page.tsx` already hides it on an empty list. Populating it honestly needs
+ * a `Testimonial` model carrying the quote, the attribution and the consent
+ * record, seeded only from quotes a parent actually gave — a migration, and
+ * therefore a decision rather than a patch.
+ */
+export async function getTestimonials(): Promise<
+  Array<{ name: string; relation: string; quote: string }>
+> {
+  return []
 }
 
 // CTA content
@@ -303,4 +352,31 @@ export interface FeeScheduleGroup {
   title: string
   subtitle: string
   items: Array<{ item: string; amount: string; mandatory: boolean }>
+}
+
+/**
+ * Reads the `admissions_open` flag from SystemConfig.
+ *
+ * Fail-closed: an unreachable database is not evidence that admissions are open.
+ * A site left published past its intake window that still invites applications
+ * is the exact harm this prevents. The value is baked at `next build`, so a
+ * toggle in the portal does not reach the live site until the site is rebuilt
+ * and redeployed.
+ *
+ * The `open` boolean comes from `row?.value === true` — never a bare truthiness
+ * test. A stored `null`, a string, or a number must all resolve to closed, not
+ * to "on", because the flag is a boolean gate and any non-boolean value is a
+ * data integrity issue that must not be silently treated as enabled.
+ */
+export async function getAdmissionsStatus(): Promise<{ open: boolean }> {
+  return safeFetch(
+    async () => {
+      const row = await prisma.systemConfig.findFirst({
+        where: { key: ADMISSIONS_OPEN_FLAG_KEY, tenant: { code: 'novastar' } },
+        select: { value: true },
+      })
+      return { open: row?.value === true }
+    },
+    { open: ADMISSIONS_OPEN_DEFAULT }
+  )
 }

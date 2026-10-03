@@ -47,6 +47,16 @@ const SETTINGS_SECTIONS = [
     entities: ['branding'] as EntityType[],
   },
   {
+    // Its own section rather than another link in the Platform tab: that tab is
+    // described as "Head of School configuration for system-level settings" and
+    // its three pages all refuse every role but the Head of School, so an
+    // admissions switch filed there would read as a platform setting and would
+    // be missed by exactly the people who are allowed to use it.
+    id: 'admissions',
+    label: 'Admissions',
+    icon: '🚪',
+  },
+  {
     id: 'security',
     label: 'Security',
     icon: '🛡️',
@@ -112,6 +122,22 @@ export default function SettingsPage() {
                   <TwoFactorSetup userId={userId} />
                 )}
               </div>
+            ) : section.id === 'admissions' ? (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Admissions</CardTitle>
+                  <CardDescription>
+                    Whether the school is accepting applications
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <nav className="flex flex-col gap-2">
+                    <Button asChild variant="ghost" className="justify-start">
+                      <Link href="/settings/admissions">Admissions Status</Link>
+                    </Button>
+                  </nav>
+                </CardContent>
+              </Card>
             ) : section.id === 'platform' ? (
               <Card>
                 <CardHeader>

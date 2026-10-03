@@ -60,7 +60,15 @@ export const baseMetadata: Metadata = {
   openGraph: {
     type: 'website',
     locale: 'en_GH',
-    url: SCHOOL_INFO.website,
+    /*
+     * No `url` here on purpose. Every page factory spreads `baseMetadata`, and a
+     * URL declared here would then be inherited by every route — which is what
+     * happened: all eight pages emitted `canonical` and `og:url` pointing at the
+     * homepage, telling search engines to consolidate the site onto `/` and
+     * making every social share resolve to the home page. Each factory that
+     * needs one declares its own; pages without one simply emit no canonical,
+     * which is far better than emitting a wrong one.
+     */
     siteName: SCHOOL_INFO.name,
     images: [
       {
@@ -82,9 +90,6 @@ export const baseMetadata: Metadata = {
     email: false,
     telephone: false,
   },
-  alternates: {
-    canonical: SCHOOL_INFO.website,
-  },
 }
 
 export function generateHomeMetadata(): Metadata {
@@ -92,6 +97,9 @@ export function generateHomeMetadata(): Metadata {
     ...baseMetadata,
     title: 'Authentic Montessori Education — Crèche to Junior High',
     description: 'Novastar Montessori School in Kumasi: mixed-age classrooms, 3-hour work cycles, GES-aligned curriculum. Book a classroom visit today.',
+    /* The homepage is the one route that legitimately declares this URL. */
+    alternates: { canonical: `${SCHOOL_INFO.website}/` },
+    openGraph: { ...baseMetadata.openGraph, url: `${SCHOOL_INFO.website}/` },
   }
 }
 
@@ -100,6 +108,9 @@ export function generateAboutMetadata(): Metadata {
     ...baseMetadata,
     title: 'About Novastar Montessori',
     description: 'Learn about Novastar Montessori School\'s history, philosophy, and approach to authentic Montessori education in Kumasi, Ghana.',
+    /* Trailing slash matches `trailingSlash: true` in next.config.ts. */
+    alternates: { canonical: `${SCHOOL_INFO.website}/about/` },
+    openGraph: { ...baseMetadata.openGraph, url: `${SCHOOL_INFO.website}/about/` },
   }
 }
 
@@ -108,14 +119,22 @@ export function generateAcademicsMetadata(): Metadata {
     ...baseMetadata,
     title: 'Academic Programs — Crèche to JHS',
     description: 'Explore Novastar\'s Montessori programs: Crèche & Nursery, Kindergarten, Lower Primary, Upper Primary, and Junior High School. GES and NaCCA aligned.',
+    /* Trailing slash matches `trailingSlash: true` in next.config.ts. */
+    alternates: { canonical: `${SCHOOL_INFO.website}/academics/` },
+    openGraph: { ...baseMetadata.openGraph, url: `${SCHOOL_INFO.website}/academics/` },
   }
 }
 
-export function generateAdmissionsMetadata(): Metadata {
+export function generateAdmissionsMetadata(open: boolean): Metadata {
   return {
     ...baseMetadata,
     title: 'Admissions — Apply Online',
-    description: 'Apply to Novastar Montessori School. Simple online application for Crèche through Junior High. Admissions open for 2026/27 academic year.',
+    description: open
+      ? 'Apply to Novastar Montessori School. Simple online application for Crèche through Junior High. Admissions open for 2026/27 academic year.'
+      : 'Admissions are not currently open. Contact us to enquire about future enrolment or schedule a visit.',
+    /* Trailing slash matches `trailingSlash: true` in next.config.ts. */
+    alternates: { canonical: `${SCHOOL_INFO.website}/admissions/` },
+    openGraph: { ...baseMetadata.openGraph, url: `${SCHOOL_INFO.website}/admissions/` },
   }
 }
 
@@ -124,6 +143,9 @@ export function generateFeesMetadata(): Metadata {
     ...baseMetadata,
     title: 'Fee Structure — Tuition & Payment Options',
     description: 'Transparent fee structure for all Novastar Montessori programs. Term-based tuition, payment plans, and sibling discounts available.',
+    /* Trailing slash matches `trailingSlash: true` in next.config.ts. */
+    alternates: { canonical: `${SCHOOL_INFO.website}/fees/` },
+    openGraph: { ...baseMetadata.openGraph, url: `${SCHOOL_INFO.website}/fees/` },
   }
 }
 
@@ -132,6 +154,9 @@ export function generateNewsMetadata(): Metadata {
     ...baseMetadata,
     title: 'News & Updates',
     description: 'Latest news, announcements, and updates from Novastar Montessori School. Term dates, events, and school achievements.',
+    /* Trailing slash matches `trailingSlash: true` in next.config.ts. */
+    alternates: { canonical: `${SCHOOL_INFO.website}/news/` },
+    openGraph: { ...baseMetadata.openGraph, url: `${SCHOOL_INFO.website}/news/` },
   }
 }
 
@@ -140,6 +165,9 @@ export function generateEventsMetadata(): Metadata {
     ...baseMetadata,
     title: 'Events & Calendar',
     description: 'Upcoming events at Novastar Montessori: open mornings, parent workshops, school performances, and academic calendar dates.',
+    /* Trailing slash matches `trailingSlash: true` in next.config.ts. */
+    alternates: { canonical: `${SCHOOL_INFO.website}/events/` },
+    openGraph: { ...baseMetadata.openGraph, url: `${SCHOOL_INFO.website}/events/` },
   }
 }
 
@@ -148,5 +176,8 @@ export function generateContactMetadata(): Metadata {
     ...baseMetadata,
     title: 'Contact Us — Visit or Get in Touch',
     description: 'Contact Novastar Montessori School. Phone, WhatsApp, email, and address. Schedule a visit Monday–Friday, 7:30am–5:30pm.',
+    /* Trailing slash matches `trailingSlash: true` in next.config.ts. */
+    alternates: { canonical: `${SCHOOL_INFO.website}/contact/` },
+    openGraph: { ...baseMetadata.openGraph, url: `${SCHOOL_INFO.website}/contact/` },
   }
 }

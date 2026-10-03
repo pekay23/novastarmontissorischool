@@ -105,7 +105,6 @@ function seedSource(): void {
     label: "A",
     minScore: 80,
     maxScore: 100,
-    point: "1.0",
     color: "#059669",
     description: null,
     order: 1,
@@ -324,6 +323,20 @@ describe("cloneConfiguration", () => {
     const targetLevels = fake.rowsOf("gradingLevel").filter((row) => row.tenantId === TARGET_TENANT);
     expect(targetLevels).toHaveLength(1);
     expect(targetLevels[0].gradingScaleId).not.toBe("scale_1");
+    // The remapped foreign key is not enough: a band is only gradable if every
+    // field `determineGrade` reads survived the copy. Asserting the whole row
+    // rather than the id is what makes a dropped field fail here instead of in
+    // the target school's report card.
+    expect(targetLevels[0]).toMatchObject({
+      tenantId: TARGET_TENANT,
+      key: "A",
+      label: "A",
+      minScore: 80,
+      maxScore: 100,
+      color: "#059669",
+      description: null,
+      order: 1,
+    });
   });
 
   test("drops House.patronId, which points at a row that does not exist in the target", async () => {

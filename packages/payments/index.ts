@@ -340,10 +340,17 @@ export class PaymentService {
           include: { parent: true, class: true },
         })
         if (student?.parent?.email) {
+          // Best-effort: the payment is already recorded above, so a failed
+          // receipt email must not turn a settled payment into a thrown error at
+          // the caller. `sendEmail` throws by design (a silent drop strands any
+          // credential email), so this path opts out explicitly instead of
+          // relying on a swallow.
           await sendEmail({
             to: student.parent.email,
             subject: 'Payment Confirmation',
             html: `<p>Dear Parent,</p><p>We confirm receipt of your payment of ₵${result.amount} via ${provider.name}.</p><p>Thank you.</p>`,
+          }).catch((error) => {
+            console.error('[payments] payment receipt email was not delivered:', error)
           })
         }
       }

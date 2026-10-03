@@ -6,6 +6,12 @@ import { prisma } from '@/lib/prisma'
 import { verifyPassword } from '@/lib/password'
 import { createAuditLog, AuditLogAction } from '@/lib/audit/logger'
 import { verifyTOTP } from '@/lib/auth/totp'
+import { resolveSchool } from '@/lib/auth/school-lookup'
+import { hashEmailToken, isEmailToken } from '@/lib/auth/email-verification'
+import { PASSWORD_RESET_TOKEN_PREFIX } from '@/lib/auth/password-reset-token'
+import { isEmailVerificationExempt, parsePlatformRole } from '@/lib/constants/platform-roles'
+import { buildSsoProviders } from '@/lib/auth/sso'
+import { ssoSignIn } from '@/lib/auth/sso-signin'
 
 export interface ExtendedUser {
   id?: string
@@ -30,33 +36,6 @@ export interface ExtendedUser {
  * Adopted from Aerojet Academy's auth-options.ts.
  */
 const REVALIDATION_INTERVAL = 5 * 60 * 1000
-
-/**
- * Resolves the school (tenant) a sign-in attempt belongs to.
- *
- * `schoolCode` is optional: when omitted we fall back to DEFAULT_SCHOOL_CODE,
- * which lets single-school deployments (Novastar) sign in without needing to
- * know the internal school code.
- */
-async function resolveSchool(schoolCode?: string | null) {
-  if (schoolCode) {
-    return prisma.school.findFirst({
-      where: { OR: [{ id: schoolCode }, { code: schoolCode }] },
-      select: { id: true, name: true },
-    })
-  }
-
-  const fallbackCode = process.env.DEFAULT_SCHOOL_CODE
-  if (!fallbackCode) {
-    console.error('[auth] No schoolCode supplied and DEFAULT_SCHOOL_CODE is not set')
-    return null
-  }
-
-  return prisma.school.findFirst({
-    where: { code: fallbackCode },
-    select: { id: true, name: true },
-  })
-}
 
 /**
  * Check account lockout. Returns true if locked.
@@ -106,6 +85,36 @@ export const authOptions: NextAuthOptions = {
     error: '/login',
   },
   callbacks: {
+    /**
+     * The OAuth gate.
+     *
+     * Credentials answers `true` unconditionally and is unchanged: every check it
+     * needs is inside `authorize()`, which already refuses by throwing.
+     *
+     * Everything else is off by default. The only other branch is an OAuth
+     * provider, so the email provider this app does not register — or a provider
+     * added later without a rule written for it — is turned down rather than
+     * handed a session. The rules themselves, and the reason this callback never
+     * lets `@auth/prisma-adapter` create a user, are in `lib/auth/sso.ts`.
+     */
+    async signIn({ account, profile }) {
+      if (account?.provider === 'credentials') return true
+      if (account?.type !== 'oauth') return false
+
+      // `profile` arrives as next-auth's `Profile`, which declares no index
+      // signature, while `ssoSignIn` reads the raw OIDC `userinfo` claims —
+      // `sub`, `preferred_username`, `email_verified` — that none of its declared
+      // fields cover. Those claim names are the whole point of the call: they are
+      // what the providers actually return, and inventing named fields for them
+      // would mean a new provider's claim is a type error rather than a read.
+      //
+      // So the wider type stays with the module that needs it and the cast sits
+      // here, at the library boundary, where it is one line and says what it is
+      // reconciling. Narrowing `SsoSignInParams.profile` instead would move the
+      // cast to every future caller and hide the real shape of the input.
+      return ssoSignIn({ account, profile: profile as Record<string, unknown> | undefined })
+    },
+
     async jwt({ token, user, trigger }) {
       if (user) {
         const extendedToken = token as JWT & ExtendedUser
@@ -132,6 +141,14 @@ export const authOptions: NextAuthOptions = {
           select: {
             status: true,
             passwordChangedAt: true,
+            mustChangePassword: true,
+            // `schoolName` is read here, not from the `user` the sign-in was
+            // given, because the two credential paths do not supply it equally.
+            // `authorize()` returns it; an OAuth sign-in's `user` is the plain
+            // `User` row the adapter fetched by id, which has `schoolId` but no
+            // school relation loaded. Without this an SSO session would render
+            // with the school name blank while a password session did not.
+            school: { select: { name: true } },
             role: { select: { name: true } },
           },
         })
@@ -162,7 +179,15 @@ export const authOptions: NextAuthOptions = {
           }
 
           token.role = dbUser.role?.name ?? token.role
-          token.mustChangePassword = false
+          token.schoolName = dbUser.school?.name ?? token.schoolName
+          // From the database, because the database is the only authority on this
+          // flag. The tenant CLI sets it on every account it provisions and every
+          // invitation sets it, and nothing but a real password write clears it
+          // — so assigning a constant here wiped it on the first revalidation,
+          // within five minutes of the sign-in that had just read it. That made
+          // the one-time setup link unenforced and every "change your password"
+          // flag decorative.
+          token.mustChangePassword = dbUser.mustChangePassword
         }
 
         token.lastChecked = now
@@ -276,8 +301,26 @@ export const authOptions: NextAuthOptions = {
 
         // --- Handle email verification token login ---
         if (credentials?.token) {
+          // A password-reset token is not a sign-in credential. It has its own
+          // page and its own endpoint, and this refusal exists so that pasting a
+          // reset link into the sign-in form produces an explanation instead of a
+          // bare "invalid token" — and so the intent ("`verifyToken` is a login
+          // credential, reset tokens are not") is asserted in one place.
+          if (credentials.token.startsWith(PASSWORD_RESET_TOKEN_PREFIX)) {
+            throw new Error('This is a password reset link. Use the reset password page instead.')
+          }
+
+          // Anything reaching here claims to be a verification / setup token. The
+          // stored column holds a SHA-256 digest rather than the token itself, so
+          // the incoming value is transformed the same way before the lookup —
+          // `hashEmailToken` is the single definition of that transform, shared
+          // with `lib/auth/email-verification.ts` which wrote the row.
+          if (!isEmailToken(credentials.token)) {
+            throw new Error('Invalid verification token')
+          }
+
           const user = await prisma.user.findUnique({
-            where: { verifyToken: credentials.token },
+            where: { verifyToken: hashEmailToken(credentials.token) },
             include: { role: { select: { name: true } }, school: { select: { name: true } } },
           })
 
@@ -295,6 +338,26 @@ export const authOptions: NextAuthOptions = {
           }
           if (user.status === 'ARCHIVED' || user.status === 'DELETED') {
             throw new Error('Account is no longer active. Contact administration.')
+          }
+
+          // An emailed link is a SETUP link, not a session.
+          //
+          // A freshly invited account has no `passwordHash` by design, so
+          // completing this sign-in would hand an intercepted invitation a full
+          // login as the invited role — and no password would ever be chosen,
+          // because nothing on this path stores one. The password path below
+          // already refuses a row with no hash; this is the same rule, made
+          // consistent rather than leaving one credential path weaker than the
+          // other.
+          //
+          // The token is deliberately left unspent and the address unverified, so
+          // the page named in the error can still consume it. That is the same
+          // trade `POST /api/auth/verify-email` makes, and it is why the refusal
+          // sits above the write that clears `verifyToken`.
+          if (!user.passwordHash) {
+            throw new Error(
+              `SET_PASSWORD_REQUIRED:/set-password?token=${encodeURIComponent(credentials.token)}`,
+            )
           }
 
           // 2FA check for email verification token (passkey tokens skip this)
@@ -367,8 +430,14 @@ export const authOptions: NextAuthOptions = {
         if (!user?.passwordHash) return null
 
         // Check account lockout
+        //
+        // The same sentence as a wrong password, on purpose. This branch is only
+        // reachable for a real account that has a password and is currently
+        // locked, so a distinct "temporarily locked" message told an
+        // unauthenticated caller that the address exists — the oracle the
+        // verification check below is carefully ordered to avoid.
         if (await checkAccountLocked(user.id)) {
-          throw new Error('Account is temporarily locked. Please try again later.')
+          throw new Error('Invalid email or password')
         }
 
         // Check account status
@@ -379,16 +448,31 @@ export const authOptions: NextAuthOptions = {
           throw new Error('Account is no longer active. Contact administration.')
         }
 
-        // Check email verification — skip for HEADMASTER and STAFF roles
-        if (!['HEADMASTER', 'STAFF'].includes(user.role?.name ?? '') && !user.emailVerified) {
-          throw new Error('Please verify your email before logging in.')
-        }
-
         // Verify password
+        //
+        // BEFORE the email-verification check, on purpose. That check used to run
+        // first and threw a message naming the account's verification state, so
+        // anyone who could guess an address got a free oracle for "this account
+        // exists and is unverified". Reaching it now requires the correct
+        // password, which is the only moment the answer is owed to the caller.
         const isValid = await verifyPassword(credentials.password, user.passwordHash)
         if (!isValid) {
           await recordFailedLogin(user.id)
           throw new Error('Invalid email or password')
+        }
+
+        // Check email verification. Every role must verify except the explicit
+        // break-glass list in `lib/constants/platform-roles.ts` — the Head of
+        // School only, so a deployment provisioned by the seed or the tenant CLI
+        // (neither of which can mint a verification token) cannot lock itself out
+        // of its own portal. The old inline check named `'STAFF'`, which is not a
+        // seeded role name, so it silently exempted the Head of School alone while
+        // reading as a blanket staff exemption.
+        if (!user.emailVerified && !isEmailVerificationExempt(parsePlatformRole(user.role?.name))) {
+          throw new Error(
+            'Please verify your email before logging in. Check your inbox for the verification ' +
+              'link, or request a new one from the sign-in page.',
+          )
         }
 
         // 2FA check
@@ -447,5 +531,20 @@ export const authOptions: NextAuthOptions = {
         }
       },
     }),
+    /**
+     * Google and Microsoft, when this deployment has credentials for them.
+     *
+     * A provider whose client id or client secret is absent is not registered at
+     * all rather than registered and left to fail. That matters because
+     * `/api/auth/providers` is where the sign-in page reads its button list
+     * from: an unregistered provider produces no button, so there is nothing on
+     * the page that costs a visitor a redirect to Google and back before failing.
+     *
+     * Credentials stays at index 0. Nothing here depends on that, but
+     * `tests/must-change-password.test.ts` reads `authorize` off
+     * `authOptions.providers[0]`, and a provider list that reordered itself with
+     * the environment would make that test pass or fail on unrelated grounds.
+     */
+    ...buildSsoProviders(),
   ],
 }

@@ -259,14 +259,19 @@ describe('every gate a scope-limited role can reach', () => {
     console.log(`with row scope: ${all.filter((h) => h.resolvesVisibility).length}`)
     // A silently-empty audit is worse than no audit, so pin the count.
     //
-    // Pinned at 56, which is every mutation handler in THIS tree. Six further
-    // credential-recovery routes are being added under `/api/auth` by a separate
-    // piece of work (invite, verify-email, verify-email/resend, set-password,
-    // forgot-password, reset-password); they are not committed here, and adding
-    // them will take this pin to 62. None of them holds a permission key, so there
-    // is no limited grant for row scope to narrow — their row boundary is the token
-    // itself, or, for `invite`, the caller's session tenant and school. Re-pin when
-    // the count moves, or the tripwire is decoration.
-    expect(all.length).toBe(56)
+    // Re-pinned 56 -> 62 -> 64. The six credential-recovery routes predicted below
+    // landed (`invite`, `verify-email`, `verify-email/resend`, `set-password`,
+    // `forgot-password`, `reset-password`). The two since are:
+    //
+    // - `POST teachers/invite`, which creates a `User` and a `Staff` row together.
+    //   It gates on `teacher:create`, which no seeded role holds below `all`, and the
+    //   account it creates has no pre-existing row whose visibility could narrow the
+    //   write — so `resolveVisibility` there would be noise, not safety.
+    // - `PATCH admissions/status`, landed concurrently by another agent.
+    //
+    // None of them holds a permission key with a limited scope, so no row below is a
+    // finding; their row boundaries are the token, the caller's session tenant and
+    // school, or the stored flag's own version.
+    expect(all.length).toBe(64)
   })
 })

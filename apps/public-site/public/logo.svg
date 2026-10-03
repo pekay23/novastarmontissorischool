@@ -1,12 +1,26 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 340 80" width="340" height="80">
-  <defs>
-    <linearGradient id="brand" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#5F1989"/>
-      <stop offset="100%" stop-color="#772D42"/>
-    </linearGradient>
-  </defs>
-  <circle cx="28" cy="40" r="18" fill="#5F1989"/>
+<!--
+  Horizontal lockup: mark + wordmark + descriptor. The viewBox starts at y=14
+  rather than 0 because the artwork's ink only spans y≈17..62 — the original
+  0 0 340 80 box carried ~22 units of empty margin top and bottom. In the navbar
+  this file renders at 40px tall, so that dead space was being paid for twice:
+  the "MONTESSORI SCHOOL" line computed to 7px on screen and was illegible
+  regardless of its colour. Cropping to the ink makes the wordmark ~22px and the
+  descriptor ~10px at the same rendered height.
+
+  Palette follows app/globals.css. The mark and wordmark use --color-primary
+  (deep maroon) and the descriptor uses --color-wine. Both were previously
+  royal amethyst #5F1989, which the design system demotes to leadership-spotlight
+  accents — it was this file's own former primary, before the palette moved to
+  maroon.
+
+  Contrast against the navbar's --color-background (#fff9fc):
+    #5A1121 wordmark  13.15:1
+    #772D42 descriptor  9.03:1
+    #B94C25 mark edge  4.90:1  (a graphic, so the 3:1 floor of 1.4.11 applies)
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 14 340 54" width="340" height="54">
+  <circle cx="28" cy="40" r="18" fill="#5A1121"/>
   <path d="M28 18 L14 40 L42 40 Z" fill="none" stroke="#B94C25" stroke-width="2.5" stroke-linejoin="round"/>
-  <text x="60" y="46" font-family="Georgia, serif" font-size="30" font-weight="600" fill="#5F1989">Novastar</text>
-  <text x="60" y="62" font-family="Arial, sans-serif" font-size="14" letter-spacing="0.08em" fill="#B94C25">MONTESSORI SCHOOL</text>
+  <text x="60" y="46" font-family="Georgia, serif" font-size="30" font-weight="600" fill="#5A1121">Novastar</text>
+  <text x="60" y="62" font-family="Arial, sans-serif" font-size="14" letter-spacing="0.08em" fill="#772D42">MONTESSORI SCHOOL</text>
 </svg>

@@ -108,12 +108,19 @@ const COMMANDS: readonly CommandSpec[] = [
     load: () => import("./commands/reactivate"),
     entry: "runReactivate",
   },
-  {
+{
     name: "user",
     summary: "Create a tenant administrator or rotate a password",
     usage: "novastar-tenant user --tenant <code> --email <email> [--rotate]",
     load: () => import("./commands/user"),
     entry: "runUser",
+  },
+  {
+    name: "operator",
+    summary: "Create or reset a platform operator for the super-admin console",
+    usage: "novastar-tenant operator --username <name> --email <email> --capabilities <list> [--rotate]",
+    load: () => import("./commands/operator"),
+    entry: "runOperator",
   },
 ];
 
@@ -133,10 +140,11 @@ function renderHelp(): string {
     "  --help, -h     print this text and exit 0",
     "  --json         machine-readable output, where a command supports it",
     "",
-    "Environment:",
-    "  DATABASE_URL           required by every command except --help",
-    "  TENANT_CODE            default tenant for show, set, config and suspend",
-    "  TENANT_ADMIN_PASSWORD  initial administrator password; never defaulted",
+"Environment:",
+    "  DATABASE_URL                    required by every command except --help",
+    "  TENANT_CODE                     default tenant for show, set, config and suspend",
+    "  TENANT_ADMIN_PASSWORD           initial administrator password; never defaulted",
+    "  PLATFORM_OPERATOR_PASSWORD      operator password for `operator`; never defaulted",
     "",
     "Run `novastar-tenant <command> --help` for a command's own options.",
     "",

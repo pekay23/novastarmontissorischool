@@ -8,6 +8,15 @@ dist/
 *.tsbuildinfo
 next-env.d.ts
 
+# Generated declarations emitted *next to sources* by a tsc run without an
+# `outDir`. Every workspace package either consumes `.ts` source directly
+# (ADR-016) or builds into `dist/`, so these files are pure build residue:
+# they go stale, they are untracked, and they break `turbo run lint` because
+# typescript-eslint cannot parse files outside the tsconfig project. Real
+# declaration output lives in `dist/` (ignored above); the Next.js ones are
+# `next-env.d.ts` (also ignored above).
+packages/**/*.d.ts
+
 # Turbo
 .turbo/
 
@@ -56,9 +65,6 @@ public/uploads/
 .eslintcache
 *.tsbuildinfo
 
-# Generated HTML docs (build output — local only, run `bun run docs:html`)
-docs/html/
-
 # Hermes
 .hermes/
 .hermes-tmp.*
@@ -66,18 +72,20 @@ docs/html/
 # Screenshots and visual baseline artifacts
 screenshots/
 **/screenshots/
-docs/audit-reports/visual-baseline-*/
 
 # NOTE: tools/audit-baseline/ was previously ignored wholesale, which meant the
 # tool's own source code and its findings.json could never be committed. Only
 # the tool's generated output is ignored now — see tools/audit-baseline/.gitignore
 
-# Unfinished ADRs and build plans — these contain in-progress architecture
-# notes, security review findings, and internal business rules. Do not commit
-# until reviewed. README.md (the ADR index) is tracked and exempt.
-docs/adr/ADR-NNN-*.md
-docs/adr/ADR-0*.md
-docs/technical/2026-10-01_*.md
+# Documentation — nothing under docs/ is committed.
+#
+# The whole tree is owner-local: plans, ADRs, audit reports, business rules,
+# wireframes and the generated HTML mirror all stay out of version control.
+# `bun run docs:html` regenerates docs/html/ from the markdown sources, so the
+# tree can always be rebuilt from the working copy. This replaces the earlier
+# narrower rules that ignored only docs/html/, docs/adr/ADR-*.md and
+# docs/technical/2026-10-01_*.md, which left 21 documentation files tracked.
+docs/
 
 # Local dev artifacts
 *.db
@@ -100,3 +108,11 @@ test-results/
 # .vercel/.env.*.local containing the project's real environment variables, so
 # this directory is as sensitive as .env itself.
 .vercel/
+
+# Agent Manager worktrees. Each `.kilo/worktrees/<name>/` is a full duplicate
+# checkout of this repository, so an unignored entry here turns a routine
+# `git add -A` into thousands of duplicate files. Committed rather than left in
+# `.git/info/exclude` so the protection applies to every clone, not just this
+# machine. Committable `.kilo/` config (kilo.jsonc, command/, agent/) stays
+# tracked; only the runtime worktree state is excluded.
+.kilo/worktrees/

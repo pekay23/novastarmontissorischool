@@ -20,7 +20,7 @@ export default async function FeesPage() {
   return (
     <div className="min-h-screen">
       <section className="bg-gradient-to-b from-primary/10 to-transparent py-16 md:py-20">
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="container">
           <h1 className="text-responsive-h1 font-heading text-primary mb-4">Fee Structure</h1>
           <p className="text-lg text-muted-foreground max-w-2xl">
             Transparent, competitive fees offering excellent value for quality education.
@@ -29,7 +29,7 @@ export default async function FeesPage() {
       </section>
 
       <section className="section-y">
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="container">
           {schedule.length === 0 ? (
             <div className="mx-auto max-w-2xl rounded-xl border border-border bg-surface p-10 text-center">
               <h2 className="mb-2 font-heading text-xl font-semibold text-primary">
@@ -52,7 +52,7 @@ export default async function FeesPage() {
       </section>
 
       <section className="section-y bg-muted/30">
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="container">
           <h2 className="text-responsive-h2 font-heading text-primary text-center mb-4">
             Payment Methods
           </h2>

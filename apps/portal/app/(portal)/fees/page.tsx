@@ -10,7 +10,7 @@ import {
   Label, Input, Select, SelectTrigger, SelectValue, SelectContent, SelectItem, Textarea,
 } from '@novastar/shared-ui'
 import {
-  Plus, Search, CreditCard, MoreHorizontal, Edit2, Trash2,
+  Plus, Search, CreditCard, MoreHorizontal, Trash2,
   RefreshCw,
 } from 'lucide-react'
 
@@ -24,12 +24,27 @@ interface FeeInvoice {
   student: { firstName: string; lastName: string } | null
 }
 
+interface InvoiceMeta {
+  total: number
+  totalPages: number
+  hasNext: boolean
+  hasPrev: boolean
+}
+
+interface TermOption {
+  id: string
+  name: string
+  academicYear: { id: string; name: string }
+}
+
 export default function FeesPage() {
   const { toast } = useToast()
   const confirm = useConfirm()
   const [invoices, setInvoices] = useState<FeeInvoice[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
+  const [page, setPage] = useState(1)
+  const [meta, setMeta] = useState<InvoiceMeta | null>(null)
   const [paymentMethods, setPaymentMethods] = useState<Array<{ code: string; name: string; instructions?: string }>>([])
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false)
   const [selectedInvoice, setSelectedInvoice] = useState<FeeInvoice | null>(null)
@@ -42,25 +57,38 @@ export default function FeesPage() {
     transactionId: '',
   })
   const [submittingPayment, setSubmittingPayment] = useState(false)
+  const [generateDialogOpen, setGenerateDialogOpen] = useState(false)
+  const [generateForm, setGenerateForm] = useState({ classId: '', termId: '' })
+  const [generating, setGenerating] = useState(false)
+  const [classes, setClasses] = useState<Array<{ id: string; name: string }>>([])
+  const [terms, setTerms] = useState<TermOption[]>([])
 
   const fetchInvoices = useCallback(async () => {
-    setLoading(true)
-    try {
-      const params = new URLSearchParams()
-      if (search) params.set('search', search)
-      const res = await fetch(`/api/finance/invoices?${params}`)
-      if (res.ok) {
-        const data = await res.json()
-        setInvoices(data.data || [])
-      } else {
+    // The search gate lives here rather than in the input's onChange:
+    // the effect below refetches whenever `search` or `page` changes,
+    // so the handler only sets state and this is the single place a
+    // query is issued.
+    if (search.length >= 2 || search.length === 0) {
+      setLoading(true)
+      try {
+        const params = new URLSearchParams()
+        if (search) params.set('search', search)
+        params.set('page', String(page))
+        const res = await fetch(`/api/finance/invoices?${params}`)
+        if (res.ok) {
+          const data = await res.json()
+          setInvoices(data.data || [])
+          setMeta(data.meta || null)
+        } else {
+          toast.error({ title: 'Error', description: 'Failed to load invoices' })
+        }
+      } catch {
         toast.error({ title: 'Error', description: 'Failed to load invoices' })
+      } finally {
+        setLoading(false)
       }
-    } catch {
-      toast.error({ title: 'Error', description: 'Failed to load invoices' })
-    } finally {
-      setLoading(false)
     }
-  }, [search, toast])
+  }, [search, page, toast])
 
   const fetchPaymentMethods = useCallback(async () => {
     try {
@@ -74,12 +102,45 @@ export default function FeesPage() {
     }
   }, [])
 
+  // The lookups the invoice generator needs. A role that holds
+  // `finance:invoice:create` but not `class:read`/`term:read` sees
+  // empty pickers rather than a failed page.
+  const fetchGenerateLookups = useCallback(async () => {
+    try {
+      const [classRes, termRes] = await Promise.all([
+        fetch('/api/classes'),
+        fetch('/api/terms'),
+      ])
+      if (classRes.ok) {
+        const data = await classRes.json()
+        setClasses(
+          (data.data || []).map((c: { id: string; name: string }) => ({
+            id: c.id,
+            name: c.name,
+          }))
+        )
+      }
+      if (termRes.ok) {
+        const data = await termRes.json()
+        setTerms(
+          (data.data || []).map((t: TermOption) => ({
+            id: t.id,
+            name: t.name,
+            academicYear: t.academicYear,
+          }))
+        )
+      }
+    } catch {
+      // silently fail — the dialog shows empty pickers
+    }
+  }, [])
+
   useEffect(() => {
     const load = async () => {
-      await fetchPaymentMethods()
+      await Promise.all([fetchPaymentMethods(), fetchGenerateLookups()])
     }
     load()
-  }, [fetchPaymentMethods])
+  }, [fetchPaymentMethods, fetchGenerateLookups])
 
   useEffect(() => {
     const load = async () => {
@@ -146,6 +207,58 @@ export default function FeesPage() {
     }
   }
 
+  const openGenerateDialog = () => {
+    setGenerateForm({ classId: '', termId: '' })
+    setGenerateDialogOpen(true)
+  }
+
+  const handleGenerate = async () => {
+    const term = terms.find((t) => t.id === generateForm.termId)
+    if (!generateForm.classId || !term) {
+      toast.error({
+        title: 'Missing selection',
+        description: 'Select a class and a term to generate invoices for',
+      })
+      return
+    }
+
+    setGenerating(true)
+    try {
+      const res = await fetch('/api/finance/invoices', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        // The term carries its academic year, which is what the
+        // endpoint keys the new invoices on.
+        body: JSON.stringify({
+          classId: generateForm.classId,
+          termId: term.id,
+          academicYearId: term.academicYear.id,
+        }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        toast.success({
+          title: 'Success',
+          description: `Generated ${data.count} invoice${data.count === 1 ? '' : 's'}`,
+        })
+        setGenerateDialogOpen(false)
+        // The new rows belong on the first page.
+        if (page === 1) {
+          void fetchInvoices()
+        } else {
+          setPage(1)
+        }
+      } else {
+        const data = await res.json()
+        toast.error({ title: 'Error', description: data.error || 'Failed to generate invoices' })
+      }
+    } catch {
+      toast.error({ title: 'Error', description: 'Failed to generate invoices' })
+    } finally {
+      setGenerating(false)
+    }
+  }
+
   const handleDelete = async (inv: FeeInvoice) => {
     const ok = await confirm({
       title: 'Delete Invoice?',
@@ -185,7 +298,7 @@ export default function FeesPage() {
           <h1 className="text-3xl font-heading font-bold">Fees &amp; Payments</h1>
           <p className="text-sm text-muted-foreground">Manage invoices and record payments</p>
         </div>
-        <Button className="gap-2">
+        <Button className="gap-2" onClick={openGenerateDialog}>
           <Plus className="h-4 w-4" />
           Generate Invoices
         </Button>
@@ -199,9 +312,7 @@ export default function FeesPage() {
           value={search}
           onChange={(e) => {
             setSearch(e.target.value)
-            if (e.target.value.length >= 2 || e.target.value.length === 0) {
-              fetchInvoices()
-            }
+            setPage(1)
           }}
           className="pl-10 pr-4 py-2 border rounded-md w-full"
         />
@@ -209,7 +320,7 @@ export default function FeesPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>All Invoices ({invoices.length})</CardTitle>
+          <CardTitle>All Invoices ({meta?.total ?? invoices.length})</CardTitle>
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -264,10 +375,6 @@ export default function FeesPage() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem>
-                              <Edit2 className="h-4 w-4 mr-2" />
-                              Edit
-                            </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => openPaymentDialog(inv)}>
                               Record Payment
                             </DropdownMenuItem>
@@ -374,6 +481,72 @@ export default function FeesPage() {
               className="w-full"
             >
               {submittingPayment ? 'Recording...' : 'Record Payment'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={generateDialogOpen} onOpenChange={setGenerateDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Generate Invoices</DialogTitle>
+            <DialogDescription>
+              Create an invoice for every student in a class for a term.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Class *</Label>
+              <Select
+                value={generateForm.classId}
+                onValueChange={(v) => setGenerateForm({ ...generateForm, classId: v })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a class" />
+                </SelectTrigger>
+                <SelectContent>
+                  {classes.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {classes.length === 0 && (
+                <p className="text-xs text-muted-foreground">
+                  No classes to choose from. Viewing classes requires academic read access.
+                </p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label>Term *</Label>
+              <Select
+                value={generateForm.termId}
+                onValueChange={(v) => setGenerateForm({ ...generateForm, termId: v })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a term" />
+                </SelectTrigger>
+                <SelectContent>
+                  {terms.map((t) => (
+                    <SelectItem key={t.id} value={t.id}>
+                      {t.name} · {t.academicYear.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {terms.length === 0 && (
+                <p className="text-xs text-muted-foreground">
+                  No terms to choose from. Viewing terms requires academic read access.
+                </p>
+              )}
+            </div>
+            <Button
+              onClick={handleGenerate}
+              disabled={generating || !generateForm.classId || !generateForm.termId}
+              className="w-full"
+            >
+              {generating ? 'Generating...' : 'Generate Invoices'}
             </Button>
           </div>
         </DialogContent>

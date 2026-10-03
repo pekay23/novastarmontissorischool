@@ -157,7 +157,6 @@ export async function buildExport(
         label: row.label,
         minScore: row.minScore,
         maxScore: row.maxScore,
-        point: String(row.point),
         color: row.color,
         description: row.description,
         order: row.order,

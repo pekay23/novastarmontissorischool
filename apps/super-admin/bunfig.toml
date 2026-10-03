@@ -1,0 +1,21 @@
+# Bun configuration for `apps/super-admin`.
+#
+# `[test] preload` is load-bearing, not a convenience.
+#
+# `tests/harness.ts` registers `mock.module('@/lib/prisma', ...)` — the only way a
+# test can run without a database. Registering it from a test file's own `import`
+# statements is not sufficient: Bun evaluates a test file's static imports in
+# parallel, so a module that reaches `lib/prisma.ts` (anything importing
+# `@/lib/queries`) can be evaluated before the harness body runs, and the real
+# Prisma client wins. The symptom is a test suite that quietly talks to whatever
+# `DATABASE_URL` points at and reports "table does not exist".
+#
+# A preload runs before any test file is loaded, so the mock is registered first
+# every time, however the file was invoked: `bun test`, `bun run test`,
+# `turbo run test`, or `bun test <path>` from the repository root.
+#
+# The static `import './harness'` at the top of each test file stays regardless —
+# it is what makes the dependency visible to a reader and what keeps the file
+# correct if it is ever loaded outside this runner.
+[test]
+preload = ["./tests/harness.ts"]

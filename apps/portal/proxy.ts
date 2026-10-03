@@ -11,6 +11,8 @@
  * Runs on every matched request and enforces, in order:
  * - Per-client-IP rate limiting (20 req/min auth, 100 req/min API, 300 req/min pages)
  * - Session authentication via next-auth
+ * - An outstanding password change, which confines the session to the
+ *   credential-recovery pages
  * - Role-based path authorization
  *
  * Rate limiting runs BEFORE the public-path short-circuit. It used to run after
@@ -31,7 +33,25 @@ import { checkRateLimit, clientIdentifier } from '@/lib/rate-limit'
 
 // Paths that don't require authentication. These are exempted from the SESSION
 // check only — the rate limiter above still applies to them.
-const publicPaths = ['/login', '/api/auth', '/api/health', '/_next', '/favicon.ico', '/logo.svg']
+//
+// The credential-recovery pages sit here for the same reason `/login` does: a
+// recipient following an emailed link is not signed in, and is by definition
+// unable to become signed in until the link works. Requiring a session would make
+// every verification, setup and reset link dead on arrival. Their API routes are
+// already covered by the `/api/auth` prefix and each carry their own limiter,
+// because they are unauthenticated write paths.
+const publicPaths = [
+  '/login',
+  '/verify-email',
+  '/set-password',
+  '/forgot-password',
+  '/reset-password',
+  '/api/auth',
+  '/api/health',
+  '/_next',
+  '/favicon.ico',
+  '/logo.svg',
+]
 
 // Rate limits, per client IP, per minute.
 const API_RATE_LIMIT = 100
@@ -42,9 +62,23 @@ const RATE_LIMIT_WINDOW_MS = 60_000
 // so 100/minute from one address is far too generous for them.
 const AUTH_RATE_LIMIT = 20
 
+/**
+ * Paths outside a role's section list that the role may still reach.
+ *
+ * The section match below compares only the first path segment, so admitting
+ * `/settings/admissions` would mean admitting all of `/settings`. These are
+ * exact prefixes for exactly that reason: each entry is a surface whose own
+ * server-side gate is the real authorisation, and this layer exists so the
+ * request reaches that gate rather than bouncing off the proxy.
+ */
+const PATH_EXEMPT_PREFIXES: Record<string, string[]> = {
+  ADMIN_STAFF: ['/settings/admissions', '/api/admissions'],
+  ADMISSIONS_OFFICER: ['/settings/admissions', '/api/admissions'],
+}
+
 // Role-based permissions — keys MUST match the DB Role.name values from
 // tools/seed/index.ts: HEADMASTER, ASSISTANT_HEAD, HEAD_TEACHER,
-// CLASSROOM_TEACHER, ACCOUNTANT, ADMIN_STAFF, PARENT.
+// CLASSROOM_TEACHER, ACCOUNTANT, ADMIN_STAFF, PARENT, ADMISSIONS_OFFICER.
 //
 // The old lowercase PERMISSIONS keys (admin, teacher, finance, bursar,
 // assistant-head, staff) never matched the DB role names, causing every
@@ -59,15 +93,23 @@ const PERMISSIONS: Record<string, string[]> = {
     'dashboard', 'students', 'grades', 'attendance', 'announcements', 'reports',
   ],
   CLASSROOM_TEACHER: [
-    'dashboard', 'students', 'grades', 'attendance',
+    'dashboard', 'students', 'grades', 'attendance', 'classes',
   ],
   ACCOUNTANT: ['dashboard', 'fees', 'payments', 'reports', 'students'],
   // No `students_view` entry: section matching is `section === p ||
   // section.startsWith(p)` against the first path segment, so `'students_view'`
   // could never match `'students'` and sat in the list as a dead entry while
   // ADMIN_STAFF was actually denied `/api/students` — a role PARENT was allowed.
+  // Nor `'settings'`, which would hand the whole settings section to every admin
+  // staffer; the admissions surface it needs is exempted by prefix above.
   ADMIN_STAFF: ['dashboard', 'announcements'],
   PARENT: ['dashboard', 'announcements', 'students'],
+  // Absent from this map until now, which meant `perms` was `undefined` and the
+  // role was redirected to `/login` for every path — the admissions pages and API
+  // it exists to serve included. `students` because an application becomes a
+  // student record; `announcements` because intake notices go out the same way as
+  // any other school communication.
+  ADMISSIONS_OFFICER: ['dashboard', 'students', 'announcements'],
 }
 
 export const config = {
@@ -121,12 +163,41 @@ export default withAuth(
       return NextResponse.redirect(url)
     }
 
+    // A session that still owes a password change reaches nothing else.
+    //
+    // The claim is set by the `jwt` callback in `lib/auth.ts`, which re-reads it
+    // from the database on every revalidation, and nothing but a real password
+    // write clears the column it mirrors. Before this check the flag was
+    // decorative: `authorize()` copied it into the token and nothing read it, so
+    // a tenant-CLI account told "It must be changed at first sign-in" could use
+    // the portal indefinitely on the provisional password.
+    //
+    // It sits AFTER the public-path short-circuit, and that is what makes it
+    // loop-free: `/set-password`, `/verify-email`, `/forgot-password`,
+    // `/reset-password`, `/login` and all of `/api/auth` return above it, so the
+    // redirect target and every recovery route stay reachable. A flagged session
+    // with no setup token in hand is not locked out either — `/forgot-password`
+    // mails a reset link, and `POST /api/auth/reset-password` is a write that
+    // clears the flag.
+    if (token.mustChangePassword) {
+      return NextResponse.redirect(new URL('/set-password', req.url))
+    }
+
     const role = token.role as string
     const perms = PERMISSIONS[role]
 
     // Check role-based permissions
     if (perms) {
       if (perms.includes('*')) {
+        return NextResponse.next()
+      }
+
+      // A role holding a `perms` array at all has been identified as a portal
+      // role; this admits only the exact prefixes in `PATH_EXEMPT_PREFIXES`, and
+      // deliberately sits after the `*` check so it cannot widen HEADMASTER's
+      // already-total access into something narrower or differently ordered.
+      const exempt = PATH_EXEMPT_PREFIXES[role]
+      if (exempt?.some((prefix) => pathname.startsWith(prefix))) {
         return NextResponse.next()
       }
 

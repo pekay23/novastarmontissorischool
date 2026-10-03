@@ -131,6 +131,12 @@ export type {
   RoleGrantRule,
 } from './permission-keys'
 
+// --- Feature flags ---
+// The key and default the public site also reads. Shared rather than duplicated
+// because a drifted literal on either side publishes the wrong admissions state
+// with no error anywhere; see ./feature-flags for the full argument.
+export { ADMISSIONS_OPEN_DEFAULT, ADMISSIONS_OPEN_FLAG_KEY } from './feature-flags'
+
 // --- Roles & Permissions (DelegationRule defined before Role) ---
 
 /**

@@ -3,17 +3,42 @@
 import Link from 'next/link'
 import Image from 'next/image'
 import { usePathname } from 'next/navigation'
-import { useState } from 'react'
-import { Menu, X } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Clock, Mail, Menu, Phone, X } from 'lucide-react'
 import { cn, Button } from '@novastar/shared-ui'
 import type { NavigationLabels } from '@/lib/navigation'
 
 interface HeaderProps {
   navigation: NavigationLabels
+  /*
+   * Accessible name for the home link. The mark is an SVG that already contains
+   * the wordmark, so there is no text to name the link with any more — the
+   * image's `alt` carries it. Passed in for the same reason `contact` is: this
+   * is a client component, and importing `SCHOOL_INFO` here would drag
+   * `lib/metadata.ts`, including the `new URL()` in `baseMetadata`, into the
+   * browser bundle to read one string.
+   */
+  siteName: string
+  /*
+   * Contact details for the utility bar, passed from the server layout rather
+   * than imported here so `lib/metadata.ts` never enters the client bundle.
+   */
+  contact: {
+    phone: string
+    phoneHref: string
+    email: string
+    weekdayHours: string
+  }
 }
 
-export default function Header({ navigation }: HeaderProps) {
-  const pathname = usePathname()
+export default function Header({ navigation, siteName, contact }: HeaderProps) {
+  /*
+   * `next.config.ts` sets `trailingSlash: true`, so `usePathname()` returns
+   * "/academics/" while the `href` in `navItems` is "/academics". Comparing
+   * them directly means `aria-current="page"` never matches and the active
+   * state is silently lost on every page. Both sides are normalised instead.
+   */
+  const pathname = usePathname().replace(/\/+$/, '') || '/'
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
   const navItems = [
@@ -26,24 +51,71 @@ export default function Header({ navigation }: HeaderProps) {
     { label: navigation.contact, href: '/contact', key: 'contact' },
   ]
 
+  /*
+   * The menu is a disclosure, so it closes on Escape. Without this a keyboard
+   * user who opens it can only dismiss it by tabbing to the trigger again.
+   */
+  useEffect(() => {
+    if (!mobileMenuOpen) return
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') setMobileMenuOpen(false)
+    }
+
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [mobileMenuOpen])
+
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+      {/*
+        Utility bar, from the design's header. Hidden below `md` because the
+        strip's three links would otherwise crowd the main row on a phone, where
+        the contact page and the footer both already carry these details.
+      */}
+      <div className="hidden border-b border-border/40 bg-surface-container-low md:block">
+        <div className="container flex items-center justify-between gap-6 py-1.5 text-xs">
+          <p className="flex items-center gap-2 text-muted-foreground">
+            <Clock className="h-3.5 w-3.5 text-tertiary-container" aria-hidden="true" />
+            Weekdays {contact.weekdayHours}
+          </p>
+          <div className="flex items-center gap-5">
+            <a
+              href={`mailto:${contact.email}`}
+              className="inline-flex items-center gap-1.5 text-muted-foreground transition-colors hover:text-primary"
+            >
+              <Mail className="h-3.5 w-3.5 text-tertiary-container" aria-hidden="true" />
+              {contact.email}
+            </a>
+            <a
+              href={`tel:${contact.phoneHref}`}
+              className="inline-flex items-center gap-1.5 font-semibold text-primary transition-colors hover:underline"
+            >
+              <Phone className="h-3.5 w-3.5" aria-hidden="true" />
+              {contact.phone}
+            </a>
+          </div>
+        </div>
+      </div>
+
+      <div className="container">
         <div className="flex h-14 items-center justify-between">
-          <Link href="/" className="flex items-center space-x-2">
+          <Link href="/" className="flex items-center">
             <Image
               src="/logo.svg"
-              /* Decorative: the wordmark in the SVG duplicates the "Novastar" text beside
-                 it, so naming the image makes the link read twice. */
-              alt=""
-              /* logo.svg is 340x80, so the intrinsic box must keep that 4.25:1
+              /* The wordmark lives inside the SVG, so the image IS the link's
+                 accessible name. This was `alt=""` only while the "Novastar"
+                 text span sat beside it; removing that span without changing this
+                 would have left the home link with no name at all. */
+              alt={siteName}
+              /* logo.svg is 340x54, so the intrinsic box must keep that 6.296:1
                  ratio or next/image warns and distorts the mark. */
-              width={170}
+              width={252}
               height={40}
               className="h-10 w-auto"
-              priority
+              /* `priority` is deprecated in 16.3 in favour of `preload`. */
+              preload
             />
-            <span className="font-heading text-xl font-bold text-primary">Novastar</span>
           </Link>
 
           <nav aria-label="Main" className="hidden md:flex items-center space-x-1">

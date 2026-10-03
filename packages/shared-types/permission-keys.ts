@@ -163,6 +163,7 @@ export const PLATFORM_ROLE_NAMES = [
   'ACCOUNTANT',
   'ADMIN_STAFF',
   'PARENT',
+  'ADMISSIONS_OFFICER',
 ] as const
 export type PlatformRoleName = (typeof PLATFORM_ROLE_NAMES)[number]
 
@@ -332,6 +333,12 @@ export const PERMISSION_CATALOG: readonly PermissionDefinition[] = [
   perm('inventory:item:create', 'system', 'Create inventory items'),
   perm('inventory:item:edit', 'system', 'Edit inventory items'),
   perm('inventory:item:delete', 'system', 'Delete inventory items'),
+  // --- admissions ---
+  perm('admissions:read', 'student', 'Read admissions records'),
+  perm('admissions:create', 'student', 'Create admissions records'),
+  perm('admissions:edit', 'student', 'Edit admissions records'),
+  perm('admissions:delete', 'student', 'Delete admissions records'),
+  perm('admissions:manage', 'student', 'Manage admissions settings'),
 ]
 
 export const PERMISSION_KEYS: readonly string[] = PERMISSION_CATALOG.map((p) => p.key)
@@ -384,6 +391,11 @@ export const ROLE_GRANT_RULES: Record<PlatformRoleName, RoleGrantRule> = {
   // `student:read` is narrowed to their own children by ROLE_READ_SCOPE below,
   // so granting the key here is safe.
   PARENT: (p) => p.key === 'student:read' || p.key === 'communication:read' || p.key === 'announcement:read',
+  // Admissions officer: can read/create admissions and related student data
+  ADMISSIONS_OFFICER: (p) =>
+    p.category === 'student' ||
+    p.category === 'communication' ||
+    p.key.startsWith('admissions:'),
 }
 
 export function permissionsForRole(
@@ -472,6 +484,7 @@ export const ROLE_DEFAULT_SCOPE: Record<PlatformRoleName, PermissionScope> = {
   ADMIN_STAFF: 'all',
   CLASSROOM_TEACHER: 'class',
   PARENT: 'own',
+  ADMISSIONS_OFFICER: 'all',
 }
 
 export function scopeFor(roleName: string | null | undefined, permissionKey: string): PermissionScope {

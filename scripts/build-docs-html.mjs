@@ -15,12 +15,26 @@
  * Hand-authored HTML files already inside `docs/html/` are preserved
  * (e.g. designer mockups). Only markdown sources get converted here.
  *
+ * Coverage guarantee: after this build, every markdown source under `docs/`
+ * has a non-empty HTML page at the mirrored path under `docs/html/`. The build
+ * re-walks the filesystem and asserts that at the end; a source that cannot be
+ * rendered fails the build rather than being skipped. The same check runs
+ * standalone via `bun scripts/docs-html-coverage.mjs`.
+ *
  * Run with: `bun run docs:html`
  */
 
 import { promises as fs, existsSync, readFileSync as fsSyncReadFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import {
+  auditCoverage,
+  DocsCoverageError,
+  isMarkdownName,
+  isOutputDir as isOutputDirPath,
+  listMarkdownSources,
+  readDirStrict,
+} from './docs-html-coverage.mjs'
 
 
 const __filename = fileURLToPath(import.meta.url)
@@ -445,7 +459,7 @@ async function resolveTokens() {
 }
 
 // docs/html/ is this script's own output. Never treat it as a source dir.
-const isOutputDir = (name) => path.resolve(DOCS, name) === OUT
+const isOutputDir = (name) => isOutputDirPath(OUT, name)
 
 // Record of the pages this script wrote on its last run. Lets a build tell a
 // hand-authored page apart from an orphaned generated one, and lets it prune
@@ -493,7 +507,7 @@ async function writeGeneratedManifest(current) {
 // One predicate for "is this a markdown source file", so every walk, link
 // rewrite and file filter agrees. Windows filesystems are case-insensitive, and
 // `docs/NOTES.MD` is a legitimate authoring choice.
-const isMd = (name) => name.toLowerCase().endsWith('.md')
+const isMd = isMarkdownName
 
 // Section metadata — titles for the index page.
 // Directories listed here appear first (in this order) on the index.
@@ -558,7 +572,7 @@ async function discoverSections() {
   }
 
   // Auto-discover any directories not in SECTION_META that contain .md files
-  const entries = await fs.readdir(DOCS, { withFileTypes: true }).catch(() => [])
+  const entries = await readDirStrict(DOCS)
   for (const ent of entries) {
     if (!ent.isDirectory()) continue
     if (isOutputDir(path.join(DOCS, ent.name))) continue
@@ -580,15 +594,27 @@ async function discoverSections() {
 // `docs/*.md` (e.g. docs/README.md) sits outside every section directory, so
 // the section walk never sees it. Build those into docs/html/<slug>.html and
 // surface them on the index under "Top-level".
+//
+// `docs/index.md` is the one root document with no valid destination: its
+// mirrored path is docs/html/index.html, which this script owns and rewrites on
+// every run. That is a genuine two-sources-one-output conflict, so it is a hard
+// error naming the remedy — not a filter that quietly drops the author's page.
 async function findRootDocs() {
-  const entries = await fs.readdir(DOCS, { withFileTypes: true }).catch(() => [])
-  return entries
-    .filter((ent) => ent.isFile() && isMd(ent.name))
-    .map((ent) => ent.name)
-    // docs/index.md would become docs/html/index.html, which the generated
-    // index owns. Skip it rather than silently discarding the author's page.
-    .filter((name) => !/^index\.md$/i.test(name))
-    .sort()
+  const entries = await readDirStrict(DOCS)
+  const rootDocs = entries.filter((ent) => ent.isFile() && isMd(ent.name)).map((ent) => ent.name)
+
+  const clash = rootDocs.filter((name) => /^index\.md$/i.test(name))
+  if (clash.length > 0) {
+    const suggested = clash[0].replace(/\.md$/i, '') + '-overview.md'
+    throw new Error(
+      `docs/${clash[0]} cannot be rendered: its mirrored output path is ` +
+        `docs/html/index.html, which the generated index owns and rewrites on every run. ` +
+        `Rename it to docs/${suggested}, or fold its content into another document. ` +
+        `Refusing to skip it silently.`
+    )
+  }
+
+  return rootDocs.sort()
 }
 
 // Strip inline markdown markers so titles read as prose rather than leaking
@@ -633,6 +659,39 @@ function folderTitleFor(relToRoot) {
   if (parts.length === 0) return 'Docs'
   if (parts.length === 1 && SECTION_META[parts[0]]) return SECTION_META[parts[0]].title
   return parts.map(humanize).join(' / ')
+}
+
+// ── Breadcrumbs ───────────────────────────────────────────────────────────
+// Docs / <section> / <subfolder> … / <current page>. Every crumb but the last
+// links to that folder's generated index, so a deeply nested document is one
+// click from the section listing. `leafLabel` is omitted on a folder's own
+// index page, where the last crumb is already the current page.
+//
+// Labels come from folderTitleFor so a crumb matches that folder's <h1>
+// — otherwise a section like "adr" reads "Adr" in the crumb but "ADRs" in the
+// title.
+function breadcrumbNav(currentPagePath, folderParts, leafLabel) {
+  const items = [{ label: 'Docs', href: relativeHref(currentPagePath, path.join(OUT, 'index.html')) }]
+  for (let i = 0; i < folderParts.length; i++) {
+    items.push({
+      label: folderTitleFor(folderParts.slice(0, i + 1).join('/')),
+      href: relativeHref(currentPagePath, path.join(OUT, ...folderParts.slice(0, i + 1), 'index.html')),
+    })
+  }
+  if (leafLabel) items.push({ label: leafLabel, href: null })
+
+  const crumbs = items
+    .map((bc, i) => {
+      const isLast = i === items.length - 1
+      if (isLast || !bc.href) return `<span class="he-bc__item">${escapeHtml(bc.label)}</span>`
+      return `<a class="he-bc__item" href="${escapeHref(bc.href)}">${escapeHtml(bc.label)}</a>`
+    })
+    .join('<span class="he-bc__sep">/</span>')
+
+  return `
+<nav class="he-bc" aria-label="Breadcrumb">
+  ${crumbs}
+</nav>`
 }
 
 // ── Marked renderer overrides ────────────────────────────────────────────
@@ -739,6 +798,12 @@ function buildMarkdownCallbacks({ srcDir, outDir } = {}) {
       return `<h${level} id="${id}"${attrs}>${content}</h${level}>`
     })
 
+    // Wide tables (audit matrices reach ~850 characters) overflow the reading
+    // column because `table { width: 100% }` cannot shrink below its content.
+    // A scroll container keeps every column reachable instead of clipping them
+    // off the right edge of the page.
+    out = out.replace(/<table>/g, '<div class="he-tablewrap"><table>').replace(/<\/table>/g, '</table></div>')
+
     return out
   }
 
@@ -766,74 +831,94 @@ function extractToc(md) {
   return out
 }
 
-// Convert "Week 11 — Engineering Status" or first H1 to title + eyebrow.
-// The deck is the first non-heading prose paragraph, rendered inline as MD
-// so that emphasis and inline code survive, then trimmed to the first
-// sentence to keep it from filling the screen.
+// Convert the first H1 plus the first prose paragraph after it into the page
+// title and deck.
+//
+// Both are located by LINE RANGE in one pass and handed to stripHeader(), so
+// the body and the deck are guaranteed to agree on which lines they are. The
+// previous version re-derived the deck paragraph with a second, subtly
+// different set of filters, so any paragraph shape one filter accepted and the
+// other rejected ended up rendered twice (once as the deck, once in the body).
+//
+// The deck is the first blank-line separated block after the H1 that is prose.
+// Headings, fenced code, tables, lists and quotes are all skipped, and the
+// block is truncated to its first sentence (or ~240 chars) so it stays a line.
+const PROSE_BLOCK = /^(?:#|```|\||- |> |\* |\+ |\d+\.\s)/
+
 function parseHeader(md, slug) {
-  const h1Match = md.match(/^#\s+(.+)$/m)
-  const title = h1Match ? cleanTitle(h1Match[1]) : slug
-  const afterH1 = h1Match ? md.slice((h1Match.index ?? 0) + h1Match[0].length) : md
-  const paragraphs = afterH1.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean)
-  const deckCandidate = paragraphs.find(
-    (p) => !p.startsWith('#') && !p.startsWith('```') && !p.startsWith('|') && !p.startsWith('- ') && !p.startsWith('> ') && !/^\d+\.\s/.test(p)
-  )
-  let deckMarkdown = ''
-  if (deckCandidate) {
-    const oneLine = deckCandidate.replace(/\s+/g, ' ')
-    // Strip leading list marker before sentence extraction to avoid matching
-    // "1." / "2." as a sentence end.
-    const withoutListMarker = oneLine.replace(/^(\d+\.\s|[-*]\s)/, '')
-    const sentenceEnd = withoutListMarker.match(/^([^.!?`]+(?:`[^`]*`[^.!?`]*)*[.!?])(?=\s|$)/)
-    if (sentenceEnd) {
-      deckMarkdown = sentenceEnd[1]
-    } else {
-      // No sentence end — trim to ~240 chars at the last word boundary
-      // and don't break a markdown link/code-span.
-      let slice = oneLine.slice(0, 240)
-      // If we cut inside a `[...]( )` link or `` `code` ``, walk back.
-      const lastOpenBracket = slice.lastIndexOf('[')
-      const lastCloseParen = slice.lastIndexOf(')')
-      if (lastOpenBracket > lastCloseParen) slice = slice.slice(0, lastOpenBracket).trimEnd()
-      const lastTick = slice.lastIndexOf('`')
-      if (lastTick > -1 && (slice.match(/`/g) || []).length % 2 === 1) {
-        slice = slice.slice(0, lastTick).trimEnd()
-      }
-      // Final word-boundary trim
-      const lastSpace = slice.lastIndexOf(' ')
-      if (lastSpace > 200) slice = slice.slice(0, lastSpace)
-      deckMarkdown = slice.replace(/[,:;\s]+$/, '') + '…'
+  const lines = String(md).split('\n')
+
+  let h1Index = -1
+  let title = slug
+  for (let i = 0; i < lines.length; i++) {
+    const m = /^#\s+(.+)$/.exec(lines[i])
+    if (m) {
+      h1Index = i
+      title = cleanTitle(m[1])
+      break
     }
   }
-  return { title, deckMarkdown }
+
+  // Ranges [start, end) of source lines the page header consumes.
+  const removeRanges = h1Index >= 0 ? [[h1Index, h1Index + 1]] : []
+
+  let deckMarkdown = ''
+  let i = h1Index + 1
+  while (i < lines.length) {
+    while (i < lines.length && lines[i].trim() === '') i++
+    if (i >= lines.length) break
+    const start = i
+    while (i < lines.length && lines[i].trim() !== '') i++
+    const block = lines.slice(start, i).join('\n').trim()
+    if (!block || PROSE_BLOCK.test(block)) continue
+    removeRanges.push([start, i])
+    deckMarkdown = truncateDeck(block)
+    break
+  }
+
+  return { title, deckMarkdown, removeRanges }
 }
 
-// Strip the leading H1 + the deck paragraph so the body doesn't duplicate them.
-// The deck paragraph is whatever sits between the H1 and the next blank line
-// boundary, AS LONG AS it isn't itself a heading / code fence / list / quote.
-function stripHeader(md) {
-  let out = md.replace(/^#\s+[^\n]+\n+/, '')
-  // Take the first chunk up to the next blank line; if it's prose, drop it.
-  const m = out.match(/^([^\n]+(?:\n[^\n]+)*)\n\s*\n/)
-  if (m) {
-    const first = m[1].trimStart()
-    if (
-      !first.startsWith('#') &&
-      !first.startsWith('```') &&
-      !first.startsWith('|') &&
-      !first.startsWith('- ') &&
-      !first.startsWith('* ') &&
-      !first.startsWith('> ')
-    ) {
-      out = out.slice(m[0].length)
-    }
+// First sentence, or a ~240-character cut at a word boundary. Neither cut may
+// land inside a markdown link or an inline code span.
+function truncateDeck(block) {
+  const oneLine = block.replace(/\s+/g, ' ')
+  // Strip leading list marker before sentence extraction to avoid matching
+  // "1." / "2." as a sentence end.
+  const withoutListMarker = oneLine.replace(/^(\d+\.\s|[-*+]\s)/, '')
+  const sentenceEnd = withoutListMarker.match(/^([^.!?`]+(?:`[^`]*`[^.!?`]*)*[.!?])(?=\s|$)/)
+  if (sentenceEnd) return sentenceEnd[1]
+
+  let slice = oneLine.slice(0, 240)
+  // If we cut inside a `[...]( )` link or `` `code` ``, walk back.
+  const lastOpenBracket = slice.lastIndexOf('[')
+  const lastCloseParen = slice.lastIndexOf(')')
+  if (lastOpenBracket > lastCloseParen) slice = slice.slice(0, lastOpenBracket).trimEnd()
+  const lastTick = slice.lastIndexOf('`')
+  if (lastTick > -1 && (slice.match(/`/g) || []).length % 2 === 1) {
+    slice = slice.slice(0, lastTick).trimEnd()
   }
-  return out
+  const lastSpace = slice.lastIndexOf(' ')
+  if (lastSpace > 200) slice = slice.slice(0, lastSpace)
+  return slice.replace(/[,:;\s]+$/, '') + '…'
+}
+
+// Drop exactly the lines the page header took over (the H1 and the deck), so
+// the body starts at the first heading that belongs to the document.
+function stripHeader(md, removeRanges) {
+  const drop = new Set()
+  for (const [start, end] of removeRanges ?? []) {
+    for (let i = start; i < end; i++) drop.add(i)
+  }
+  return md
+    .split('\n')
+    .filter((_, i) => !drop.has(i))
+    .join('\n')
 }
 
 // ── Directory metadata helpers ─────────────────────────────────────────────
 async function getDirectChildren(dir) {
-  const entries = await fs.readdir(dir, { withFileTypes: true }).catch(() => [])
+  const entries = await readDirStrict(dir)
   const files = []
   const subdirs = []
   for (const ent of entries) {
@@ -847,10 +932,10 @@ async function getDirectChildren(dir) {
 }
 
 async function dirHasMd(dir) {
-  const entries = await fs.readdir(dir, { withFileTypes: true }).catch(() => [])
+  const entries = await readDirStrict(dir)
   for (const ent of entries) {
     if (ent.isFile() && isMd(ent.name)) return true
-    if (ent.isDirectory() && await dirHasMd(path.join(dir, ent.name))) return true
+    if (ent.isDirectory() && (await dirHasMd(path.join(dir, ent.name)))) return true
   }
   return false
 }
@@ -861,23 +946,29 @@ function extractDate(text) {
 }
 
 // ── File walking ─────────────────────────────────────────────────────────
+// One snapshot of every markdown source under docs/, taken once per run. The
+// strict reader propagates a readdir failure: a `.catch(() => [])` in this walk
+// used to make an unreadable folder look empty, and the build printed success
+// with every document inside it missing.
+//
+// Memoised so the section walk, the folder-index counts and the final coverage
+// assertion all describe the same tree. The assertion deliberately bypasses
+// this cache — it re-reads the filesystem so it cannot be fooled by anything
+// the build believed about itself.
+let sourceSnapshot = null
+async function allSources() {
+  if (!sourceSnapshot) sourceSnapshot = await listMarkdownSources(DOCS, OUT)
+  return sourceSnapshot
+}
+
 async function walkMd(dir) {
-  const out = []
-  const entries = await fs.readdir(dir, { withFileTypes: true }).catch(() => [])
-  for (const ent of entries) {
-    if (ent.isDirectory()) {
-      // docs/html is this script's output; never descend into it.
-      if (isOutputDir(path.join(dir, ent.name))) continue
-      out.push(...(await walkMd(path.join(dir, ent.name))))
-    } else if (isMd(ent.name)) {
-      out.push(path.join(dir, ent.name))
-    }
-  }
-  return out.sort()
+  const all = await allSources()
+  const prefix = dir.endsWith(path.sep) ? dir : dir + path.sep
+  return all.filter((src) => src.startsWith(prefix))
 }
 
 // ── Page template ────────────────────────────────────────────────────────
-function pageHtml({ title, eyebrow, deckHtml, body, toc, project, navLinks, basePathToHtml, isIndex, currentPath }) {
+function pageHtml({ title, eyebrow, deckHtml, body, toc, project, navLinks, basePathToHtml, isIndex, currentPath, breadcrumbHtml = '' }) {
   const base = escapeHref(basePathToHtml)
   const nav = `
 <nav class="he-nav">
@@ -925,6 +1016,7 @@ ${mainOpen}
   <h1 class="he-title">${escapeHtml(title)}</h1>
   ${deckHtml ? `<p class="he-deck">${deckHtml}</p>` : ''}
 </header>
+${breadcrumbHtml}
 ${body}
 ${mainClose}
 ${tocHtml}
@@ -1039,14 +1131,29 @@ const SITE_CSS = `/* TOC sidebar + index grid extensions to the base tokens. */
 }
 
 .he-empty { color: var(--fg-muted); padding: var(--sp-5) 0; }
+
+/* Wide tables. Markdown audit matrices run to ~850 characters in a single row,
+   and \`table { width: 100% }\` cannot compress below its content, so without a
+   scroll container the right-hand columns leave the viewport and cannot be
+   read at all. */
+.he-tablewrap {
+  overflow-x: auto;
+  margin: var(--sp-4) 0;
+}
+.he-tablewrap > table { margin: 0; min-width: 100%; }
+.he-tablewrap > table th,
+.he-tablewrap > table td {
+  /* Long command lines and paths are the usual cause of a wide cell. */
+  overflow-wrap: anywhere;
+}
 `
 
 // ── Build one MD file ────────────────────────────────────────────────────
 async function buildPage({ src, outPath, section, project, navLinks }) {
   const md = await fs.readFile(src, 'utf8')
-  const { title, deckMarkdown } = parseHeader(md, path.basename(src, '.md'))
+  const { title, deckMarkdown, removeRanges } = parseHeader(md, path.basename(src, path.extname(src)))
   const toc = extractToc(md)
-  const stripped = stripHeader(md)
+  const stripped = stripHeader(md, removeRanges)
 
   const { render, renderInline, resetCounter } = buildMarkdownCallbacks({
     srcDir: path.dirname(src),
@@ -1064,6 +1171,15 @@ async function buildPage({ src, outPath, section, project, navLinks }) {
   const folderDepth = path.relative(OUT, path.dirname(outPath)).split(path.sep).filter(Boolean).length
   const basePathToHtml = folderDepth <= 0 ? './' : '../'.repeat(folderDepth)
 
+  // Folder crumbs for this document's own location in the docs tree, so a page
+  // nested two folders deep still links back through Docs > Section > Folder.
+  const relToRoot = path
+    .relative(DOCS, path.dirname(src))
+    .replaceAll('\\', '/')
+    .split('/')
+    .filter(Boolean)
+  const breadcrumbHtml = breadcrumbNav(outPath, relToRoot, title)
+
   const html = pageHtml({
     title,
     eyebrow: section.title,
@@ -1075,6 +1191,7 @@ async function buildPage({ src, outPath, section, project, navLinks }) {
     basePathToHtml,
     currentPath: outPath,
     isIndex: false,
+    breadcrumbHtml,
   })
 
   await fs.mkdir(path.dirname(outPath), { recursive: true })
@@ -1130,21 +1247,11 @@ async function buildFolderPage({ srcDir, outDir, project, navLinks }) {
   const folderPagePath = path.join(outDir, 'index.html')
   const folderDepth = path.relative(OUT, outDir).split(path.sep).filter(Boolean).length
   const basePathToHtml = folderDepth <= 0 ? './' : '../'.repeat(folderDepth)
-  const breadcrumbItems = [{ label: 'Docs', href: relativeHref(folderPagePath, path.join(OUT, 'index.html')) }]
-  for (let i = 0; i < parts.length; i++) {
-    const ancestorRel = parts.slice(0, i + 1).join('/')
-    const ancestorPath = path.join(OUT, ...parts.slice(0, i + 1), 'index.html')
-    // Use folderTitleFor so the crumb matches that folder's own <h1> — otherwise
-    // a section like "adr" reads "Adr" in the crumb but "ADRs" in the title.
-    breadcrumbItems.push({ label: folderTitleFor(ancestorRel), href: relativeHref(folderPagePath, ancestorPath) })
-  }
-  const breadcrumbHtml = breadcrumbItems
-    .map((bc, i) => {
-      const isLast = i === breadcrumbItems.length - 1
-      if (isLast) return `<span class="he-bc__item">${escapeHtml(bc.label)}</span>`
-      return `<a class="he-bc__item" href="${escapeHref(bc.href)}">${escapeHtml(bc.label)}</a>`
-    })
-    .join('<span class="he-bc__sep">/</span>')
+  const breadcrumbHtml = breadcrumbNav(folderPagePath, parts, null)
+  // Eyebrow names the section this folder sits in, so a nested folder reads
+  // "Audit Reports" above its "Audit Reports / Visual Baseline" <h1>.
+  const parentRel = parts.slice(0, -1).join('/')
+  const parentEyebrow = parentRel ? folderTitleFor(parentRel) : 'Docs'
 
   const subdirsHtml = subdirEntries.length > 0
     ? `
@@ -1175,9 +1282,7 @@ async function buildFolderPage({ srcDir, outDir, project, navLinks }) {
     : `<p class="he-empty">No documents in this folder.</p>`
 
   const body = `
-<nav class="he-bc" aria-label="Breadcrumb">
-  ${breadcrumbHtml}
-</nav>
+${breadcrumbHtml}
 ${subdirsHtml}
 ${fileEntries.length > 0
       ? `<div class="he-folder-controls">
@@ -1216,7 +1321,7 @@ function sortDocs(criteria) {
 
   const html = pageHtml({
     title: folderTitle,
-    eyebrow: breadcrumbItems[0]?.label || 'Docs',
+    eyebrow: parentEyebrow,
     deckHtml: '',
     body,
     toc: [],
@@ -1361,6 +1466,18 @@ async function main() {
   await fs.writeFile(path.join(OUT, 'design-tokens.css'), tokens.css, 'utf8')
   await fs.writeFile(path.join(OUT, 'docs.css'), SITE_CSS, 'utf8')
 
+  // Zero sources means the walk failed, not that the docs tree is empty. The
+  // old build printed "generated 0 HTML pages … across 0 sections" and exited 0
+  // for exactly this case, which is the worst form of a silent skip: a green
+  // build with no documentation in it.
+  const sources = await allSources()
+  if (sources.length === 0) {
+    throw new Error(
+      `no markdown sources found under ${path.relative(ROOT, DOCS) || 'docs'}/ — ` +
+        `refusing to report a successful docs build with an empty site`
+    )
+  }
+
   // Discover all sections (directories with .md files)
   const sections = await discoverSections()
   const navLinks = sections
@@ -1373,7 +1490,10 @@ async function main() {
     const built = []
     for (const src of files) {
       const rel = path.relative(srcDir, src)
-      const slug = rel.replace(/\.md$/, '')
+      // Case-insensitive strip: `isMd` accepts NOTES.MD, and a case-sensitive
+      // strip left the output named NOTES.MD.html — a path no link, breadcrumb
+      // or navigation entry ever pointed at.
+      const slug = rel.replace(/\.md$/i, '')
       const outPath = path.join(outDir, slug + '.html')
       const result = await buildPage({
         src,
@@ -1408,7 +1528,7 @@ async function main() {
   }
 
   // Start recursion from each top-level docs subdirectory
-  const topLevelEntries = await fs.readdir(DOCS, { withFileTypes: true }).catch(() => [])
+  const topLevelEntries = await readDirStrict(DOCS)
   for (const ent of topLevelEntries) {
     if (ent.isDirectory() && !isOutputDir(path.join(DOCS, ent.name))) {
       await generateFolderIndexes(path.join(DOCS, ent.name), path.join(OUT, ent.name))
@@ -1447,9 +1567,27 @@ async function main() {
   const pruned = await pruneStalePages(generated)
   await writeGeneratedManifest(generated)
 
+  // ── Post-build assertion ────────────────────────────────────────────────
+  // "Every markdown source under docs/ has a non-empty HTML page at the
+  // mirrored path." Checked by re-walking the filesystem from scratch and
+  // stat-ing each expected file, so it cannot be satisfied by this run's own
+  // bookkeeping. A source that produced no page, produced an empty page, or
+  // collided with another source on one path fails the build here instead of
+  // being skipped quietly.
+  //
+  // Deliberately NOT the cached `allSources()` snapshot: independence from the
+  // build's beliefs is the whole point of the check.
+  const coverage = await auditCoverage({ docsDir: DOCS, outputDir: OUT })
+  if (!coverage.ok) {
+    throw new DocsCoverageError(coverage, { docsDir: DOCS, outputDir: OUT })
+  }
+
   const total = generated.size - folderPages.length - 1
   console.log(
     `[build-docs-html] generated ${total} HTML pages (${rootDocs.length} root-level) + ${folderPages.length} folder indexes + index across ${sections.length} sections`
+  )
+  console.log(
+    `[build-docs-html] coverage verified: ${coverage.sourceCount}/${coverage.sourceCount} markdown sources have a non-empty mirrored HTML page`
   )
   if (pruned.length > 0) {
     console.log(`[build-docs-html] pruned ${pruned.length} stale page(s): ${pruned.join(', ')}`)
@@ -1471,6 +1609,11 @@ async function readProjectName() {
 }
 
 main().catch((err) => {
-  console.error('[build-docs-html] failed:', err)
+  // Print err.message, not the object: a coverage failure carries the full
+  // list of offending sources in its message, and a stack trace would bury it.
+  console.error(`[build-docs-html] failed: ${err && err.message ? err.message : err}`)
+  if (err && err.name !== 'DocsCoverageError' && err && err.stack) {
+    console.error(err.stack)
+  }
   process.exit(1)
 })

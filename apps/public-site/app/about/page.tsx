@@ -13,7 +13,7 @@ export default function AboutPage() {
     <div className="min-h-screen">
       {/* Hero */}
       <section className="bg-gradient-to-b from-primary/10 to-transparent py-16 md:py-20">
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8 text-center">
+        <div className="container text-center">
           <h1 className="text-responsive-h1 font-heading text-primary mb-4">
             About Novastar Montessori School
           </h1>
@@ -25,7 +25,7 @@ export default function AboutPage() {
 
       {/* Mission & Vision */}
       <section className="py-12 md:py-16">
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="container">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             <div className="text-center p-6 bg-muted/30 rounded-lg">
               <h2 className="text-2xl font-heading font-semibold text-primary mb-3">Our Mission</h2>
@@ -48,7 +48,7 @@ export default function AboutPage() {
 
       {/* History */}
       <section className="py-12 md:py-16 bg-muted/30">
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="container">
           <div className="max-w-3xl mx-auto">
             <h2 className="text-responsive-h2 font-heading text-primary text-center mb-8">Our History</h2>
             {/* No `prose` here: @tailwindcss/typography is not a dependency, so those
@@ -73,7 +73,7 @@ export default function AboutPage() {
 
       {/* Location */}
       <section className="py-12 md:py-16">
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="container">
           <div className="text-center">
             <h2 className="text-responsive-h2 font-heading text-primary text-center mb-8">Find Us</h2>
             <p className="text-muted-foreground mb-6">{SCHOOL_INFO.location}</p>

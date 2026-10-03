@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import { Button } from './button'
 import {
   Dialog,
   DialogContent,
@@ -8,8 +9,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@novastar/shared-ui'
-import { Button } from '@novastar/shared-ui'
+} from './dialog'
 
 interface ConfirmOptions {
   title?: string

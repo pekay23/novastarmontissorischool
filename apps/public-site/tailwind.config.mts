@@ -1,3 +1,9 @@
+/**
+ * Inert in this app: `app/globals.css` loads no `@config`, so Tailwind v4 ignores
+ * this file. Its `content` globs do nothing here. What pulls
+ * `@novastar/shared-ui` classes into the build is the
+ * `@source "../../../packages/shared-ui/src"` directive in `globals.css`.
+ */
 /** @type {import('tailwindcss').Config} */
 const config = {
   content: [

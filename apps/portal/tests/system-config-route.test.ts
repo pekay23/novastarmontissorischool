@@ -2,6 +2,11 @@ import { describe, it, expect, beforeEach, mock, spyOn } from 'bun:test'
 import { NextRequest } from 'next/server'
 import { DB_QUERY_TIMEOUT_MS } from '@novastar/database'
 import { PLATFORM_ROLES, type PlatformRole } from '@/lib/constants/platform-roles'
+// Type-only on purpose: `lib/system-config.ts` opens with `import 'server-only'`,
+// so a *value* import at this level would load it before `mock.module` below has
+// replaced that module and fail with "Cannot find package 'server-only'". The
+// two runtime exports this file needs are pulled in dynamically alongside the
+// route handlers instead.
 import type { FeatureFlagKey } from '@/lib/system-config'
 
 /**
@@ -188,6 +193,7 @@ mock.module('@/lib/audit/logger', () => ({
 }))
 
 const { UnauthorizedError } = await import('@/lib/tenant')
+const { FEATURE_FLAGS, manageableFlagKeys } = await import('@/lib/system-config')
 const { PATCH } = await import('@/app/api/system/config/[key]/route')
 const { GET } = await import('@/app/api/system/config/route')
 
@@ -1060,7 +1066,7 @@ describe('GET /api/system/config - the read path is read-only', () => {
     expect(findMany.mock.calls[0][0].where).toEqual({ tenantId: SESSION.tenantId })
   })
 
-  it('should answer every registered flag without consulting the writability gate', async () => {
+  it('should answer every registered flag that this caller may write, without consulting the writability gate', async () => {
     findMany.mockImplementation(async () => [])
 
     const res = await GET(new NextRequest('http://localhost/api/system/config'))
@@ -1068,6 +1074,25 @@ describe('GET /api/system/config - the read path is read-only', () => {
 
     // One query for the whole catalogue. A gate lookup per flag would make the
     // read scale with the registry and reintroduce a write on the read path.
+    //
+    // Six, and NOT seven, although `FEATURE_FLAGS` holds seven entries. The
+    // registry is seven long because `admissions_open` is registered — it needs
+    // a default, a description and a schema so `resolveFeatureFlags` and the
+    // dedicated route can resolve it — but its entry declares `manageRoles: []`,
+    // and this GET filters to `manageableFlagKeys(session.role)`. HEADMASTER is
+    // the widest role the read admits (a 403 comes before the filter), and it is
+    // in nobody's `manageRoles`, so the flag drops out for EVERY caller. That is
+    // the design working: one writer per flag means one audit action, and a
+    // switch on the platform page would be a second door to the same state that
+    // ADMIN_STAFF could reach.
+    //
+    // What would make this wrong again, in the order it is likely: a second
+    // entry declaring `manageRoles: []` (7 again, and the pair of assertions
+    // below is what makes the next reader check the list rather than the count);
+    // someone giving `admissions_open` a non-empty `manageRoles` (still 6, but
+    // now because a door opened rather than because none exists — the single-
+    // writer block at the end of this file is the tripwire for that); or the
+    // filter being dropped from the handler (7 again).
     expect(json.flags).toHaveLength(6)
     expect(findUnique).toHaveBeenCalledTimes(0)
   })
@@ -1098,6 +1123,16 @@ describe('PATCH /api/system/config/:key - flag keys come from the registry only'
   it('should refuse a key the registry has since removed', async () => {
     // Regression guard for a rename: an old bookmark or a stale client should
     // get a 404, not a write against a key nothing resolves any more.
+    //
+    // The list is written out by hand rather than derived from the response or
+    // from `manageableFlagKeys`, because that is what makes it a guard: deriving
+    // it would make this assertion agree with whatever the registry happens to
+    // say, which is the failure mode every other assertion in this file is
+    // written against. Six entries here, seven in `FEATURE_FLAGS` — the missing
+    // one is `admissions_open`, and it is missing ON PURPOSE. It is registered,
+    // so it must never be added here expecting a 404: this route refuses it with
+    // 403 and a pointer to `PATCH /api/admissions/status`, which the block at the
+    // end of this file pins.
     const keys: FeatureFlagKey[] = ['ai_enabled', 'sms_enabled', 'offline_mode', 'sso_google', 'sso_microsoft', 'sso_saml']
     expect(keys).toHaveLength(6)
 
@@ -1105,5 +1140,96 @@ describe('PATCH /api/system/config/:key - flag keys come from the registry only'
 
     expect(res.status).toBe(404)
     expect(dbCalls()).toBe(0)
+  })
+
+  it('should list exactly the keys this route admits a HEADMASTER write for', async () => {
+    // The hand-written list above is only correct while it matches the gate, and
+    // the gate is production code that can change on its own — someone widening
+    // `PLATFORM_ADMIN_ROLES`, or giving a flag its own `manageRoles`. This is the
+    // cross-check that turns "the list looks right" into "the list is right", and
+    // it fails on either direction: a new writable flag nobody listed here, and a
+    // listed flag that stopped being writable.
+    expect(manageableFlagKeys(PLATFORM_ROLES.HEADMASTER)).toEqual([
+      'ai_enabled',
+      'sms_enabled',
+      'offline_mode',
+      'sso_google',
+      'sso_microsoft',
+      'sso_saml',
+    ])
+  })
+})
+
+describe('admissions_open has exactly one writer, and it is not this route', () => {
+  it('should refuse a PATCH to admissions_open with a pointer, for HEADMASTER', async () => {
+    const res = await patchRequest('admissions_open', { value: true })
+
+    // The registry entry declares `manageRoles: []`, which `canManageFlag` reads
+    // as "no role may write this here". HEADMASTER is the widest role this route
+    // knows, so if the empty set has stopped being meaningful, this is the
+    // request that proves it — and it is also the request whose disappearance
+    // would put a second writer on the flag.
+    expect(res.status).toBe(403)
+    // Not a bare 403: a client pointed at the wrong door needs to be told which
+    // one is right, and this is the only place that says so.
+    expect(await readJson(res)).toEqual({
+      error: "Feature flag 'admissions_open' is managed by PATCH /api/admissions/status",
+    })
+    // Refused before the body was read and before a transaction was opened, so a
+    // crafted request costs zero connections as well as zero writes.
+    expect(dbCalls()).toBe(0)
+    expect(logAuditEvent).toHaveBeenCalledTimes(0)
+  })
+
+  it('should refuse it for ADMIN_STAFF and ADMISSIONS_OFFICER too', async () => {
+    // The regression this whole block exists for. Both roles may open and close
+    // admissions — that is the widening the feature is for, and it is deliberate.
+    // What must not follow from it is the flag becoming reachable through the
+    // generic route as well: two writers for one flag produce two audit lines
+    // (`ADMISSIONS_TOGGLE` and `SYSTEM_UPDATE`) that disagree about who changed
+    // what, with nothing in the data to arbitrate. A 403 here is what keeps the
+    // write count at one.
+    for (const role of [PLATFORM_ROLES.ADMIN_STAFF, PLATFORM_ROLES.ADMISSIONS_OFFICER]) {
+      session = { ...SESSION, role }
+
+      const res = await patchRequest('admissions_open', { value: true })
+
+      expect({ role, status: res.status }).toEqual({ role, status: 403 })
+      expect(dbCalls()).toBe(0)
+      expect(logAuditEvent).toHaveBeenCalledTimes(0)
+    }
+  })
+
+  it('should still register the flag, so the dedicated route can resolve its default', async () => {
+    // Refused and hidden are different things. The flag has to STAY in the
+    // registry — the default, the description and the schema all live there, and
+    // `applyFeatureFlagChange` refuses an unregistered key — or the dedicated
+    // route 500s on a key nobody can write through either door.
+    expect(Object.hasOwn(FEATURE_FLAGS, 'admissions_open')).toBe(true)
+  })
+
+  it('should omit admissions_open from the catalogue it serves to HEADMASTER', async () => {
+    findMany.mockImplementation(async () => [
+      { key: 'admissions_open', value: true, isEditable: true, updatedAt: SAVED_AT, version: 5 },
+    ])
+
+    const res = await GET(new NextRequest('http://localhost/api/system/config'))
+    const json = (await readJson(res)) as { flags: Array<{ key: string; value: unknown }> }
+
+    // A stored override row exists and is still not served. The filter is on what
+    // the CALLER may write, not on whether a row happens to exist, so a flag
+    // owned elsewhere cannot reappear on this page by being changed — which is
+    // the drift this pin stops: a switch on the platform settings page that
+    // ADMIN_STAFF can reach, saving a flag whose history is filed under a
+    // different audit action.
+    expect(json.flags.map((f) => f.key)).toEqual([
+      'ai_enabled',
+      'sms_enabled',
+      'offline_mode',
+      'sso_google',
+      'sso_microsoft',
+      'sso_saml',
+    ])
+    expect(json.flags.some((f) => f.key === 'admissions_open')).toBe(false)
   })
 })

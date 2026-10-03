@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { useSession } from 'next-auth/react'
 import {
@@ -8,9 +8,10 @@ import {
   useToast, useConfirm,
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent,
   DropdownMenuItem, DropdownMenuSeparator,
+  Alert, AlertTitle, AlertDescription,
 } from '@novastar/shared-ui'
-import { Plus, Users, MoreHorizontal, Edit2, Trash2, RefreshCw } from 'lucide-react'
-import { StaffForm } from '@/components/teachers/staff-form'
+import { Plus, Users, MoreHorizontal, Edit2, Trash2, RefreshCw, MailWarning } from 'lucide-react'
+import { StaffForm, type StaffCreateResult } from '@/components/teachers/staff-form'
 
 interface Teacher {
   id: string
@@ -35,6 +36,34 @@ export default function TeachersPage() {
   const [formOpen, setFormOpen] = useState(false)
   const [editId, setEditId] = useState<string | null>(null)
 
+  /**
+   * Whether this caller may create a staff member at all, and which portal roles
+   * they may grant.
+   *
+   * From the server, not from the session, for the same reason
+   * `promotions/page.tsx` asks for `canPromote`: permissions can arrive by
+   * delegation, so a role check in the UI would hide the button from someone the
+   * Head of School had explicitly granted it to. It also means the role list and
+   * the route's privilege ceiling come from one table rather than two.
+   *
+   * Fail-closed default: `false` until the answer arrives, so the button never
+   * flashes for a caller who will be refused.
+   */
+  const [canCreate, setCanCreate] = useState(false)
+  const [grantableRoleNames, setGrantableRoleNames] = useState<string[]>([])
+
+  /**
+   * Set when an account was created but its setup email did not go out.
+   *
+   * Both halves of that are true, and only one of them is what the operator
+   * expected: the person is in the directory and can sign in the moment they set a
+   * password, but nobody told them how. It is a report of a real fault rather than
+   * an error toast, so it is held here and rendered until it is dismissed — a
+   * toast that disappears in five seconds would let the two outcomes blur into
+   * "invited".
+   */
+  const [deliveryFailure, setDeliveryFailure] = useState<StaffCreateResult | null>(null)
+
   // The session user's own email, matched against each row's
   // `user.email` to decide which row is "me". Email is unique
   // per tenant (`User @@unique([tenantId, email])`), and the
@@ -42,7 +71,7 @@ export default function TeachersPage() {
   // user's Staff row without any extra request.
   const sessionEmail = (session?.user as { email?: string | null } | undefined)?.email ?? null
 
-  const fetchTeachers = async () => {
+  const fetchTeachers = useCallback(async () => {
     setLoading(true)
     try {
       const res = await fetch('/api/teachers')
@@ -57,14 +86,37 @@ export default function TeachersPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [toast])
+
+  /**
+   * What the create affordance is allowed to offer this caller.
+   *
+   * Fail closed on every path, including an unreadable answer: a button that
+   * appears for somebody the route will refuse is worse than an absent one.
+   */
+  const fetchCreateCapability = useCallback(async () => {
+    try {
+      const res = await fetch('/api/teachers/invite')
+      if (!res.ok) {
+        setCanCreate(false)
+        setGrantableRoleNames([])
+        return
+      }
+      const payload = await res.json()
+      setCanCreate(payload.data?.canCreate === true)
+      setGrantableRoleNames(payload.data?.grantableRoleNames ?? [])
+    } catch {
+      setCanCreate(false)
+      setGrantableRoleNames([])
+    }
+  }, [])
 
   useEffect(() => {
     const load = async () => {
-      await fetchTeachers()
+      await Promise.all([fetchTeachers(), fetchCreateCapability()])
     }
     load()
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [fetchTeachers, fetchCreateCapability])
 
   const handleEdit = (teacher: Teacher) => {
     setEditId(teacher.id)
@@ -94,9 +146,12 @@ export default function TeachersPage() {
     }
   }
 
-  const handleFormSuccess = () => {
+  const handleFormSuccess = (result?: StaffCreateResult) => {
     setFormOpen(false)
     setEditId(null)
+    // `undefined` for an edit, which creates nothing and mails nothing. A create
+    // that came back undelivered leaves the fault on screen until it is dismissed.
+    setDeliveryFailure(result && !result.delivered ? result : null)
     fetchTeachers()
   }
 
@@ -114,11 +169,56 @@ export default function TeachersPage() {
           <h1 className="text-3xl font-heading font-bold">Teachers</h1>
           <p className="text-sm text-muted-foreground">Manage all teaching staff</p>
         </div>
-        <Button onClick={() => { setEditId(null); setFormOpen(true) }} className="gap-2">
-          <Plus className="h-4 w-4" />
-          Add Staff
-        </Button>
+        {/* The affordance is gated on the caller's permission, not on a role
+            comparison in this file. The route is the boundary; this only keeps the
+            button from inviting a request that would be refused. */}
+        {canCreate && (
+          <Button
+            onClick={() => { setEditId(null); setFormOpen(true) }}
+            className="gap-2"
+          >
+            <Plus className="h-4 w-4" />
+            Add Staff
+          </Button>
+        )}
       </div>
+
+      {/*
+        Destructive styling, deliberately, and not a toast.
+
+        The account was created. The one thing that did not happen is the message
+        telling the person how to use it, so the state is "half-finished" in exactly
+        the sense this feature exists to avoid — and the only way to finish it is for
+        the recipient to request a password reset from the sign-in page, which needs
+        an operator who knows it happened. Presenting that in the same green as a
+        successful invitation would hide the fault that has to be acted on.
+      */}
+      {deliveryFailure && (
+        <Alert variant="destructive">
+          <MailWarning className="h-4 w-4" />
+          <AlertTitle>Staff account created, but the setup email was not sent</AlertTitle>
+          <AlertDescription>
+            <p>
+              <strong>{deliveryFailure.email}</strong> now has a portal login and
+              appears in the list below, but the one-time link to set a password was
+              never delivered &mdash; so they cannot sign in yet, and no password was
+              ever created.
+            </p>
+            <p className="mt-2">
+              Ask them to use &ldquo;Forgot password&rdquo; on the sign-in page. Do not
+              create a second account: the address is already taken, and a retry will
+              be refused as a duplicate.
+            </p>
+            <button
+              type="button"
+              onClick={() => setDeliveryFailure(null)}
+              className="mt-2 text-sm font-medium underline"
+            >
+              Dismiss
+            </button>
+          </AlertDescription>
+        </Alert>
+      )}
 
       <Card>
         <CardHeader>
@@ -135,7 +235,10 @@ export default function TeachersPage() {
             <div className="text-center py-8 text-muted-foreground">
               <Users className="h-12 w-12 mx-auto mb-3 opacity-50" />
               <p>No staff found</p>
-              <p className="text-sm mt-1">Click &quot;Add Staff&quot; to get started</p>
+              {/* Only offered when the button above is actually on screen. */}
+              {canCreate && (
+                <p className="text-sm mt-1">Click &quot;Add Staff&quot; to get started</p>
+              )}
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -226,6 +329,7 @@ export default function TeachersPage() {
         open={formOpen}
         onOpenChange={handleFormClose}
         editId={editId}
+        grantableRoleNames={grantableRoleNames}
         onSuccess={handleFormSuccess}
       />
     </div>

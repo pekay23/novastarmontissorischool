@@ -15,6 +15,7 @@
     "suspend": "bun index.ts suspend",
     "reactivate": "bun index.ts reactivate",
     "user": "bun index.ts user",
+    "operator": "bun index.ts operator",
     "config:get": "bun index.ts config get",
     "config:set": "bun index.ts config set",
     "config:export": "bun index.ts config export",

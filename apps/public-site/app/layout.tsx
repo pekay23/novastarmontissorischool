@@ -1,31 +1,34 @@
 import './globals.css'
 
-import { baseMetadata } from '@/lib/metadata'
+import { baseMetadata, SCHOOL_INFO } from '@/lib/metadata'
 import { navigation } from '@/lib/navigation'
 import { ToastProvider } from '@novastar/shared-ui'
-import { Mulish, Playfair_Display } from 'next/font/google'
+import { Plus_Jakarta_Sans, Playfair_Display } from 'next/font/google'
 import Header from '@/components/header'
 import { Footer } from '@/components/footer'
 
 /*
  * Real webfonts. next/font downloads at build time and self-hosts, which
  * matters here because this site is a static export: no runtime call to Google.
- * Mulish is the body face (clean, slightly rounded, screen-friendly) and
- * Playfair Display is the headline face (editorial serif with italic variants)
- * — matching the homepage concept's chosen v1 pairing.
+ *
+ * The pairing is the one named by the site's Stitch design system: Playfair
+ * Display for display and headline settings (editorial serif, italic available
+ * for the emphasised spans the design leans on) and Plus Jakarta Sans for all
+ * body, label and UI text. Plus Jakarta Sans replaced Mulish here; the design
+ * specifies it and Mulish's rounded terminals read too soft next to the serif.
  */
-const mulish = Mulish({
+const jakarta = Plus_Jakarta_Sans({
   subsets: ['latin'],
-  variable: '--font-mulish',
+  variable: '--font-jakarta',
   display: 'swap',
-  weight: ['400', '600', '700'],
+  weight: ['300', '400', '500', '600', '700', '800'],
 })
 
 const playfair = Playfair_Display({
   subsets: ['latin'],
   variable: '--font-playfair',
   display: 'swap',
-  weight: ['400', '500', '600', '700'],
+  weight: ['400', '500', '600', '700', '800'],
   style: ['normal', 'italic'],
 })
 
@@ -39,12 +42,13 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${mulish.variable} ${playfair.variable}`}
+      className={`${jakarta.variable} ${playfair.variable}`}
     >
       <head>
         <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
         <link rel="apple-touch-icon" href="/favicon.svg" />
-        <meta name="theme-color" content="#5F1989" />
+        {/* Tracks --color-primary. Kept in sync with app/globals.css. */}
+        <meta name="theme-color" content="#5a1121" />
       </head>
       <body className="min-h-screen bg-background font-sans text-foreground antialiased">
         <ToastProvider>
@@ -58,7 +62,24 @@ export default function RootLayout({
             >
               Skip to main content
             </a>
-            <Header navigation={navigation} />
+            {/*
+              Contact details are passed in rather than imported by the header
+              itself. `Header` is a client component, and importing `SCHOOL_INFO`
+              from the metadata module would pull the whole module — including
+              the `new URL()` in `baseMetadata` — into the browser bundle just to
+              read a phone number. This also keeps the opening hours single-sourced
+              as `lib/metadata.ts` requires.
+            */}
+            <Header
+              navigation={navigation}
+              siteName={SCHOOL_INFO.name}
+              contact={{
+                phone: SCHOOL_INFO.phone,
+                phoneHref: SCHOOL_INFO.phoneHref,
+                email: SCHOOL_INFO.email,
+                weekdayHours: SCHOOL_INFO.hours[0].time,
+              }}
+            />
             <main id="main-content" className="flex-1" tabIndex={-1}>
               {children}
             </main>

@@ -42,7 +42,7 @@ export async function Footer() {
 
   return (
     <footer className="bg-primary-dark py-12 text-primary-soft">
-      <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="container">
         <div className="mb-8 grid grid-cols-1 gap-8 md:grid-cols-4">
           <div>
             <h2 className="mb-4 font-heading text-xl font-bold text-primary-soft">

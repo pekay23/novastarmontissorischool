@@ -1,7 +1,12 @@
 /**
  * PATCH  /api/system/config/:key   — update or reset a feature flag
  *
- * Only HEADMASTER role can access. Mutations are audit-logged.
+ * Every flag is gate-listed in the registry: `canManageFlag` decides whether the
+ * session role may write THIS flag. A flag with no `manageRoles` is platform
+ * infrastructure, writable by the platform-admin set alone. `admissions_open`
+ * declares an empty set — it is owned by `PATCH /api/admissions/status` — so
+ * every caller gets 403 here and is told which route to use. Mutations are
+ * audit-logged.
  *
  * Response: `{ flag: { key, value, reset, isOverridden, updatedAt, version } }`.
  * `reset` reports what the client asked for; `isOverridden`, `updatedAt` and
@@ -18,12 +23,15 @@
  * write. Send it back as `expectedVersion` on the next request.
  *
  * Errors: `404` unknown flag, `400` malformed body or a value the flag's own
- * registry schema refuses, `403` a non-HEADMASTER caller or a read-only flag,
- * and `409` when `expectedVersion` no longer matches — whose body is
- * `{ error, details: { currentVersion } }`, the same `{ error, details? }` shape
- * the 400s use, carrying the version that is actually stored so the client can
- * resync and retry. `expectedVersion` is optional throughout: a request that
- * omits it asks for no precondition and keeps last-write-wins semantics.
+ * registry schema refuses, `403` a role the flag's `manageRoles` does not list —
+ * which for `admissions_open` is everyone, and answers
+ * `{ error: "Feature flag 'admissions_open' is managed by PATCH /api/admissions/status" }`
+ * — or a read-only flag, and `409` when `expectedVersion` no longer matches —
+ * whose body is `{ error, details: { currentVersion } }`, the same
+ * `{ error, details? }` shape the 400s use, carrying the version that is
+ * actually stored so the client can resync and retry. `expectedVersion` is
+ * optional throughout: a request that omits it asks for no precondition and
+ * keeps last-write-wins semantics.
  *
  * `ConfigFlag` and `PatchedFlagResponse` in the settings page mirror this
  * shape.
@@ -34,8 +42,13 @@ import { Prisma } from '@prisma/client'
 import { getCachedSessionAndTenant } from '@/lib/auth/session-context'
 import { logAuditEvent, AuditLogAction } from '@/lib/audit/logger'
 import { toErrorResponse } from '@/lib/api-response'
-import { isPlatformAdmin } from '@/lib/constants/platform-roles'
-import { FEATURE_FLAGS, type FeatureFlagKey, applyFeatureFlagChange } from '@/lib/system-config'
+import {
+  FEATURE_FLAGS,
+  type FeatureFlagKey,
+  type FlagDefinition,
+  canManageFlag,
+  applyFeatureFlagChange,
+} from '@/lib/system-config'
 
 /**
  * The optimistic-concurrency precondition, on both branches below: a write and a
@@ -77,9 +90,6 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ key: 
   try {
     const session = await getCachedSessionAndTenant()
     ctx = { tenantId: session.tenantId, userId: session.userId }
-    if (!isPlatformAdmin(session.role)) {
-      return new NextResponse('Forbidden', { status: 403 })
-    }
 
     const { key } = await context.params
 
@@ -88,15 +98,39 @@ export async function PATCH(req: NextRequest, context: { params: Promise<{ key: 
     // `constructor`, `toString` — to a truthy value that is not a flag. Under
     // the old `if (!definition)` check those keys sailed through and produced a
     // 200 (reset) or a 500 (write) instead of a 404.
+    //
+    // Membership is settled BEFORE the authorisation gate, deliberately. An
+    // unknown key has no `manageRoles` set to consult, so checking the gate
+    // first would answer 403 for a typo instead of 404 — telling an authorised
+    // caller they lack permission for a flag that does not exist. Both answers
+    // cost zero writes and zero queries; the order only decides which.
     if (!Object.hasOwn(FEATURE_FLAGS, key)) {
       return NextResponse.json({ error: `Unknown feature flag: ${key}` }, { status: 404 })
     }
     const flag = key as FeatureFlagKey
-    const definition = FEATURE_FLAGS[flag]
+    // Widened through `FlagDefinition` for the same reason `canManageFlag` does:
+    // a bare `FEATURE_FLAGS[flag]` keeps its `as const` literal type, on which
+    // `manageRoles` is not a property of every member.
+    const definition: FlagDefinition = FEATURE_FLAGS[flag]
     // Only now, once the key is known to be a real flag: the catch block
     // interpolates this into the stored `endpoint`, and an arbitrary URL segment
     // has no business being written into a row an operator later reads back.
     flagKey = key
+
+    // Per-flag gate, and still before anything is read or written. Two answers,
+    // because the two refusals mean different things to the caller: a role the
+    // set simply does not list has no business here, while an EMPTY set means
+    // the flag lives on a dedicated route and this caller — platform admin or
+    // not — deserves to be pointed at it rather than told it does not exist.
+    if (!canManageFlag(flag, session.role)) {
+      if (definition.manageRoles?.length === 0) {
+        return NextResponse.json(
+          { error: `Feature flag '${key}' is managed by PATCH /api/admissions/status` },
+          { status: 403 }
+        )
+      }
+      return new NextResponse('Forbidden', { status: 403 })
+    }
 
     const body = patchBodySchema.safeParse(await req.json().catch(() => ({})))
     if (!body.success) {

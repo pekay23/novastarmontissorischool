@@ -1,16 +1,22 @@
 /**
- * Tailwind CSS v4 runs in JS-config compatibility mode (loaded from
- * app/globals.css via `@config`). Dark mode is declared there with
- * `@custom-variant dark` instead of the legacy `darkMode` option.
+ * Tailwind CSS v4 in JS-config compatibility mode, loaded from
+ * `app/globals.css` via `@config`. Dark mode is declared there with
+ * `@custom-variant dark` rather than through the legacy `darkMode` option.
  *
- * The `content` globs below are what pull `@novastar/shared-ui` classes into
- * the build — without them every shared-ui component renders unstyled.
+ * The token values below are raw HSL triplets consumed as
+ * `hsl(var(--token))`, which is what `@novastar/shared-ui` expects. Changing a
+ * name here without changing the `:root` block in `app/globals.css` yields an
+ * unresolved colour, and Tailwind v4 drops such a utility silently rather than
+ * failing the build.
+ *
+ * The `content` globs are what pull `@novastar/shared-ui`'s classes into the
+ * build. Without them every shared-ui component renders unstyled.
  */
 const config = {
   content: [
     './app/**/*.{js,ts,jsx,tsx,mdx}',
     './components/**/*.{js,ts,jsx,tsx,mdx}',
-    './pages/**/*.{js,ts,jsx,tsx,mdx}',
+    './lib/**/*.{js,ts,jsx,tsx}',
     '../../packages/shared-ui/src/**/*.{js,ts,jsx,tsx}',
   ],
   theme: {
@@ -48,4 +54,3 @@ const config = {
 }
 
 export default config
-

@@ -266,6 +266,29 @@ interface DelegationRule {
   maxDurationDays?: number
 }
 
+/** The delegable set for a role, without the row identity attached. */
+type DelegationPolicy = Omit<DelegationRule, 'roleId'>
+
+/**
+ * The policy for a role that has no entry in the default rules.
+ *
+ * Fail-closed by construction: `permissions: []` matches nothing, so
+ * `createDelegation` denies every permission. The previous
+ * `|| ['*']` fallback granted every permission in the catalog to any role the
+ * map did not name — `CLASSROOM_TEACHER`, `HEAD_TEACHER`, `ACCOUNTANT`,
+ * `ADMIN_STAFF` and every custom role included. A delegation capability that
+ * nobody has to be granted explicitly is not a capability.
+ *
+ * `requiresApproval` stays true and the duration stays at the default: an
+ * unrecognised role cannot delegate at all, so these only describe the record
+ * that a future explicit configuration would override.
+ */
+const NO_DELEGATION_POLICY: DelegationPolicy = {
+  permissions: [],
+  requiresApproval: true,
+  maxDurationDays: 30,
+}
+
 /**
  * Get delegation rules for a role (from config + database).
  */
@@ -278,21 +301,25 @@ async function getDelegationRules(
     where: { tenantId, id: roleId },
   })
 
-  // Merge with default rules from config
+  // Merge with default rules from config. Keyed by role NAME: `Role.id` is a
+  // cuid (`tools/seed/index.ts` creates roles with an explicit `name` and lets
+  // the id be generated), so looking the map up by id never matched and every
+  // role — HEADMASTER included — reached the fallback.
   const defaultRules = getDefaultDelegationRules()
-  
+
   return roles.map(role => ({
     roleId: role.id,
-    permissions: defaultRules[role.id]?.permissions || ['*'],
-    requiresApproval: defaultRules[role.id]?.requiresApproval ?? true,
-    maxDurationDays: defaultRules[role.id]?.maxDurationDays ?? 30,
+    ...(defaultRules[role.name] ?? NO_DELEGATION_POLICY),
   }))
 }
 
 /**
  * Default delegation rules — Headmaster can delegate anything.
+ *
+ * Keyed by role name. A role absent from this map is NOT implicitly granted
+ * the catalog; it resolves to `NO_DELEGATION_POLICY`.
  */
-function getDefaultDelegationRules(): Record<string, Partial<DelegationRule>> {
+function getDefaultDelegationRules(): Record<string, DelegationPolicy> {
   return {
     HEADMASTER: {
       permissions: ['*'],  // everything

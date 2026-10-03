@@ -1,10 +1,22 @@
 #!/usr/bin/env bun
 // Seed script — Populates database with Ghana/NaCCA baseline data
-// Run with: bun run seed/index.ts (after DATABASE_URL is set)
+//
+// Run with: bun run db:seed (or: bun run seed/index.ts)
+// Requires, in the environment:
+//   DATABASE_URL             — connection string, refused without it
+//   SEED_HEADMASTER_PASSWORD — refused without it; there is no default
+//   SEED_PORTAL_ADMIN_PASSWORD — refused without it; there is no default
+// Optional: SEED_SKIP_DOTENV=1 ignores the repo root .env (as MIGRATE_SKIP_DOTENV
+// does for tools/migrate), and SEED_ALLOW_DEFAULT_PASSWORDS=1 opts into the
+// committed fallbacks against a LOCAL database only.
+// Both are listed in turbo.json's globalEnv, because turbo filters every other
+// variable out of a task's environment and a seed that silently reads a
+// published fallback instead of the value you exported is worse than no seed.
+// See ./credentials.ts for the refusal and the local-only opt-in.
 
 import { PrismaClient } from '@prisma/client'
 import { PrismaNeon } from '@prisma/adapter-neon'
-import { PERMISSION_CATALOG, permissionsForRole } from '@novastar/shared-types'
+import { ADMISSIONS_OPEN_FLAG_KEY, PERMISSION_CATALOG, permissionsForRole } from '@novastar/shared-types'
 // Imported for its band definitions rather than re-typed here. By relative path
 // on purpose: `tools/seed` has no package.json of its own, so it resolves against
 // the repo root, whose node_modules carries no workspace links. The package is
@@ -20,17 +32,30 @@ import { assertBandsCoverZeroToHundred } from '../../packages/shared-utils'
 import { Phase, SubjectCategory, TermStatus, Gender, StaffStatus, StudentStatus, AttendanceStatus, InvoiceStatus, PaymentStatus, MessageChannel, MessageStatus, NotificationType, ContentStatus, ReportType, LeaveType, LeaveStatus } from '@prisma/client'
 import * as fs from 'fs'
 import * as path from 'path'
+// Credential resolution, and the refusal that guards it, live in `./credentials`
+// so they can be tested with no database and no Prisma client. This file keeps
+// only the call, at the top of main(), for the reason spelled out there.
+import { resolveSeedCredentials, SeedCredentialsError } from './credentials'
 
-// Load .env from project root
-const envPath = path.resolve(__dirname, '../../.env')
-if (fs.existsSync(envPath)) {
-  const envContent = fs.readFileSync(envPath, 'utf-8')
-  for (const line of envContent.split('\n')) {
-    const trimmed = line.trim()
-    if (trimmed && !trimmed.startsWith('#')) {
-      const [key, ...valueParts] = trimmed.split('=')
-      if (key && valueParts.length > 0) {
-        process.env[key.trim()] = valueParts.join('=').trim().replace(/^["']|["']$/g, '')
+// Load .env from project root.
+//
+// `SEED_SKIP_DOTENV=1` skips the file, named for `MIGRATE_SKIP_DOTENV` in
+// tools/migrate, which is the repository's existing spelling for this. It is not
+// a convenience: the loader below ASSIGNS over whatever the shell already set,
+// so a `.env` naming a shared database wins over the developer's own
+// environment. An escape hatch is how a test run — or a CI step that meant to
+// exercise the refusal below — is prevented from pointing at production.
+if (process.env.SEED_SKIP_DOTENV !== '1') {
+  const envPath = path.resolve(__dirname, '../../.env')
+  if (fs.existsSync(envPath)) {
+    const envContent = fs.readFileSync(envPath, 'utf-8')
+    for (const line of envContent.split('\n')) {
+      const trimmed = line.trim()
+      if (trimmed && !trimmed.startsWith('#')) {
+        const [key, ...valueParts] = trimmed.split('=')
+        if (key && valueParts.length > 0) {
+          process.env[key.trim()] = valueParts.join('=').trim().replace(/^["']|["']$/g, '')
+        }
       }
     }
   }
@@ -137,6 +162,13 @@ const JHS_DEFAULT_BANDS: SeedBand[] = [
  * make which one wins a function of row order. The bands are rewritten either
  * way: `@@unique([gradingScaleId, key])` and `@@unique([gradingScaleId, order])`
  * mean a re-seed cannot add a band without clearing the old set.
+ *
+ * `include: { levels: true }` is not optional decoration. `levels` is a relation,
+ * so a write that only touches it returns the scale's scalars and nothing else —
+ * the caller that validates the bands would read `undefined` and pass that to
+ * `assertBandsCoverZeroToHundred`, which then throws on a scale it was supposed
+ * to be checking. Returning the bands that actually landed is also the only
+ * version of this guard that checks the database rather than the intent.
  */
 async function upsertGradingScale(params: {
   tenantId: string
@@ -157,18 +189,26 @@ async function upsertGradingScale(params: {
       : null)
 
   const levelRows = bands.map((band) => ({ tenantId, ...band }))
-  const data = {
+  const scalars = {
     name,
     description,
     isDefault,
     appliesToLevels,
-    levels: { deleteMany: {}, create: levelRows },
   }
 
   if (existing) {
-    return prisma.gradingScale.update({ where: { id: existing.id }, data })
+    return prisma.gradingScale.update({
+      where: { id: existing.id },
+      data: { ...scalars, levels: { deleteMany: {}, create: levelRows } },
+      include: { levels: true },
+    })
   }
-  return prisma.gradingScale.create({ data: { tenantId, schoolId, ...data } })
+  // `deleteMany` belongs to the nested update input only. A nested create has no
+  // rows to clear, and Prisma rejects the argument outright rather than ignoring it.
+  return prisma.gradingScale.create({
+    data: { tenantId, schoolId, ...scalars, levels: { create: levelRows } },
+    include: { levels: true },
+  })
 }
 
 async function hashPassword(password: string): Promise<string> {
@@ -176,6 +216,37 @@ async function hashPassword(password: string): Promise<string> {
 }
 
 async function main() {
+  // ============ CREDENTIALS (refused before anything is written) ============
+  // This is the first statement in main() on purpose, and it has to stay first.
+  // A refusal is only worth having if it is complete: the tenant and school
+  // upserts that follow are writes, so a check placed after them would refuse a
+  // run that had already left a Tenant, a School, academic years, terms, class
+  // levels and 19 subjects behind on a database the operator was told had not
+  // been touched. There is no transaction spanning the seed, so "nothing was
+  // written" has to be true by ordering, not by rollback.
+  //
+  // Resolving here also means the two hashes below are known before the first
+  // query, so the refusal costs one property read and zero network traffic.
+  //
+  // Thrown, not `process.exit`-ed here, so the handler at the bottom of the file
+  // owns the message and the exit code in one place — the same shape as every
+  // other refusal in the seed (the band-coverage check, the weight-sum check),
+  // all of which throw out of main().
+  const seedCredentials = resolveSeedCredentials()
+
+  if (seedCredentials.usingCommittedDefaults) {
+    console.warn(
+      '⚠️  WARNING: provisioning a COMMITTED FALLBACK password. These literals are ' +
+        'published in this repository; they are only accepted against a local ' +
+        'database, and any of these accounts must be re-credentialed before that ' +
+        'database is reachable by anyone else.',
+    )
+  } else {
+    console.log(
+      `🔐 Portal credentials taken from ${seedCredentials.headmasterSource} / ${seedCredentials.portalAdminSource}`,
+    )
+  }
+
   console.log('🌱 Starting database seed...')
 
   // ============ TENANT & SCHOOL ============
@@ -715,6 +786,7 @@ async function main() {
     { name: 'ACCOUNTANT', description: 'School Accountant/Bursar', isSystem: true, permissions: permissionsForRole('ACCOUNTANT', PERMISSION_CATALOG), inheritsFrom: [], tenantId: tenant.id, schoolId: school.id },
     { name: 'ADMIN_STAFF', description: 'Administrative Staff', isSystem: true, permissions: permissionsForRole('ADMIN_STAFF', PERMISSION_CATALOG), inheritsFrom: [], tenantId: tenant.id, schoolId: school.id },
     { name: 'PARENT', description: 'Parent/Guardian', isSystem: true, permissions: permissionsForRole('PARENT', PERMISSION_CATALOG), inheritsFrom: [], tenantId: tenant.id, schoolId: school.id },
+    { name: 'ADMISSIONS_OFFICER', description: 'Admissions Officer - manages admissions and enrollment', isSystem: true, permissions: permissionsForRole('ADMISSIONS_OFFICER', PERMISSION_CATALOG), inheritsFrom: [], tenantId: tenant.id, schoolId: school.id },
   ]
 
   for (const role of roles) {
@@ -773,6 +845,44 @@ async function main() {
 
   console.log('✅ Branding created')
 
+  // ============ ADMISSIONS FLAG OVERRIDE ============
+  // `SystemConfig` stores OVERRIDES ONLY. A row exists if and only if somebody
+  // deliberately moved a flag away from its registry default, and the portal's
+  // read path decides "Overridden" from the mere presence of a row — not from a
+  // comparison against the default. `admissions_open` defaults to CLOSED, and
+  // the 2026/27 intake is open, so without a row here a freshly seeded deployment
+  // renders a site telling parents admissions are shut. Storing the difference is
+  // the whole point; storing the default instead would be the mirror row the
+  // write path refuses to create (`setFeatureFlag` deletes a row whose value IS
+  // the default, because "no row" is the correct stored state there).
+  //
+  // `version` is set on both halves, against the portal's own write helper
+  // (`writeOverrideRow` in apps/portal/lib/system-config.ts), because the token
+  // has a fixed meaning: no row is 0, a created row is 1, every later write is the
+  // previous value plus one, and a delete returns it to 0. A row created at the
+  // column default of 0 would be indistinguishable from no row at all, so a tab
+  // still holding precondition 0 — the number the read path publishes for "flag
+  // nobody has ever overridden" — could overwrite this one outright. Incrementing
+  // rather than assigning also repairs a legacy row already sitting at 0.
+  //
+  // `isEditable` is re-asserted rather than left to the column default: a seeded
+  // row must not be able to arrive pre-locked, or the Head of School could not
+  // close admissions for a later intake from Settings.
+  const admissionsOpenOverride = {
+    value: true,
+    description: 'Admissions open for the 2026/27 intake',
+    category: 'academics',
+    isEditable: true,
+  }
+
+  await prisma.systemConfig.upsert({
+    where: { tenantId_key: { tenantId: tenant.id, key: ADMISSIONS_OPEN_FLAG_KEY } },
+    update: { ...admissionsOpenOverride, version: { increment: 1 } },
+    create: { tenantId: tenant.id, key: ADMISSIONS_OPEN_FLAG_KEY, ...admissionsOpenOverride, version: 1 },
+  })
+
+  console.log('✅ Admissions flag override created (admissions_open = true — 2026/27 intake)')
+
   // ============ DEFAULT ADMIN USER ============
   const headmasterRole = await prisma.role.findFirst({ where: { tenantId: tenant.id, schoolId: school.id, name: 'HEADMASTER' } })
   if (!headmasterRole) {
@@ -793,11 +903,11 @@ async function main() {
     },
   })
 
-  const headmasterPassword = process.env.SEED_HEADMASTER_PASSWORD
-  if (!headmasterPassword) {
-    console.warn('WARNING: SEED_HEADMASTER_PASSWORD not set — using default that must be changed after first login.')
-  }
-  const passwordHash = await hashPassword(headmasterPassword || 'Novastar2026!')
+  // Both passwords were resolved at the top of main(), where a missing variable
+  // refuses the whole seed. There is no inline fallback left to reach for, which
+  // is the point: the one place a password could become a committed literal is
+  // the one place that no longer reads `process.env`.
+  const passwordHash = await hashPassword(seedCredentials.headmasterPassword)
 
   // Only set password on create, never on update (re-seed should not reset credentials)
   const adminUser = await prisma.user.upsert({
@@ -815,11 +925,7 @@ async function main() {
   })
 
   // ============ PORTAL ADMIN USER ============
-  const portalAdminPassword = process.env.SEED_PORTAL_ADMIN_PASSWORD
-  if (!portalAdminPassword) {
-    console.warn('WARNING: SEED_PORTAL_ADMIN_PASSWORD not set — using default that must be changed after first login.')
-  }
-  const adminPasswordHash = await hashPassword(portalAdminPassword || 'Admin@2026')
+  const adminPasswordHash = await hashPassword(seedCredentials.portalAdminPassword)
   await prisma.user.upsert({
     where: { tenantId_email: { tenantId: tenant.id, email: 'admin@novastarmontessori.com' } },
     update: {
@@ -837,7 +943,7 @@ async function main() {
       isActive: true,
     },
   })
-  console.log('✅ Portal Admin user created (admin@novastarmontessori.com / set via SEED_PORTAL_ADMIN_PASSWORD)')
+  console.log(`✅ Portal Admin user upserted (admin@novastarmontessori.com) | password from ${seedCredentials.portalAdminSource}`)
 
   // Use transaction to ensure role FK is visible
   await prisma.$transaction(async (tx) => {
@@ -883,7 +989,13 @@ async function main() {
     }
   })
 
-  console.log('✅ Headmaster user upserted (headmaster@novastarmontessori.com) | set SEED_HEADMASTER_PASSWORD before first seed to provision initial credential')
+  console.log(
+    `✅ Headmaster user upserted (headmaster@novastarmontessori.com) | ` +
+      `password from ${seedCredentials.headmasterSource}. This upsert has update: {}, so on a ` +
+      'database where the account already exists the password above was NOT applied — only ' +
+      'provisioning uses it. To re-credential an existing headmaster, reset the password ' +
+      'through the portal instead.',
+  )
 
   // ============ SAMPLE CLASSES ============
   const classData = [
@@ -1073,6 +1185,7 @@ async function main() {
   console.log('  • 5 Fee Structures')
   console.log('  • 7 Roles + 28 Permissions')
   console.log('  • 1 Branding config')
+  console.log('  • 1 SystemConfig override (admissions_open = true — 2026/27 intake; the registry default is closed)')
   console.log('  • 1 Admin User (headmaster@novastarmontessori.com)')
   console.log('  • 14 Classes')
   console.log('  • 4 Houses + 5 Departments')
@@ -1081,8 +1194,20 @@ async function main() {
 
 main()
   .catch((e) => {
-    console.error('❌ Seed failed:', e)
-    process.exit(1)
+    // A refusal prints its own message and nothing else. `console.error('…', e)`
+    // would append the stack, and the message already says which variable is
+    // missing and how to set it — a stack trace under an actionable sentence
+    // only buries it.
+    if (e instanceof SeedCredentialsError) {
+      console.error(e.message)
+    } else {
+      console.error('❌ Seed failed:', e)
+    }
+    // `exitCode`, not `exit`, so `.finally` still runs and the Prisma adapter is
+    // disconnected. A caller checking the status sees a failure either way, which
+    // is the half that matters: a refused seed that reported success would leave
+    // a CI step convinced the database was seeded.
+    process.exitCode = 1
   })
   .finally(async () => {
     await prisma.$disconnect()

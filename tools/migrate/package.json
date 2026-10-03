@@ -15,6 +15,7 @@
     "reset": "bun index.ts reset",
     "db:migrate:status": "bun index.ts status",
     "db:migrate:verify": "bun index.ts verify",
+    "db:migrate:deploy": "bun index.ts deploy",
     "lint": "eslint . --ext .ts",
     "typecheck": "tsc --noEmit",
     "test": "bun test"

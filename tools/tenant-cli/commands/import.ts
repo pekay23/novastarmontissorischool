@@ -357,7 +357,6 @@ export async function applyDocument(
       label: text(row, "label") ?? key,
       minScore: integer(row, "minScore") ?? 0,
       maxScore: integer(row, "maxScore") ?? 0,
-      point: text(row, "point") ?? "0",
       color: text(row, "color") ?? "#000000",
       description: text(row, "description"),
       order: integer(row, "order") ?? 0,

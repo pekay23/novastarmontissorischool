@@ -1,6 +1,7 @@
 import { Button } from '@novastar/shared-ui'
 import { Clock, Mail, MapPin, MessageCircle, Phone } from 'lucide-react'
 import { SCHOOL_INFO, generateContactMetadata } from '@/lib/metadata'
+import { getAdmissionsStatus } from '@/lib/data'
 
 export const metadata = generateContactMetadata()
 
@@ -11,7 +12,13 @@ export const metadata = generateContactMetadata()
  * silently vanished. Contact routes are surfaced as tel:, mailto: and WhatsApp
  * links instead, which work on a static host.
  */
-export default function ContactPage() {
+export default async function ContactPage() {
+  // One more build-time read, for one sentence and one link. Admissions being
+  // closed does not make this page wrong — it is the page a closed school sends
+  // people to — but it does make "apply straight away" and an "Apply online
+  // instead" button false, so the state has to be read here rather than assumed.
+  const { open } = await getAdmissionsStatus()
+
   const whatsappHref = `https://wa.me/${SCHOOL_INFO.whatsapp}?text=${encodeURIComponent(
     `Hello ${SCHOOL_INFO.name}, I would like to enquire about admissions.`,
   )}`
@@ -19,7 +26,7 @@ export default function ContactPage() {
   return (
     <div className="min-h-screen">
       <section className="bg-gradient-to-b from-primary/10 to-transparent py-16 md:py-20">
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8 text-center">
+        <div className="container text-center">
           <h1 className="text-responsive-h1 font-heading text-primary mb-4">Contact Us</h1>
           <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
             We&apos;d love to hear from you. Call, message, or visit our campus in Kumasi.
@@ -28,7 +35,7 @@ export default function ContactPage() {
       </section>
 
       <section className="section-y">
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="container">
           <div className="grid grid-cols-1 gap-12 lg:grid-cols-2">
             <div>
               <h2 className="text-responsive-h2 font-heading text-primary mb-8">
@@ -111,9 +118,19 @@ export default function ContactPage() {
                 Talk to the admissions office
               </h2>
               <p className="text-muted-foreground mb-6">
-                WhatsApp is the quickest way to reach us during office hours. If you
-                would rather apply straight away, the online form takes about five
-                minutes.
+                WhatsApp is the quickest way to reach us during office hours.{' '}
+                {open ? (
+                  <>
+                    If you would rather apply straight away, the online form takes
+                    about five minutes.
+                  </>
+                ) : (
+                  <>
+                    Admissions are not open at the moment, so there is no form to
+                    fill in yet — an enquiry now is how you hear about the next
+                    intake.
+                  </>
+                )}
               </p>
 
               <div className="space-y-3">
@@ -135,9 +152,14 @@ export default function ContactPage() {
                     Email the school
                   </a>
                 </Button>
-                <Button variant="ghost" className="w-full" size="lg" asChild>
-                  <a href="/admissions">Apply online instead</a>
-                </Button>
+                {/* Only when there is something to apply to. Rendered unconditionally it
+                    offered a one-click route to a page that would refuse the
+                    visitor's application a scroll later. */}
+                {open && (
+                  <Button variant="ghost" className="w-full" size="lg" asChild>
+                    <a href="/admissions">Apply online instead</a>
+                  </Button>
+                )}
               </div>
             </div>
           </div>
