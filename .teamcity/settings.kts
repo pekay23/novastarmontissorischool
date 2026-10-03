@@ -40,8 +40,10 @@
 // number, so a mistake here is reported rather than silently ignored.
 // =============================================================================
 
+import jetbrains.buildServer.configs.kotlin.v2024_07.BuildStatus
 import jetbrains.buildServer.configs.kotlin.v2024_07.BuildType
 import jetbrains.buildServer.configs.kotlin.v2024_07.Project
+import jetbrains.buildServer.configs.kotlin.v2024_07.ReuseBuilds
 import jetbrains.buildServer.configs.kotlin.v2024_07.buildSteps.script
 import jetbrains.buildServer.configs.kotlin.v2024_07.dependencies.snapshot
 import jetbrains.buildServer.configs.kotlin.v2024_07.parameters.password
