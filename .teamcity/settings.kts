@@ -40,20 +40,18 @@
 // number, so a mistake here is reported rather than silently ignored.
 // =============================================================================
 
-import jetbrains.buildServer.configs.kotlin.v2024_07.BuildStatus
-import jetbrains.buildServer.configs.kotlin.v2024_07.BuildType
-import jetbrains.buildServer.configs.kotlin.v2024_07.Project
-import jetbrains.buildServer.configs.kotlin.v2024_07.ReuseBuilds
-import jetbrains.buildServer.configs.kotlin.v2024_07.buildSteps.script
-import jetbrains.buildServer.configs.kotlin.v2024_07.dependencies.snapshot
-import jetbrains.buildServer.configs.kotlin.v2024_07.parameters.password
-import jetbrains.buildServer.configs.kotlin.v2024_07.parameters.text
-import jetbrains.buildServer.configs.kotlin.v2024_07.parameters.*
-import jetbrains.buildServer.configs.kotlin.v2024_07.triggers.finishedBuild
-import jetbrains.buildServer.configs.kotlin.v2024_07.triggers.vcs
-import jetbrains.buildServer.configs.kotlin.v2024_07.vcsRoots.git
+import jetbrains.buildServer.configs.kotlin.v2019_2.BuildType
+import jetbrains.buildServer.configs.kotlin.v2019_2.Project
+import jetbrains.buildServer.configs.kotlin.v2019_2.ReuseBuilds
+import jetbrains.buildServer.configs.kotlin.v2019_2.buildSteps.script
+import jetbrains.buildServer.configs.kotlin.v2019_2.dependencies.snapshot
+import jetbrains.buildServer.configs.kotlin.v2019_2.parameters.password
+import jetbrains.buildServer.configs.kotlin.v2019_2.parameters.text
+import jetbrains.buildServer.configs.kotlin.v2019_2.parameters.*
+import jetbrains.buildServer.configs.kotlin.v2019_2.triggers.finishedBuild
+import jetbrains.buildServer.configs.kotlin.v2019_2.triggers.vcs
 
-version = "2024.07"
+version = "2019.2"
 
 project {
     // No id() and no name= here on purpose.
@@ -71,15 +69,18 @@ project {
     // NovastarMontessori_*. Do not reintroduce id()/name= here.
     description = "Local CI/CD for the Novastar Montessori monorepo (Turborepo + Bun + Next.js)"
 
-    vcsRoots {
-        git {
-            id("NovastarMontessori_nmsGit")
-            name = "novastarmontissorischool"
-            url = "https://github.com/pekay23/novastarmontissorischool.git"
-            // Pull requests are GitHub Actions' job; TeamCity works on the trunk.
-            branchFilter = "+:refs/heads/*"
-        }
-    }
+    // No vcsRoots { } block here on purpose.
+    //
+    // The DSL API generation this server ships (v2019_2) has no `git { }` VCS-root
+    // declaration function: the jetbrains.git DSL artifact contributes only the
+    // GitVcsRoot model class, no builder. Declaring the root here would fail to
+    // compile with "unresolved reference: git".
+    //
+    // The root is server-side configuration instead. It already exists as
+    // NovastarMontessori_nmsGit, with the GitHub PAT, the URL, and
+    // branch=refs/heads/main; each build type below references it by id via
+    // vcs { root("NovastarMontessori_nmsGit") }. Change it in
+    // Administration -> Versioned Settings, not in this file.
 
     // -------------------------------------------------------------------------
     // Parameters
@@ -206,7 +207,7 @@ object Verify : BuildType({
     triggers {
         finishedBuild {
             buildType = Install
-            status = BuildStatus.SUCCESS
+            successfulOnly = true
             branchFilter = "+:refs/heads/main"
         }
     }
@@ -254,7 +255,7 @@ object E2ETest : BuildType({
     triggers {
         finishedBuild {
             buildType = Verify
-            status = BuildStatus.SUCCESS
+            successfulOnly = true
             branchFilter = "+:refs/heads/main"
         }
     }
@@ -287,7 +288,7 @@ object DockerBuild : BuildType({
     triggers {
         finishedBuild {
             buildType = E2ETest
-            status = BuildStatus.SUCCESS
+            successfulOnly = true
             branchFilter = "+:refs/heads/main"
         }
     }
@@ -323,7 +324,7 @@ object DeployLocal : BuildType({
     triggers {
         finishedBuild {
             buildType = DockerBuild
-            status = BuildStatus.SUCCESS
+            successfulOnly = true
             branchFilter = "+:refs/heads/main"
         }
     }
@@ -360,7 +361,7 @@ object DeployVercelPreview : BuildType({
     triggers {
         finishedBuild {
             buildType = E2ETest
-            status = BuildStatus.SUCCESS
+            successfulOnly = true
             branchFilter = "+:refs/heads/main"
         }
     }
