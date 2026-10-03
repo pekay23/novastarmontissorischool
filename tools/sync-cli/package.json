@@ -6,6 +6,7 @@
   "bin": { "novastar-sync": "./index.ts" },
   "scripts": {
     "sync": "bun index.ts sync",
+    "help": "bun index.ts --help",
     "status": "bun index.ts status",
     "pending": "bun index.ts pending",
     "push": "bun index.ts push",

@@ -32,8 +32,8 @@
     },
     "test": {
       "dependsOn": [],
-      "outputs": ["coverage/**"],
-      "cache": true
+      "outputs": [],
+      "cache": false
     },
     "test:ui": {
       "cache": false,
@@ -100,6 +100,12 @@
     "DATABASE_URL_POOLED",
     "SUPABASE_DIRECT_URL",
     "DATABASE_URL_RLS",
-    "SUPABASE_DATABASE_URL_RLS"
+    "SUPABASE_DATABASE_URL_RLS",
+    "TENANT_CODE",
+    "TENANT_ADMIN_EMAIL",
+    "TENANT_ADMIN_PASSWORD",
+    "SYNC_API_URL",
+    "SYNC_API_TOKEN",
+    "SYNC_CONFLICT_STRATEGY"
   ]
 }

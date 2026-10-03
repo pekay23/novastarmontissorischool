@@ -8,6 +8,8 @@ import {
   PaymentService,
   reconcilePayments,
 } from '@novastar/payments'
+import { buildTenant, buildSchool, buildFeeCategory, buildInvoice, buildPayment, buildPaymentMethodConfig } from '@novastar/testing/factories'
+import { toMinorUnits, fromMinorUnits, addMinorUnits, subMinorUnits, mulMinorUnits, divMinorUnits, formatGHS } from '@novastar/testing'
 
 describe('Payments - Provider Classes', () => {
   it('should export MTNMoMoProvider class', () => {
@@ -105,5 +107,80 @@ describe('Payments - Types', () => {
 
   it('should export VerificationResult interface', () => {
     expect(true).toBe(true)
+  })
+})
+
+describe('Payments - Factory Integration', () => {
+  it('should build a valid fee category', () => {
+    const tenant = buildTenant()
+    const feeCategory = buildFeeCategory({ tenantId: tenant.id, code: 'TUITION', name: 'Tuition Fee' })
+    expect(feeCategory.id).toMatch(/^test_fee_category_\d+$/)
+    expect(feeCategory.tenantId).toBe(tenant.id)
+    expect(feeCategory.code).toBe('TUITION')
+    expect(feeCategory.name).toBe('Tuition Fee')
+    expect(feeCategory.isRecurring).toBe(true)
+    expect(feeCategory.defaultMandatory).toBe(true)
+  })
+
+  it('should build a valid payment method config', () => {
+    const tenant = buildTenant()
+    const method = buildPaymentMethodConfig({ tenantId: tenant.id, code: 'mtn-momo', name: 'MTN Mobile Money' })
+    expect(method.id).toMatch(/^test_payment_method_\d+$/)
+    expect(method.tenantId).toBe(tenant.id)
+    expect(method.code).toBe('mtn-momo')
+    expect(method.name).toBe('MTN Mobile Money')
+    expect(method.isEnabled).toBe(true)
+  })
+
+  it('should build a valid invoice', () => {
+    const tenant = buildTenant()
+    const school = buildSchool({ tenantId: tenant.id })
+    const invoice = buildInvoice({ tenantId: tenant.id, schoolId: school.id, totalAmount: toMinorUnits(1500) })
+    expect(invoice.id).toMatch(/^test_invoice_\d+$/)
+    expect(invoice.tenantId).toBe(tenant.id)
+    expect(invoice.schoolId).toBe(school.id)
+    expect(invoice.totalAmount).toBe(toMinorUnits(1500))
+    expect(invoice.paidAmount).toBe(0)
+    expect(invoice.balance).toBe(toMinorUnits(1500))
+    expect(invoice.status).toBe('PENDING')
+    expect(invoice.invoiceNumber).toMatch(/^INV-\d+-\d+$/)
+  })
+
+  it('should build a valid payment', () => {
+    const tenant = buildTenant()
+    const school = buildSchool({ tenantId: tenant.id })
+    const payment = buildPayment({ tenantId: tenant.id, schoolId: school.id, amount: toMinorUnits(500) })
+    expect(payment.id).toMatch(/^test_payment_\d+$/)
+    expect(payment.tenantId).toBe(tenant.id)
+    expect(payment.schoolId).toBe(school.id)
+    expect(payment.amount).toBe(toMinorUnits(500))
+    expect(payment.status).toBe('COMPLETED')
+    expect(payment.reference).toMatch(/^REF-\d+-\d+$/)
+  })
+
+  it('should handle GHS minor-unit arithmetic', () => {
+    expect(toMinorUnits(10.50)).toBe(1050)
+    expect(fromMinorUnits(1050)).toBe(10.50)
+    expect(addMinorUnits(1000, 500)).toBe(1500)
+    expect(subMinorUnits(1500, 500)).toBe(1000)
+    expect(mulMinorUnits(1000, 1.5)).toBe(1500)
+    expect(divMinorUnits(1500, 3)).toBe(500)
+  })
+
+  it('should format GHS amounts correctly', () => {
+    // toMinorUnits(1500) = 150,000 cents = 1,500 GHS
+    expect(formatGHS(toMinorUnits(1500))).toBe('GH₵1500.00')
+    expect(formatGHS(toMinorUnits(15.50))).toBe('GH₵15.50')
+    expect(formatGHS(toMinorUnits(0))).toBe('GH₵0.00')
+    expect(formatGHS(-toMinorUnits(10))).toBe('-GH₵10.00')
+  })
+
+  it('should produce deterministic IDs across multiple calls', () => {
+    const tenant = buildTenant()
+    const invoice1 = buildInvoice({ tenantId: tenant.id })
+    const invoice2 = buildInvoice({ tenantId: tenant.id })
+    expect(invoice1.id).not.toBe(invoice2.id)
+    expect(invoice1.id).toMatch(/^test_invoice_\d+$/)
+    expect(invoice2.id).toMatch(/^test_invoice_\d+$/)
   })
 })

@@ -7,6 +7,7 @@
   "bin": { "novastar-tenant": "./index.ts" },
   "scripts": {
     "tenant": "bun index.ts",
+    "help": "bun index.ts --help",
     "create": "bun index.ts create",
     "clone": "bun index.ts clone",
     "list": "bun index.ts list",
