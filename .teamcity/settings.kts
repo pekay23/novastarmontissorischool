@@ -159,7 +159,7 @@ object Install : BuildType({
 
     triggers {
         vcs {
-            branchFilter = "+:default"
+            branchFilter = "+:refs/heads/main"
         }
     }
 })
@@ -194,7 +194,7 @@ object Verify : BuildType({
         finishedBuild {
             buildType = Install
             status = BuildStatus.SUCCESS
-            branchFilter = "+:default"
+            branchFilter = "+:refs/heads/main"
         }
     }
 })
@@ -242,7 +242,7 @@ object E2ETest : BuildType({
         finishedBuild {
             buildType = Verify
             status = BuildStatus.SUCCESS
-            branchFilter = "+:default"
+            branchFilter = "+:refs/heads/main"
         }
     }
 })
@@ -275,7 +275,7 @@ object DockerBuild : BuildType({
         finishedBuild {
             buildType = E2ETest
             status = BuildStatus.SUCCESS
-            branchFilter = "+:default"
+            branchFilter = "+:refs/heads/main"
         }
     }
 })
@@ -311,7 +311,7 @@ object DeployLocal : BuildType({
         finishedBuild {
             buildType = DockerBuild
             status = BuildStatus.SUCCESS
-            branchFilter = "+:default"
+            branchFilter = "+:refs/heads/main"
         }
     }
 })
@@ -348,7 +348,7 @@ object DeployVercelPreview : BuildType({
         finishedBuild {
             buildType = E2ETest
             status = BuildStatus.SUCCESS
-            branchFilter = "+:default"
+            branchFilter = "+:refs/heads/main"
         }
     }
 })
@@ -361,8 +361,10 @@ object DeployVercelProduction : BuildType({
     // Manual only, on purpose. GitHub Actions deploys production automatically on
     // a green main; an automatic trigger here as well would have two systems race
     // to publish the same trunk commit.
-    runAlways = true
-
+    //
+    // "Manual only" is expressed by having NO triggers block on this BuildType.
+    // Do not add runAlways = true to get it: runAlways fires on agent-idle, so it
+    // would queue a production deploy nobody asked for, on every idle event.
     vcs {
         root("nmsGit")
         cleanCheckout = false
