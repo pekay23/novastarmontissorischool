@@ -62,7 +62,7 @@ project {
 
     vcsRoots {
         git {
-            id("nmsGit")
+            id("NovastarMontessori_nmsGit")
             name = "novastarmontissorischool"
             url = "https://github.com/pekay23/novastarmontissorischool.git"
             // Pull requests are GitHub Actions' job; TeamCity works on the trunk.
@@ -141,12 +141,12 @@ project {
 // -----------------------------------------------------------------------------
 
 object Install : BuildType({
-    id("Install")
+    id("NovastarMontessori_Install")
     name = "Install"
     description = "Install workspace dependencies and generate the Prisma client"
 
     vcs {
-        root("nmsGit")
+        root("NovastarMontessori_nmsGit")
         // Keeping the work dir is what preserves the dependency and .turbo
         // caches between builds.
         cleanCheckout = false
@@ -167,12 +167,12 @@ object Install : BuildType({
 })
 
 object Verify : BuildType({
-    id("Verify")
+    id("NovastarMontessori_Verify")
     name = "Verify"
     description = "Lint, typecheck and unit tests"
 
     vcs {
-        root("nmsGit")
+        root("NovastarMontessori_nmsGit")
         cleanCheckout = false
     }
 
@@ -202,12 +202,12 @@ object Verify : BuildType({
 })
 
 object E2ETest : BuildType({
-    id("E2ETest")
+    id("NovastarMontessori_E2ETest")
     name = "E2E Tests"
     description = "Playwright suite (chromium, firefox, webkit) against the portal"
 
     vcs {
-        root("nmsGit")
+        root("NovastarMontessori_nmsGit")
         cleanCheckout = false
     }
 
@@ -250,12 +250,12 @@ object E2ETest : BuildType({
 })
 
 object DockerBuild : BuildType({
-    id("DockerBuild")
+    id("NovastarMontessori_DockerBuild")
     name = "Docker Build"
     description = "Build both container images with BuildKit layer caching"
 
     vcs {
-        root("nmsGit")
+        root("NovastarMontessori_nmsGit")
         cleanCheckout = false
     }
 
@@ -283,12 +283,12 @@ object DockerBuild : BuildType({
 })
 
 object DeployLocal : BuildType({
-    id("DeployLocal")
+    id("NovastarMontessori_DeployLocal")
     name = "Deploy (Docker Compose)"
     description = "Run the freshly built images in docker compose on this agent"
 
     vcs {
-        root("nmsGit")
+        root("NovastarMontessori_nmsGit")
         cleanCheckout = false
     }
 
@@ -319,12 +319,12 @@ object DeployLocal : BuildType({
 })
 
 object DeployVercelPreview : BuildType({
-    id("DeployVercelPreview")
+    id("NovastarMontessori_DeployVercelPreview")
     name = "Deploy Preview (Vercel)"
     description = "Publish a Vercel preview deployment for review"
 
     vcs {
-        root("nmsGit")
+        root("NovastarMontessori_nmsGit")
         cleanCheckout = false
     }
 
@@ -356,7 +356,7 @@ object DeployVercelPreview : BuildType({
 })
 
 object DeployVercelProduction : BuildType({
-    id("DeployVercelProduction")
+    id("NovastarMontessori_DeployVercelProduction")
     name = "Deploy Production (Vercel)"
     description = "Publish to Vercel production. Started manually from the TeamCity UI."
 
@@ -368,7 +368,7 @@ object DeployVercelProduction : BuildType({
     // Do not add runAlways = true to get it: runAlways fires on agent-idle, so it
     // would queue a production deploy nobody asked for, on every idle event.
     vcs {
-        root("nmsGit")
+        root("NovastarMontessori_nmsGit")
         cleanCheckout = false
     }
 
