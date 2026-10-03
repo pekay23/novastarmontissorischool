@@ -1,0 +1,36 @@
+{
+  "name": "@novastar/migrate",
+  "version": "0.0.0",
+  "private": true,
+  "main": "index.ts",
+  "scripts": {
+    "migrate": "bun index.ts",
+    "status": "bun index.ts status",
+    "create": "bun index.ts create",
+    "deploy": "bun index.ts deploy",
+    "baseline": "bun index.ts baseline",
+    "verify": "bun index.ts verify",
+    "rollback": "bun index.ts rollback",
+    "mirror": "bun index.ts mirror",
+    "reset": "bun index.ts reset",
+    "db:migrate:status": "bun index.ts status",
+    "db:migrate:verify": "bun index.ts verify",
+    "lint": "eslint . --ext .ts",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@novastar/db-mirror": "workspace:*",
+    "dotenv": "^17.2.3",
+    "pg": "8.18.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.18.0",
+    "@types/bun": "^1.4.2",
+    "@types/pg": "^8.18.0",
+    "@typescript-eslint/eslint-plugin": "^8.71.0",
+    "@typescript-eslint/parser": "^8.71.0",
+    "eslint": "^9.39.5",
+    "typescript": "npm:@typescript/typescript6@^6.0.2"
+  }
+}

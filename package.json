@@ -25,6 +25,8 @@
     "test:e2e:ui": "playwright test --ui",
 "db:push": "turbo run db:push --filter=@novastar/database",
     "db:migrate": "turbo run db:migrate --filter=@novastar/database",
+    "db:migrate:status": "turbo run db:migrate:status --filter=@novastar/migrate",
+    "db:migrate:verify": "turbo run db:migrate:verify --filter=@novastar/migrate",
     "db:seed": "turbo run db:seed --filter=@novastar/database",
     "db:mirror": "turbo run db:mirror --filter=@novastar/db-mirror",
     "db:mirror:verify": "bun run tools/db-mirror/mirror.ts --verify-only",

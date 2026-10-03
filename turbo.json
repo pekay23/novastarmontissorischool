@@ -53,6 +53,12 @@
     "db:migrate:deploy": {
       "cache": false
     },
+    "db:migrate:status": {
+      "cache": false
+    },
+    "db:migrate:verify": {
+      "cache": false
+    },
     "db:studio": {
       "cache": false,
       "persistent": true
