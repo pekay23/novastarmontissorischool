@@ -72,6 +72,7 @@ export {
   SubjectSchema,
   GradingLevelSchema,
   GradingScaleSchema,
+  SyllabusSchema,
   AssessmentTypeConfigSchema,
   FeeCategorySchema,
   PaymentMethodConfigSchema,
@@ -88,22 +89,84 @@ export type {
   StaffStatus,
   StudentStatus,
   ContentStatus,
+  GradingLevel,
+  Syllabus,
 } from './entity-schemas'
 
 import { ConfigEntityBaseSchema } from './entity-schemas'
+import {
+  PermissionActionEnum,
+  PermissionCategoryEnum,
+  PermissionKeySchema,
+  PermissionScopeEnum,
+  parsePermissionKey,
+} from './permission-keys'
+export {
+  PERMISSION_ACTIONS,
+  PERMISSION_CATEGORIES,
+  PERMISSION_CATALOG,
+  PERMISSION_CATALOG_BY_KEY,
+  PERMISSION_KEYS,
+  PERMISSION_SCOPES,
+  PermissionActionEnum,
+  PermissionCategoryEnum,
+  PermissionKeySchema,
+  PermissionScopeEnum,
+  PLATFORM_ROLE_NAMES,
+  ROLE_GRANT_RULES,
+  ROLE_READ_SCOPE,
+  parsePermissionKey,
+  permissionMatches,
+  permissionsForRole,
+  scopeFor,
+} from './permission-keys'
+export type {
+  ParsedPermissionKey,
+  PermissionAction,
+  PermissionCategory,
+  PermissionDefinition,
+  PermissionScope,
+  PlatformRoleName,
+  RoleGrantRule,
+} from './permission-keys'
 
 // --- Roles & Permissions (DelegationRule defined before Role) ---
-export const PermissionScopeEnum = z.enum(['all', 'own', 'class', 'department', 'custom'])
-export type PermissionScope = z.infer<typeof PermissionScopeEnum>
 
+/**
+ * `resource` and `action` are declared but validated against `key` below, so a
+ * row can no longer claim one resource while being granted under another. The
+ * previous shape asserted `key` against `/^[a-z]+:[a-z]+$/`, which rejected 11
+ * live rows (`finance:invoice:create` and friends) and 11 action verbs
+ * (`grade`, `mark`, `edit`, `pay`, `record`, `return`, `send`, `manage`,
+ * `settings`, `write`) — including the two keys that gate score and attendance
+ * writes.
+ */
 export const PermissionSchema = ConfigEntityBaseSchema.extend({
-  key: z.string().regex(/^[a-z]+:[a-z]+$/),
+  key: PermissionKeySchema,
   description: z.string(),
-  category: z.enum(['academic', 'finance', 'staff', 'student', 'communication', 'reports', 'system']),
+  category: PermissionCategoryEnum,
   resource: z.string(),
-  action: z.enum(['create', 'read', 'update', 'delete', 'approve', 'delegate', 'export']),
+  action: PermissionActionEnum,
   scope: PermissionScopeEnum,
   isSystem: z.boolean().default(false),
+}).superRefine((value, ctx) => {
+  const parsed = parsePermissionKey(value.key)
+  if (!parsed) return // already reported by PermissionKeySchema
+
+  if (value.resource !== parsed.resource) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['resource'],
+      message: `resource "${value.resource}" does not match key "${value.key}" (expected "${parsed.resource}")`,
+    })
+  }
+  if (value.action !== parsed.action) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['action'],
+      message: `action "${value.action}" does not match key "${value.key}" (expected "${parsed.action}")`,
+    })
+  }
 })
 
 export const DelegationRuleSchema = z.object({

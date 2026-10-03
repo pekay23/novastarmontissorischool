@@ -4,6 +4,7 @@
 
 import { PrismaClient } from '@prisma/client'
 import { PrismaNeon } from '@prisma/adapter-neon'
+import { PERMISSION_CATALOG, permissionsForRole } from '@novastar/shared-types'
 import { Phase, SubjectCategory, TermStatus, Gender, StaffStatus, StudentStatus, AttendanceStatus, InvoiceStatus, PaymentStatus, MessageChannel, MessageStatus, NotificationType, ContentStatus, ReportType, LeaveType, LeaveStatus } from '@prisma/client'
 import * as fs from 'fs'
 import * as path from 'path'
@@ -525,93 +526,20 @@ async function main() {
   console.log('✅ Fee Structures created')
 
   // ============ ROLES & PERMISSIONS ============
-  // System permissions
-  const permissions = [
-    // Academic
-    { key: 'academic:create', resource: 'academic', action: 'create', scope: 'all', category: 'academic', description: 'Create academic records', tenantId: tenant.id, isSystem: true },
-    { key: 'academic:read', resource: 'academic', action: 'read', scope: 'all', category: 'academic', description: 'Read academic records', tenantId: tenant.id, isSystem: true },
-    { key: 'academic:update', resource: 'academic', action: 'update', scope: 'all', category: 'academic', description: 'Update academic records', tenantId: tenant.id, isSystem: true },
-    { key: 'academic:delete', resource: 'academic', action: 'delete', scope: 'all', category: 'academic', description: 'Delete academic records', tenantId: tenant.id, isSystem: true },
-    { key: 'academic:approve', resource: 'academic', action: 'approve', scope: 'all', category: 'academic', description: 'Approve academic records', tenantId: tenant.id, isSystem: true },
-    // Academic - Assessments
-    { key: 'assessment:create', resource: 'assessment', action: 'create', scope: 'all', category: 'academic', description: 'Create assessments', tenantId: tenant.id, isSystem: true },
-    { key: 'assessment:read', resource: 'assessment', action: 'read', scope: 'all', category: 'academic', description: 'Read assessments', tenantId: tenant.id, isSystem: true },
-    { key: 'assessment:update', resource: 'assessment', action: 'update', scope: 'all', category: 'academic', description: 'Update assessments', tenantId: tenant.id, isSystem: true },
-    { key: 'assessment:delete', resource: 'assessment', action: 'delete', scope: 'all', category: 'academic', description: 'Delete assessments', tenantId: tenant.id, isSystem: true },
-    { key: 'assessment:grade', resource: 'assessment', action: 'grade', scope: 'all', category: 'academic', description: 'Grade assessments', tenantId: tenant.id, isSystem: true },
-    // Academic - Attendance
-    { key: 'attendance:mark', resource: 'attendance', action: 'mark', scope: 'all', category: 'academic', description: 'Mark attendance', tenantId: tenant.id, isSystem: true },
-    { key: 'attendance:edit', resource: 'attendance', action: 'edit', scope: 'all', category: 'academic', description: 'Edit attendance records', tenantId: tenant.id, isSystem: true },
-    { key: 'attendance:delete', resource: 'attendance', action: 'delete', scope: 'all', category: 'academic', description: 'Delete attendance records', tenantId: tenant.id, isSystem: true },
-    // Academic - Classes
-    { key: 'class:create', resource: 'class', action: 'create', scope: 'all', category: 'academic', description: 'Create classes', tenantId: tenant.id, isSystem: true },
-    { key: 'class:edit', resource: 'class', action: 'edit', scope: 'all', category: 'academic', description: 'Edit classes', tenantId: tenant.id, isSystem: true },
-    { key: 'class:delete', resource: 'class', action: 'delete', scope: 'all', category: 'academic', description: 'Delete classes', tenantId: tenant.id, isSystem: true },
-    // Finance
-    { key: 'finance:create', resource: 'finance', action: 'create', scope: 'all', category: 'finance', description: 'Create financial records', tenantId: tenant.id, isSystem: true },
-    { key: 'finance:read', resource: 'finance', action: 'read', scope: 'all', category: 'finance', description: 'Read financial records', tenantId: tenant.id, isSystem: true },
-    { key: 'finance:update', resource: 'finance', action: 'update', scope: 'all', category: 'finance', description: 'Update financial records', tenantId: tenant.id, isSystem: true },
-    { key: 'finance:delete', resource: 'finance', action: 'delete', scope: 'all', category: 'finance', description: 'Delete financial records', tenantId: tenant.id, isSystem: true },
-    { key: 'finance:approve', resource: 'finance', action: 'approve', scope: 'all', category: 'finance', description: 'Approve financial records', tenantId: tenant.id, isSystem: true },
-    // Finance - Invoices
-    { key: 'finance:invoice:create', resource: 'finance:invoice', action: 'create', scope: 'all', category: 'finance', description: 'Create invoices', tenantId: tenant.id, isSystem: true },
-    { key: 'finance:invoice:delete', resource: 'finance:invoice', action: 'delete', scope: 'all', category: 'finance', description: 'Delete invoices', tenantId: tenant.id, isSystem: true },
-    // Finance - Payments
-    { key: 'finance:payment', resource: 'finance:payment', action: 'pay', scope: 'all', category: 'finance', description: 'Make payments', tenantId: tenant.id, isSystem: true },
-    { key: 'finance:payment:record', resource: 'finance:payment', action: 'record', scope: 'all', category: 'finance', description: 'Record payments', tenantId: tenant.id, isSystem: true },
-    // Staff
-    { key: 'staff:create', resource: 'staff', action: 'create', scope: 'all', category: 'staff', description: 'Create staff records', tenantId: tenant.id, isSystem: true },
-    { key: 'staff:read', resource: 'staff', action: 'read', scope: 'all', category: 'staff', description: 'Read staff records', tenantId: tenant.id, isSystem: true },
-    { key: 'staff:update', resource: 'staff', action: 'update', scope: 'all', category: 'staff', description: 'Update staff records', tenantId: tenant.id, isSystem: true },
-    { key: 'staff:delete', resource: 'staff', action: 'delete', scope: 'all', category: 'staff', description: 'Delete staff records', tenantId: tenant.id, isSystem: true },
-    // Staff - Teachers
-    { key: 'teacher:create', resource: 'teacher', action: 'create', scope: 'all', category: 'staff', description: 'Create teachers', tenantId: tenant.id, isSystem: true },
-    { key: 'teacher:edit', resource: 'teacher', action: 'edit', scope: 'all', category: 'staff', description: 'Edit teachers', tenantId: tenant.id, isSystem: true },
-    { key: 'teacher:delete', resource: 'teacher', action: 'delete', scope: 'all', category: 'staff', description: 'Delete teachers', tenantId: tenant.id, isSystem: true },
-    // Staff - Library
-    { key: 'library:book:create', resource: 'library:book', action: 'create', scope: 'all', category: 'staff', description: 'Create library books', tenantId: tenant.id, isSystem: true },
-    { key: 'library:book:edit', resource: 'library:book', action: 'edit', scope: 'all', category: 'staff', description: 'Edit library books', tenantId: tenant.id, isSystem: true },
-    { key: 'library:book:delete', resource: 'library:book', action: 'delete', scope: 'all', category: 'staff', description: 'Delete library books', tenantId: tenant.id, isSystem: true },
-    { key: 'library:loan:create', resource: 'library:loan', action: 'create', scope: 'all', category: 'staff', description: 'Create library loans', tenantId: tenant.id, isSystem: true },
-    { key: 'library:loan:return', resource: 'library:loan', action: 'return', scope: 'all', category: 'staff', description: 'Return library loans', tenantId: tenant.id, isSystem: true },
-    // Student
-    { key: 'student:create', resource: 'student', action: 'create', scope: 'all', category: 'student', description: 'Create student records', tenantId: tenant.id, isSystem: true },
-    { key: 'student:read', resource: 'student', action: 'read', scope: 'all', category: 'student', description: 'Read student records', tenantId: tenant.id, isSystem: true },
-    { key: 'student:update', resource: 'student', action: 'update', scope: 'all', category: 'student', description: 'Update student records', tenantId: tenant.id, isSystem: true },
-    { key: 'student:delete', resource: 'student', action: 'delete', scope: 'all', category: 'student', description: 'Delete student records', tenantId: tenant.id, isSystem: true },
-    { key: 'student:edit', resource: 'student', action: 'edit', scope: 'all', category: 'student', description: 'Edit student records', tenantId: tenant.id, isSystem: true },
-    { key: 'enrollment:create', resource: 'enrollment', action: 'create', scope: 'all', category: 'student', description: 'Create enrollments', tenantId: tenant.id, isSystem: true },
-    { key: 'enrollment:delete', resource: 'enrollment', action: 'delete', scope: 'all', category: 'student', description: 'Delete enrollments', tenantId: tenant.id, isSystem: true },
-    // Communication
-    { key: 'communication:create', resource: 'communication', action: 'create', scope: 'all', category: 'communication', description: 'Create communications', tenantId: tenant.id, isSystem: true },
-    { key: 'communication:read', resource: 'communication', action: 'read', scope: 'all', category: 'communication', description: 'Read communications', tenantId: tenant.id, isSystem: true },
-    { key: 'communication:update', resource: 'communication', action: 'update', scope: 'all', category: 'communication', description: 'Update communications', tenantId: tenant.id, isSystem: true },
-    { key: 'communication:send', resource: 'communication', action: 'send', scope: 'all', category: 'communication', description: 'Send communications', tenantId: tenant.id, isSystem: true },
-    // Communication - Announcements
-    { key: 'announcement:create', resource: 'announcement', action: 'create', scope: 'all', category: 'communication', description: 'Create announcements', tenantId: tenant.id, isSystem: true },
-    { key: 'announcement:edit', resource: 'announcement', action: 'edit', scope: 'all', category: 'communication', description: 'Edit announcements', tenantId: tenant.id, isSystem: true },
-    { key: 'announcement:delete', resource: 'announcement', action: 'delete', scope: 'all', category: 'communication', description: 'Delete announcements', tenantId: tenant.id, isSystem: true },
-    // Communication - Events
-    { key: 'event:create', resource: 'event', action: 'create', scope: 'all', category: 'communication', description: 'Create events', tenantId: tenant.id, isSystem: true },
-    { key: 'event:edit', resource: 'event', action: 'edit', scope: 'all', category: 'communication', description: 'Edit events', tenantId: tenant.id, isSystem: true },
-    { key: 'event:delete', resource: 'event', action: 'delete', scope: 'all', category: 'communication', description: 'Delete events', tenantId: tenant.id, isSystem: true },
-    // Reports
-    { key: 'reports:create', resource: 'reports', action: 'create', scope: 'all', category: 'reports', description: 'Create reports', tenantId: tenant.id, isSystem: true },
-    { key: 'reports:read', resource: 'reports', action: 'read', scope: 'all', category: 'reports', description: 'Read reports', tenantId: tenant.id, isSystem: true },
-    { key: 'reports:export', resource: 'reports', action: 'export', scope: 'all', category: 'reports', description: 'Export reports', tenantId: tenant.id, isSystem: true },
-    { key: 'report:read', resource: 'report', action: 'read', scope: 'all', category: 'reports', description: 'Read reports', tenantId: tenant.id, isSystem: true },
-    // System
-    { key: 'system:manage', resource: 'system', action: 'manage', scope: 'all', category: 'system', description: 'Manage system settings', tenantId: tenant.id, isSystem: true },
-    { key: 'system:settings', resource: 'system', action: 'settings', scope: 'all', category: 'system', description: 'Manage system settings', tenantId: tenant.id, isSystem: true },
-    { key: 'delegation:approve', resource: 'delegation', action: 'approve', scope: 'all', category: 'system', description: 'Approve delegations', tenantId: tenant.id, isSystem: true },
-    // System - Config
-    { key: 'config:read', resource: 'config', action: 'read', scope: 'all', category: 'system', description: 'Read configuration', tenantId: tenant.id, isSystem: true },
-    { key: 'config:write', resource: 'config', action: 'write', scope: 'all', category: 'system', description: 'Write configuration', tenantId: tenant.id, isSystem: true },
-    // System - Inventory
-    { key: 'inventory:item:create', resource: 'inventory:item', action: 'create', scope: 'all', category: 'system', description: 'Create inventory items', tenantId: tenant.id, isSystem: true },
-    { key: 'inventory:item:edit', resource: 'inventory:item', action: 'edit', scope: 'all', category: 'system', description: 'Edit inventory items', tenantId: tenant.id, isSystem: true },
-    { key: 'inventory:item:delete', resource: 'inventory:item', action: 'delete', scope: 'all', category: 'system', description: 'Delete inventory items', tenantId: tenant.id, isSystem: true },
-  ]
+  // The vocabulary lives in @novastar/shared-types so the seed, the API route
+  // guards and the authorization tests cannot drift apart. It was previously a
+  // literal array here while PermissionSchema asserted a two-segment key regex
+  // that rejected 11 of these rows.
+  const permissions = PERMISSION_CATALOG.map(({ key, resource, action, scope, category, description }) => ({
+    key,
+    resource,
+    action,
+    scope,
+    category,
+    description,
+    tenantId: tenant.id,
+    isSystem: true,
+  }))
 
   for (const perm of permissions) {
     const existing = await prisma.permission.findFirst({
@@ -627,16 +555,14 @@ async function main() {
     }
   }
 
-  const allPerms = await prisma.permission.findMany({ where: { tenantId: tenant.id } })
-
   const roles = [
-    { name: 'HEADMASTER', description: 'School Headmaster/Headmistress - full access', isSystem: true, permissions: allPerms.map(p => p.key), inheritsFrom: [], tenantId: tenant.id, schoolId: school.id },
-    { name: 'ASSISTANT_HEAD', description: 'Assistant Headmaster/Headmistress', isSystem: true, permissions: allPerms.filter(p => p.category !== 'system' && !p.key.includes('delete')).map(p => p.key), inheritsFrom: [], tenantId: tenant.id, schoolId: school.id },
-    { name: 'HEAD_TEACHER', description: 'Head Teacher - academic oversight', isSystem: true, permissions: allPerms.filter(p => p.category === 'academic' || p.category === 'student' || p.category === 'communication').map(p => p.key), inheritsFrom: [], tenantId: tenant.id, schoolId: school.id },
-    { name: 'CLASSROOM_TEACHER', description: 'Classroom Teacher', isSystem: true, permissions: allPerms.filter(p => p.category === 'academic' && p.action !== 'delete' || p.category === 'student' && p.action === 'read' || p.category === 'communication' && p.action !== 'delete').map(p => p.key), inheritsFrom: [], tenantId: tenant.id, schoolId: school.id },
-    { name: 'ACCOUNTANT', description: 'School Accountant/Bursar', isSystem: true, permissions: allPerms.filter(p => p.category === 'finance' || p.category === 'reports').map(p => p.key), inheritsFrom: [], tenantId: tenant.id, schoolId: school.id },
-    { name: 'ADMIN_STAFF', description: 'Administrative Staff', isSystem: true, permissions: allPerms.filter(p => p.category === 'student' && (p.action === 'read' || p.action === 'create') || p.category === 'communication' && p.action === 'read').map(p => p.key), inheritsFrom: [], tenantId: tenant.id, schoolId: school.id },
-    { name: 'PARENT', description: 'Parent/Guardian', isSystem: true, permissions: ['student:read', 'communication:read'], inheritsFrom: [], tenantId: tenant.id, schoolId: school.id },
+    { name: 'HEADMASTER', description: 'School Headmaster/Headmistress - full access', isSystem: true, permissions: permissionsForRole('HEADMASTER', PERMISSION_CATALOG), inheritsFrom: [], tenantId: tenant.id, schoolId: school.id },
+    { name: 'ASSISTANT_HEAD', description: 'Assistant Headmaster/Headmistress', isSystem: true, permissions: permissionsForRole('ASSISTANT_HEAD', PERMISSION_CATALOG), inheritsFrom: [], tenantId: tenant.id, schoolId: school.id },
+    { name: 'HEAD_TEACHER', description: 'Head Teacher - academic oversight', isSystem: true, permissions: permissionsForRole('HEAD_TEACHER', PERMISSION_CATALOG), inheritsFrom: [], tenantId: tenant.id, schoolId: school.id },
+    { name: 'CLASSROOM_TEACHER', description: 'Classroom Teacher', isSystem: true, permissions: permissionsForRole('CLASSROOM_TEACHER', PERMISSION_CATALOG), inheritsFrom: [], tenantId: tenant.id, schoolId: school.id },
+    { name: 'ACCOUNTANT', description: 'School Accountant/Bursar', isSystem: true, permissions: permissionsForRole('ACCOUNTANT', PERMISSION_CATALOG), inheritsFrom: [], tenantId: tenant.id, schoolId: school.id },
+    { name: 'ADMIN_STAFF', description: 'Administrative Staff', isSystem: true, permissions: permissionsForRole('ADMIN_STAFF', PERMISSION_CATALOG), inheritsFrom: [], tenantId: tenant.id, schoolId: school.id },
+    { name: 'PARENT', description: 'Parent/Guardian', isSystem: true, permissions: permissionsForRole('PARENT', PERMISSION_CATALOG), inheritsFrom: [], tenantId: tenant.id, schoolId: school.id },
   ]
 
   for (const role of roles) {

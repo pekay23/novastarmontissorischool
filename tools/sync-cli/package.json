@@ -1,0 +1,36 @@
+{
+  "name": "@novastar/sync-cli",
+  "version": "0.0.0",
+  "private": true,
+  "main": "index.ts",
+  "bin": { "novastar-sync": "./index.ts" },
+  "scripts": {
+    "sync": "bun index.ts sync",
+    "status": "bun index.ts status",
+    "pending": "bun index.ts pending",
+    "push": "bun index.ts push",
+    "pull": "bun index.ts pull",
+    "conflicts": "bun index.ts conflicts",
+    "resolve": "bun index.ts resolve",
+    "replay": "bun index.ts replay",
+    "drain": "bun index.ts drain",
+    "lint": "eslint . --ext .ts",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@novastar/database": "workspace:*",
+    "@novastar/shared-types": "workspace:*",
+    "@novastar/sync-engine": "workspace:*",
+    "dotenv": "^17.2.3",
+    "pg": "8.18.0"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.2",
+    "@types/pg": "^8.18.0",
+    "@typescript-eslint/eslint-plugin": "^8.71.0",
+    "@typescript-eslint/parser": "^8.71.0",
+    "eslint": "^9.39.5",
+    "typescript": "npm:@typescript/typescript6@^6.0.2"
+  }
+}

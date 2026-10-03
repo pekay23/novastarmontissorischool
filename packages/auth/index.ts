@@ -3,6 +3,7 @@
 // ============================================================================
 
 import type { Permission, Role, Delegation } from '@novastar/shared-types'
+import { permissionMatches } from '@novastar/shared-types'
 import { prisma } from '@novastar/database'
 
 // --- Permission Resolution ---
@@ -90,7 +91,17 @@ async function resolveRolePermissions(
 // --- Permission Checking ---
 
 /**
- * Check if a user has a specific permission (with optional scope check).
+ * Check if a user has a specific permission.
+ *
+ * Matching honours the wildcard grants the delegation layer emits
+ * (`academic:*`, `*`). This used to be a bare `Set.has`, which made every
+ * wildcard inert: `getDefaultDelegationRules` grants prefix keys, so an
+ * ASSISTANT_HEAD delegation of `academic:*` could never match
+ * `academic:read` and the delegation silently granted nothing.
+ *
+ * Wildcards only widen the *action* dimension. Row-level narrowing is a
+ * separate concern handled by `apps/portal/lib/visibility.ts`, because a
+ * permission set has no way to express "your own records".
  */
 export async function hasPermission(
   userId: string,
@@ -99,7 +110,10 @@ export async function hasPermission(
   schoolId?: string
 ): Promise<boolean> {
   const permissions = await getEffectivePermissions(userId, tenantId, schoolId)
-  return permissions.has(permissionKey)
+  for (const granted of permissions) {
+    if (permissionMatches(granted, permissionKey)) return true
+  }
+  return false
 }
 
 /**
@@ -156,7 +170,9 @@ export async function createDelegation(input: CreateDelegationInput): Promise<De
   const delegationRules = await getDelegationRules(fromUser.roleId!, input.tenantId)
   for (const perm of input.permissions) {
     const allowed = delegationRules.some(rule => {
-      const ruleAllowsPerm = rule.permissions.includes(perm) || rule.permissions.includes('*')
+      const ruleAllowsPerm = rule.permissions.some(
+  (granted) => granted === '*' || permissionMatches(granted, perm)
+)
       return ruleAllowsPerm
     })
     if (!allowed) {

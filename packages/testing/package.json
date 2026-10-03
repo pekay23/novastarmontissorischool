@@ -1,0 +1,41 @@
+{
+  "name": "@novastar/testing",
+  "version": "0.0.0",
+  "private": true,
+  "main": "index.ts",
+  "types": "index.ts",
+  "exports": {
+    ".": "./index.ts",
+    "./e2e": "./e2e.ts",
+    "./factories": "./src/factories/index.ts",
+    "./msw": "./msw/index.ts"
+  },
+  "scripts": {
+    "lint": "eslint . --ext .ts",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test --pass-with-no-tests"
+  },
+  "dependencies": {
+    "@novastar/shared-types": "workspace:*"
+  },
+  "peerDependencies": {
+    "@playwright/test": "^1.63.0"
+  },
+  "peerDependenciesMeta": {
+    "@playwright/test": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.7",
+    "@types/bun": "^1.4.2",
+    "@types/react": "^19.2.18",
+    "eslint": "^9.39.5",
+    "msw": "^2.11.0",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "zod": "^4.4.3"
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "name": "@novastar/tenant-cli",
+  "version": "0.0.0",
+  "private": true,
+  "main": "index.ts",
+  "types": "index.ts",
+  "bin": { "novastar-tenant": "./index.ts" },
+  "scripts": {
+    "tenant": "bun index.ts",
+    "create": "bun index.ts create",
+    "clone": "bun index.ts clone",
+    "list": "bun index.ts list",
+    "show": "bun index.ts show",
+    "suspend": "bun index.ts suspend",
+    "reactivate": "bun index.ts reactivate",
+    "user": "bun index.ts user",
+    "config:get": "bun index.ts config get",
+    "config:set": "bun index.ts config set",
+    "config:export": "bun index.ts config export",
+    "config:import": "bun index.ts import",
+    "lint": "eslint . --ext .ts",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@novastar/database": "workspace:*",
+    "@novastar/shared-types": "workspace:*",
+    "dotenv": "^17.2.3",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.2",
+    "@typescript-eslint/eslint-plugin": "^8.71.0",
+    "@typescript-eslint/parser": "^8.71.0",
+    "eslint": "^9.39.5",
+    "typescript": "npm:@typescript/typescript6@^6.0.2"
+  }
+}
