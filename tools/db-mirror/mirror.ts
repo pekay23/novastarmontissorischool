@@ -16,8 +16,9 @@ import { loadEnv, supabaseUrl as supabaseConn } from "./env";
  *
  * Safety properties:
  *   - Neon is opened read-only and never written to.
- *   - Each table is TRUNCATEd then repopulated, so a re-run converges instead
- *     of appending duplicates.
+ *   - The whole copy runs in ONE transaction on the failsafe, so a failure
+ *     anywhere leaves the previous copy intact instead of every table that
+ *     had not yet been reached sitting empty.
  *   - Only tables present in BOTH databases are mirrored; tables missing on
  *     either side are reported and skipped, never silently dropped.
  *
@@ -158,35 +159,60 @@ async function main() {
     // Truncate every shared table in one statement so mutually referencing
     // tables clear together, then insert parents before children. Truncating
     // per-table would cascade away rows a later table still needs to refill.
-    await supabase.query(`TRUNCATE TABLE ${shared.map(qi).join(", ")} CASCADE`);
+    //
+    // That single TRUNCATE is also why the whole copy is one transaction.
+    // Truncating everything and then inserting table by table means any
+    // failure between the two leaves every table that had not been reached
+    // empty — the failsafe becomes less restorable than the stale copy it was
+    // meant to hold. That is not hypothetical: a column missing on the failsafe
+    // aborted the run partway and emptied AuditLog, User and SubjectLevel.
+    //
+    // One transaction makes a failed mirror a no-op. The cost is that a long
+    // copy holds locks for its duration, which is the right trade at this
+    // size: a failsafe must never be a worse restore point than the last
+    // successful one.
+    await supabase.query("BEGIN");
+    try {
+      await supabase.query(`TRUNCATE TABLE ${shared.map(qi).join(", ")} CASCADE`);
 
-    const order = await topoSort(neon, shared);
-    console.log(`Insert order resolved (${order.length} tables)\n`);
+      const order = await topoSort(neon, shared);
+      console.log(`Insert order resolved (${order.length} tables)\n`);
 
-    for (const table of order) {
-      const cols = await listColumns(neon, table);
-      const { rows } = await neon.query(
-        `SELECT ${cols.map(qi).join(", ")} FROM ${qi(table)}`
-      );
-
-      if (rows.length === 0) continue;
-
-      for (let i = 0; i < rows.length; i += BATCH) {
-        const slice = rows.slice(i, i + BATCH);
-        const values: unknown[] = [];
-        const tuples: string[] = [];
-        for (const row of slice) {
-          tuples.push(
-            `(${cols.map((_, ci) => `$${values.length + ci + 1}`).join(", ")})`
-          );
-          for (const c of cols) values.push(normalize(row[c]));
-        }
-        await supabase.query(
-          `INSERT INTO ${qi(table)} (${cols.map(qi).join(", ")}) VALUES ${tuples.join(", ")}`,
-          values
+      for (const table of order) {
+        const cols = await listColumns(neon, table);
+        const { rows } = await neon.query(
+          `SELECT ${cols.map(qi).join(", ")} FROM ${qi(table)}`
         );
+
+        if (rows.length === 0) continue;
+
+        for (let i = 0; i < rows.length; i += BATCH) {
+          const slice = rows.slice(i, i + BATCH);
+          const values: unknown[] = [];
+          const tuples: string[] = [];
+          for (const row of slice) {
+            tuples.push(
+              `(${cols.map((_, ci) => `$${values.length + ci + 1}`).join(", ")})`
+            );
+            for (const c of cols) values.push(normalize(row[c]));
+          }
+          await supabase.query(
+            `INSERT INTO ${qi(table)} (${cols.map(qi).join(", ")}) VALUES ${tuples.join(", ")}`,
+            values
+          );
+        }
+        process.stdout.write(`  ${table}: ${rows.length} rows\n`);
       }
-      process.stdout.write(`  ${table}: ${rows.length} rows\n`);
+      await supabase.query("COMMIT");
+    } catch (err) {
+      // Roll back before rethrowing so the message can be specific about what
+      // the operator is left with, rather than leaving it to inference.
+      await supabase.query("ROLLBACK").catch(() => undefined);
+      console.error(
+        "\nMirror rolled back. The failsafe still holds the previous copy;",
+      );
+      console.error("nothing was emptied. Fix the cause and re-run.");
+      throw err;
     }
   }
 

@@ -5,6 +5,7 @@
   "main": "mirror.ts",
   "scripts": {
     "mirror": "bun mirror.ts",
+    "db:mirror": "bun mirror.ts",
     "verify": "bun mirror.ts --verify-only",
     "verify-restore": "bun verify-restore.ts",
     "apply-schema": "bun apply-schema.ts",

@@ -101,6 +101,25 @@ const LATEST_LEDGER_SQL =
   `SELECT max(finished_at) AS latest FROM _prisma_migrations WHERE finished_at IS NOT NULL`;
 
 async function latestLedgerAt(q: Queryable): Promise<Date | undefined> {
+  // Neither database necessarily has this table. Both were provisioned by
+  // `prisma db push` / `db execute`, which never creates
+  // `_prisma_migrations`, so an unguarded query threw and the caller's catch
+  // turned it into "could not compare the failsafe with the primary" — which
+  // reads like a coverage failure and sent the operator back to mirroring.
+  //
+  // Coverage is the check with teeth and it has already passed by this point.
+  // A missing ledger only means the mirror's age is unknown, which is what
+  // `evaluateMirrorAge(undefined, ...)` exists to express, and which the
+  // caller already downgrades to a warning unless `--require-mirror-age` is
+  // set. Returning undefined is therefore the correct answer, not a gap.
+  //
+  // `check-schema-drift.ts` already guards this query for the same reason.
+  const present = await q.query(
+    `SELECT 1 FROM information_schema.tables
+     WHERE table_schema = 'public' AND table_name = '_prisma_migrations'`,
+  );
+  if (present.rows.length === 0) return undefined;
+
   const { rows } = await q.query(LATEST_LEDGER_SQL);
   const value = (rows[0] as { latest?: unknown } | undefined)?.latest;
   if (value instanceof Date) return value;
