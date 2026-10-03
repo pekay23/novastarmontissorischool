@@ -56,8 +56,19 @@ import jetbrains.buildServer.configs.kotlin.v2024_07.vcsRoots.git
 version = "2024.07"
 
 project {
-    id("NovastarMontessori")
-    name = "Novastar Montessori School"
+    // No id() and no name= here on purpose.
+    //
+    // Inside project { }, the id and name are NOT this project's own: they are the
+    // declaration of a nested project. Kotlin DSL portable scripts therefore bind
+    // to whichever project has versioned settings enabled, and setting id() here
+    // makes TeamCity read the file as a different, unrecognized project. The error
+    // surfaces only as "The settings of the following projects were found in the
+    // VCS: <Unrecognized project>".
+    //
+    // This project's id (NovastarMontessori) and name are owned by the server, set
+    // when the project was created. That id is also the prefix every entity id in
+    // this file must carry, which is why the build configurations below are named
+    // NovastarMontessori_*. Do not reintroduce id()/name= here.
     description = "Local CI/CD for the Novastar Montessori monorepo (Turborepo + Bun + Next.js)"
 
     vcsRoots {
