@@ -1,0 +1,164 @@
+{
+  "type": "excalidraw",
+  "version": 2,
+  "source": "hermes-agent",
+  "elements": [
+    {
+      "type": "rectangle",
+      "id": "student-list-desktop",
+      "x": 50,
+      "y": 50,
+      "width": 600,
+      "height": 400,
+      "roundness": { "type": 3 },
+      "backgroundColor": "#a5d8ff",
+      "fillStyle": "solid",
+      "strokeColor": "#1e1e1e",
+      "strokeWidth": 2,
+      "boundElements": [{ "id": "student-list-desktop-label", "type": "text" }]
+    },
+    {
+      "type": "text",
+      "id": "student-list-desktop-label",
+      "x": 70,
+      "y": 70,
+      "width": 560,
+      "height": 360,
+      "text": "STUDENT LIST — DESKTOP (1280px)\n\n┌────────────────────────────────────────────────────────────┐\n│ TOOLBAR                                                    │\n│ [🔍 Search students...]  [Filter ▼]  [Columns ▼]  [+ New]  │\n├────────────────────────────────────────────────────────────┤\n│ DATA TABLE (Virtualized, sortable, filterable)             │\n│ ┌──┬──────┬────────────┬──────┬──────┬────────┬──────┬────┐ │\n│ │☑│ Photo│ Name       │ Class│Gender│ Status │ Fees │ Act│ │\n│ ├──┼──────┼────────────┼──────┼──────┼────────┼──────┼────┤ │\n│ │ │ 👤   │ Ama Asante │ 3B   │ F    │ ●Active│Paid  │ ⋮  │ │\n│ │ │ 👤   │ Kofi Mensah│ 2A   │ M    │ ●Active│Due   │ ⋮  │ │\n│ │ │ 👤   │ Akua Owusu │ 1B   │ F    │ ●Active│Paid  │ ⋮  │ │\n│ │ │ 👤   │ Kwame Adjei│ KG2  │ M    │ ○Pending│N/A  │ ⋮  │ │\n│ │ │ 👤   │ Yaa Boateng│ JHS2 │ F    │ ●Active│Partial│ ⋮ │ │\n│ │ │ ...  │ ...        │ ...  │ ...  │ ...    │ ...  │ ...│ │\n│ └──┴──────┴────────────┴──────┴──────┴────────┴──────┴────┘ │\n│ [← Prev]  Page 1 of 27  [Next →]   [50 rows ▼]              │\n├────────────────────────────────────────────────────────────┤\n│ BULK ACTIONS (when rows selected)                          │\n│ [Generate Invoices] [Send Message] [Export] [Archive]      │\n└────────────────────────────────────────────────────────────┘",
+      "fontSize": 13,
+      "fontFamily": 1,
+      "strokeColor": "#1e1e1e",
+      "textAlign": "left",
+      "verticalAlign": "top",
+      "containerId": "student-list-desktop",
+      "originalText": "STUDENT LIST — DESKTOP (1280px)\n\n┌────────────────────────────────────────────────────────────┐\n│ TOOLBAR                                                    │\n│ [🔍 Search students...]  [Filter ▼]  [Columns ▼]  [+ New]  │\n├────────────────────────────────────────────────────────────┤\n│ DATA TABLE (Virtualized, sortable, filterable)             │\n│ ┌──┬──────┬────────────┬──────┬──────┬────────┬──────┬────┐ │\n│ │☑│ Photo│ Name       │ Class│Gender│ Status │ Fees │ Act│ │\n│ ├──┼──────┼────────────┼──────┼──────┼────────┼──────┼────┤ │\n│ │ │ 👤   │ Ama Asante │ 3B   │ F    │ ●Active│Paid  │ ⋮  │ │\n│ │ │ 👤   │ Kofi Mensah│ 2A   │ M    │ ●Active│Due   │ ⋮  │ │\n│ │ │ 👤   │ Akua Owusu │ 1B   │ F    │ ●Active│Paid  │ ⋮  │ │\n│ │ │ 👤   │ Kwame Adjei│ KG2  │ M    │ ○Pending│N/A  │ ⋮  │ │\n│ │ │ 👤   │ Yaa Boateng│ JHS2 │ F    │ ●Active│Partial│ ⋮ │ │\n│ │ │ ...  │ ...        │ ...  │ ...  │ ...    │ ...  │ ...│ │\n│ └──┴──────┴────────────┴──────┴──────┴────────┴──────┴────┘ │\n│ [← Prev]  Page 1 of 27  [Next →]   [50 rows ▼]              │\n├────────────────────────────────────────────────────────────┤\n│ BULK ACTIONS (when rows selected)                          │\n│ [Generate Invoices] [Send Message] [Export] [Archive]      │\n└────────────────────────────────────────────────────────────┘",
+      "autoResize": true
+    },
+    {
+      "type": "rectangle",
+      "id": "student-list-mobile",
+      "x": 700,
+      "y": 50,
+      "width": 350,
+      "height": 400,
+      "roundness": { "type": 3 },
+      "backgroundColor": "#b2f2bb",
+      "fillStyle": "solid",
+      "strokeColor": "#1e1e1e",
+      "strokeWidth": 2,
+      "boundElements": [{ "id": "student-list-mobile-label", "type": "text" }]
+    },
+    {
+      "type": "text",
+      "id": "student-list-mobile-label",
+      "x": 720,
+      "y": 70,
+      "width": 310,
+      "height": 360,
+      "text": "STUDENT LIST — MOBILE (375px)\n\n┌─────────────────────┐\n│ [🔍 Search...]      │\n│ [Filter ▼] [+ New]  │\n├─────────────────────┤\n│ STUDENT CARDS       │\n│ ┌────────────────┐  │\n│ │ 👤 Ama Asante  │  │\n│ │    3B • Female │  │\n│ │    ● Active    │  │\n│ │    💰 Paid     │  │\n│ │ [View] [Edit]  │  │\n│ └────────────────┘  │\n│ ┌────────────────┐  │\n│ │ 👤 Kofi Mensah │  │\n│ │    2A • Male   │  │\n│ │    ● Active    │  │\n│ │    🟡 Due      │  │\n│ │ [View] [Edit]  │  │\n│ └────────────────┘  │\n│ ┌────────────────┐  │\n│ │ 👤 Akua Owusu  │  │\n│ │    1B • Female │  │\n│ │    ● Active    │  │\n│ │    💰 Paid     │  │\n│ │ [View] [Edit]  │  │\n│ └────────────────┘  │\n├─────────────────────┤\n│ [Load More ▼]       │\n└─────────────────────┘",
+      "fontSize": 13,
+      "fontFamily": 1,
+      "strokeColor": "#1e1e1e",
+      "textAlign": "left",
+      "verticalAlign": "top",
+      "containerId": "student-list-mobile",
+      "originalText": "STUDENT LIST — MOBILE (375px)\n\n┌─────────────────────┐\n│ [🔍 Search...]      │\n│ [Filter ▼] [+ New]  │\n├─────────────────────┤\n│ STUDENT CARDS       │\n│ ┌────────────────┐  │\n│ │ 👤 Ama Asante  │  │\n│ │    3B • Female │  │\n│ │    ● Active    │  │\n│ │    💰 Paid     │  │\n│ │ [View] [Edit]  │  │\n│ └────────────────┘  │\n│ ┌────────────────┐  │\n│ │ 👤 Kofi Mensah │  │\n│ │    2A • Male   │  │\n│ │    ● Active    │  │\n│ │    🟡 Due      │  │\n│ │ [View] [Edit]  │  │\n│ └────────────────┘  │\n│ ┌────────────────┐  │\n│ │ 👤 Akua Owusu  │  │\n│ │    1B • Female │  │\n│ │    ● Active    │  │\n│ │    💰 Paid     │  │\n│ │ [View] [Edit]  │  │\n│ └────────────────┘  │\n├─────────────────────┤\n│ [Load More ▼]       │\n└─────────────────────┘",
+      "autoResize": true
+    },
+    {
+      "type": "rectangle",
+      "id": "student-profile-desktop",
+      "x": 50,
+      "y": 500,
+      "width": 600,
+      "height": 500,
+      "roundness": { "type": 3 },
+      "backgroundColor": "#d0bfff",
+      "fillStyle": "solid",
+      "strokeColor": "#1e1e1e",
+      "strokeWidth": 2,
+      "boundElements": [{ "id": "student-profile-desktop-label", "type": "text" }]
+    },
+    {
+      "type": "text",
+      "id": "student-profile-desktop-label",
+      "x": 70,
+      "y": 520,
+      "width": 560,
+      "height": 460,
+      "text": "STUDENT PROFILE 360° — DESKTOP (3-Column Layout)\n\n┌──────────────┬────────────────────────────────────────────────┐\n│ SIDEBAR      │ MAIN CONTENT — TABS                            │\n│ ┌──────────┐ │ [Profile] [Academics] [Attendance] [Fees]      │\n│ │  📷      │ │ [Behaviour] [Documents] [Timeline]             │\n│ │          │ ├────────────────────────────────────────────────┤\n│ │ Ama      │ │ PROFILE TAB                                    │\n│ │ Asante   │ │ ┌────────────────────────────────────────────┐ │\n│ │          │ │ │ Student ID: NMS-2026-0042                  │ │\n│ │ NMS-2026 │ │ │ Admission: 01 Sep 2023                     │ │\n│ │ -0042    │ │ │ Class: 3B (Stream B)                       │ │\n│ │          │ │ │ House: Kwame Nkrumah (Blue)                │ │\n│ │ 3B • F   │ │ │ Date of Birth: 15 Mar 2016 (8y)          │ │
+│ │            │ │ │ Blood: O+  Genotype: AA                   │ │\n│ │ ● Active │ │ │ Allergies: None                            │ │\n│ │          │ │ │ Medical: Asthma (inhaler in bag)           │ │\n│ │ [Edit]   │ │ │                                             │ │
+│ │ [Print]  │ │ │ PARENT/GUARDIAN                              │ │
+│ │ [Archive]│ │ │ ┌─────────────────┐ ┌─────────────────┐    │ │
+│ └──────────┘ │ │ │ 👨 Father       │ │ 👩 Mother       │    │ │
+│              │ │ │ Kwame Asante    │ │ Afia Asante     │    │ │
+│ QUICK ACTIONS│ │ │ +233 24 123 4567│ │ +233 20 987 6543│    │ │
+│ [Message]    │ │ │ kwame@email.com │ │ afia@email.com  │    │ │
+│ [Schedule]   │ │ │ ☑ Primary       │ │                 │    │ │
+│ [Fee Stmt]   │ │ └─────────────────┘ └─────────────────┘    │ │
+│ [Behaviour]  │ │                                             │ │
+│ [Promote]    │ │ EMERGENCY CONTACT                            │ │
+│              │ │ Auntie Grace: +233 54 555 1234              │ │
+│              │ └────────────────────────────────────────────┘ │
+│              │ ├────────────────────────────────────────────────┤\n│              │ │ ACADEMICS TAB (click tab)                    │\n│              │ │ ┌────────┬────────┬────────┬────────┐        │\n│              │ │ │ Subject│ Term 1 │ Term 2 │ Term 3 │        │\n│              │ │ │ Math   │ 78% 📈 │ 82% 📈 │  --  │        │\n│              │ │ │ English│ 85%    │ 88% 📈 │  --  │        │\n│              │ │ │ Science│ 72%    │ 75% 📈 │  --  │        │\n│              │ │ │ ...    │ ...    │ ...    │ ...  │        │\n│              │ │ └────────┴────────┴────────┴────────┘        │\n│              │ │ [View Detailed Report] [Download Transcript] │\n│              │ └────────────────────────────────────────────────┘\n└──────────────┴────────────────────────────────────────────────┘",
+      "fontSize": 12,
+      "fontFamily": 1,
+      "strokeColor": "#1e1e1e",
+      "textAlign": "left",
+      "verticalAlign": "top",
+      "containerId": "student-profile-desktop",
+      "originalText": "STUDENT PROFILE 360° — DESKTOP (3-Column Layout)\n\n┌──────────────┬────────────────────────────────────────────────┐\n│ SIDEBAR      │ MAIN CONTENT — TABS                            │\n│ ┌──────────┐ │ [Profile] [Academics] [Attendance] [Fees]      │\n│ │  📷      │ │ [Behaviour] [Documents] [Timeline]             │\n│ │          │ ├────────────────────────────────────────────────┤\n│ │ Ama      │ │ PROFILE TAB                                    │\n│ │ Asante   │ │ ┌────────────────────────────────────────────┐ │\n│ │          │ │ │ Student ID: NMS-2026-0042                  │ │\n│ │ NMS-2026 │ │ │ Admission: 01 Sep 2023                     │ │\n│ │ -0042    │ │ │ Class: 3B (Stream B)                       │ │\n│ │          │ │ │ House: Kwame Nkrumah (Blue)                │ │\n│ │ 3B • F   │ │ │ Date of Birth: 15 Mar 2016 (8y)          │ │\n│ │            │ │ │ Blood: O+  Genotype: AA                   │ │\n│ │ ● Active │ │ │ Allergies: None                            │ │\n│ │          │ │ │ Medical: Asthma (inhaler in bag)           │ │\n│ │ [Edit]   │ │ │                                             │ │\n│ │ [Print]  │ │ │ PARENT/GUARDIAN                              │ │\n│ │ [Archive]│ │ │ ┌─────────────────┐ ┌─────────────────┐    │ │\n│ └──────────┘ │ │ │ 👨 Father       │ │ 👩 Mother       │    │ │\n│              │ │ │ Kwame Asante    │ │ Afia Asante     │    │ │\n│ QUICK ACTIONS│ │ │ +233 24 123 4567│ │ +233 20 987 6543│    │ │\n│ [Message]    │ │ │ kwame@email.com │ │ afia@email.com  │    │ │\n│ [Schedule]   │ │ │ ☑ Primary       │ │                 │    │ │\n│ [Fee Stmt]   │ │ └─────────────────┘ └─────────────────┘    │ │\n│ [Behaviour]  │ │                                             │ │\n│ [Promote]    │ │ EMERGENCY CONTACT                            │ │\n│              │ │ Auntie Grace: +233 54 555 1234              │ │\n│              │ └────────────────────────────────────────────┘ │\n│              │ ├────────────────────────────────────────────────┤\n│              │ │ ACADEMICS TAB (click tab)                    │\n│              │ │ ┌────────┬────────┬────────┬────────┐        │\n│              │ │ │ Subject│ Term 1 │ Term 2 │ Term 3 │        │\n│              │ │ │ Math   │ 78% 📈 │ 82% 📈 │  --  │        │\n│              │ │ │ English│ 85%    │ 88% 📈 │  --  │        │\n│              │ │ │ Science│ 72%    │ 75% 📈 │  --  │        │\n│              │ │ │ ...    │ ...    │ ...    │ ...  │        │\n│              │ │ └────────┴────────┴────────┴────────┘        │\n│              │ │ [View Detailed Report] [Download Transcript] │\n│              │ └────────────────────────────────────────────────┘\n└──────────────┴────────────────────────────────────────────────┘",
+      "autoResize": true
+    },
+    {
+      "type": "rectangle",
+      "id": "student-profile-mobile",
+      "x": 700,
+      "y": 500,
+      "width": 350,
+      "height": 500,
+      "roundness": { "type": 3 },
+      "backgroundColor": "#ffd8a8",
+      "fillStyle": "solid",
+      "strokeColor": "#1e1e1e",
+      "strokeWidth": 2,
+      "boundElements": [{ "id": "student-profile-mobile-label", "type": "text" }]
+    },
+    {
+      "type": "text",
+      "id": "student-profile-mobile-label",
+      "x": 720,
+      "y": 520,
+      "width": 310,
+      "height": 460,
+      "text": "STUDENT PROFILE — MOBILE (Tabbed)\n\n┌─────────────────────┐\n│ ☰ [Logo]  [⋮]       │\n├─────────────────────┤\n│ STUDENT HEADER      │\n│ 👤 Ama Asante       │\n│ NMS-2026-0042 • 3B  │\n│ ● Active • Female   │\n│ 8 years • House: 🔵 │\n├─────────────────────┤\n│ TABS (Swipeable)    │\n│ [Profile][Academics]│\n│ [Attendance][Fees]  │\n│ [Behaviour][Docs]   │\n├─────────────────────┤\n│ PROFILE TAB         │\n│ ──────────────────  │\n│ ADMISSION           │\n│ 01 Sep 2023         │\n│ ──────────────────  │\n│ PARENTS             │\n│ 👨 Kwame Asante     │\n│   +233 24 123 4567  │\n│   ☑ Primary         │\n│ ──────────────────  │\n│ 👩 Afia Asante      │\n│   +233 20 987 6543  │\n│ ──────────────────  │\n│ MEDICAL             │\n│ Blood: O+  AA       │\n│ Asthma (inhaler)    │\n├─────────────────────┤\n│ [Edit] [Message]    │\n│ [Fee Stmt] [Report] │\n└─────────────────────┘",
+      "fontSize": 13,
+      "fontFamily": 1,
+      "strokeColor": "#1e1e1e",
+      "textAlign": "left",
+      "verticalAlign": "top",
+      "containerId": "student-profile-mobile",
+      "originalText": "STUDENT PROFILE — MOBILE (Tabbed)\n\n┌─────────────────────┐\n│ ☰ [Logo]  [⋮]       │\n├─────────────────────┤\n│ STUDENT HEADER      │\n│ 👤 Ama Asante       │\n│ NMS-2026-0042 • 3B  │\n│ ● Active • Female   │\n│ 8 years • House: 🔵 │\n├─────────────────────┤\n│ TABS (Swipeable)    │\n│ [Profile][Academics]│\n│ [Attendance][Fees]  │\n│ [Behaviour][Docs]   │\n├─────────────────────┤\n│ PROFILE TAB         │\n│ ──────────────────  │\n│ ADMISSION           │\n│ 01 Sep 2023         │\n│ ──────────────────  │\n│ PARENTS             │\n│ 👨 Kwame Asante     │\n│   +233 24 123 4567  │\n│   ☑ Primary         │\n│ ──────────────────  │\n│ 👩 Afia Asante      │\n│   +233 20 987 6543  │\n│ ──────────────────  │\n│ MEDICAL             │\n│ Blood: O+  AA       │\n│ Asthma (inhaler)    │\n├─────────────────────┤\n│ [Edit] [Message]    │\n│ [Fee Stmt] [Report] │\n└─────────────────────┘",
+      "autoResize": true
+    },
+    {
+      "type": "text",
+      "id": "title4",
+      "x": 350,
+      "y": 10,
+      "width": 500,
+      "height": 40,
+      "text": "PORTAL — STUDENT MANAGEMENT SCREENS",
+      "fontSize": 24,
+      "fontFamily": 1,
+      "strokeColor": "#1e1e1e",
+      "textAlign": "center",
+      "verticalAlign": "middle",
+      "originalText": "PORTAL — STUDENT MANAGEMENT SCREENS",
+      "autoResize": true
+    }
+  ],
+  "appState": {
+    "viewBackgroundColor": "#ffffff"
+  }
+}

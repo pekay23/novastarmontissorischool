@@ -1,0 +1,308 @@
+{
+  "type": "excalidraw",
+  "version": 2,
+  "source": "hermes-agent",
+  "elements": [
+    {
+      "type": "rectangle",
+      "id": "communication-hub",
+      "x": 50,
+      "y": 50,
+      "width": 550,
+      "height": 450,
+      "roundness": { "type": 3 },
+      "backgroundColor": "#a5d8ff",
+      "fillStyle": "solid",
+      "strokeColor": "#1e1e1e",
+      "strokeWidth": 2,
+      "boundElements": [{ "id": "communication-hub-label", "type": "text" }]
+    },
+    {
+      "type": "text",
+      "id": "communication-hub-label",
+      "x": 70,
+      "y": 70,
+      "width": 510,
+      "height": 410,
+      "text": "COMMUNICATION HUB — DESKTOP\n\n┌──────────────────────────────────────────────────────────┐\n│ TABS: [Inbox] [Compose] [Broadcast] [Templates] [Settings]│\n├──────────────────────────────────────────────────────────┤\n│ INBOX (Threaded conversations)                           │\n│ ┌────────────────────────────────────────────────────┐   │\n│ │ [🔍 Search messages...]  [Filter: All ▼]           │   │\n│ ├────────────────────────────────────────────────────┤   │\n│ │ 📧 Broadcast: Term 2 Fees Due     📅 2h ago       │   │\n│ │    To: All Parents | Channels: Email, SMS, Push   │   │\n│ │    \"Dear Parents, Term 2 fees are due...\"         │   │\n│ │    📊 Sent: 380 | Delivered: 375 | Read: 245       │   │\n│ ├────────────────────────────────────────────────────┤   │\n│ │ 💬 Direct: Mr. Osei (Teacher)       📅 1h ago     │   │\n│ │    Subject: Math SBA 1 clarification              │   │\n│ │    \"Please review Kwame's missing SBA 2 score...\"  │   │\n│ │    [Reply] [Forward] [Archive]                     │   │
+│ ├────────────────────────────────────────────────────┤   │\n│ │ 📱 SMS: Parent - Ama Asante          📅 30m ago   │   │\n│ │    \"Your child Ama was absent today. Please...\"   │   │\n│ │    Status: ✅ Delivered (MTN)                      │   │
+│ ├────────────────────────────────────────────────────┤   │\n│ │ 📧 Email: All Staff                  🟢 5m ago    │   │\n│ │    Subject: Staff Meeting Tomorrow 8am             │   │
+│ │    [View] [Resend] [Recall]                        │   │
+│ └────────────────────────────────────────────────────┘   │\n├──────────────────────────────────────────────────────────┤\n│ QUICK ACTIONS                                            │\n│ [New Broadcast] [New Message] [New Email] [New SMS]     │\n└──────────────────────────────────────────────────────────┘",
+      "fontSize": 13,
+      "fontFamily": 1,
+      "strokeColor": "#1e1e1e",
+      "textAlign": "left",
+      "verticalAlign": "top",
+      "containerId": "communication-hub",
+      "originalText": "COMMUNICATION HUB — DESKTOP\n\n┌──────────────────────────────────────────────────────────┐\n│ TABS: [Inbox] [Compose] [Broadcast] [Templates] [Settings]│\n├──────────────────────────────────────────────────────────┤\n│ INBOX (Threaded conversations)                           │\n│ ┌────────────────────────────────────────────────────┐   │\n│ │ [🔍 Search messages...]  [Filter: All ▼]           │   │\n│ ├────────────────────────────────────────────────────┤   │\n│ │ 📧 Broadcast: Term 2 Fees Due     📅 2h ago       │   │\n│ │    To: All Parents | Channels: Email, SMS, Push   │   │\n│ │    \"Dear Parents, Term 2 fees are due...\"         │   │\n│ │    📊 Sent: 380 | Delivered: 375 | Read: 245       │   │\n│ ├────────────────────────────────────────────────────┤   │\n│ │ 💬 Direct: Mr. Osei (Teacher)       📅 1h ago     │   │\n│ │    Subject: Math SBA 1 clarification              │   │\n│ │    \"Please review Kwame's missing SBA 2 score...\"  │   │\n│ │    [Reply] [Forward] [Archive]                     │   │\n│ ├────────────────────────────────────────────────────┤   │\n│ │ 📱 SMS: Parent - Ama Asante          📅 30m ago   │   │\n│ │    \"Your child Ama was absent today. Please...\"   │   │\n│ │    Status: ✅ Delivered (MTN)                      │   │\n│ ├────────────────────────────────────────────────────┤   │\n│ │ 📧 Email: All Staff                  🟢 5m ago    │   │\n│ │    Subject: Staff Meeting Tomorrow 8am             │   │
+│ │    [View] [Resend] [Recall]                        │   │
+│ └────────────────────────────────────────────────────┘   │\n├──────────────────────────────────────────────────────────┤\n│ QUICK ACTIONS                                            │\n│ [New Broadcast] [New Message] [New Email] [New SMS]     │\n└──────────────────────────────────────────────────────────┘",
+      "autoResize": true
+    },
+    {
+      "type": "rectangle",
+      "id": "broadcast-composer",
+      "x": 650,
+      "y": 50,
+      "width": 550,
+      "height": 450,
+      "roundness": { "type": 3 },
+      "backgroundColor": "#b2f2bb",
+      "fillStyle": "solid",
+      "strokeColor": "#1e1e1e",
+      "strokeWidth": 2,
+      "boundElements": [{ "id": "broadcast-composer-label", "type": "text" }]
+    },
+    {
+      "type": "text",
+      "id": "broadcast-composer-label",
+      "x": 670,
+      "y": 70,
+      "width": 510,
+      "height": 410,
+      "text": "BROADCAST COMPOSER — MULTI-CHANNEL\n\n┌──────────────────────────────────────────────────────────┐\n│ COMPOSE BROADCAST                                        │\n│ ┌────────────────────────────────────────────────────┐   │\n│ │ AUDIENCE                                            │   │\n│ │ ┌────────────────────────────────────────────────┐ │   │\n│ │ ☑ All Parents (380)                              │ │   │
+│ │ ☐ All Staff (48)                                 │ │   │
+│ │ ☐ Class: [3B ▼] (42 parents)                     │ │   │
+│ │ ☐ House: [Kwame Nkrumah ▼] (95 students)         │ │   │
+│ │ ☐ Custom: [Select recipients...]                 │ │   │
+│ │ └────────────────────────────────────────────────┘ │   │
+│ ├────────────────────────────────────────────────────┤   │
+│ │ CHANNELS (Select all that apply)                   │   │
+│ │ ☑ In-App Notification  ☑ Email  ☑ SMS             │   │
+│ │ ☑ Push Notification    ☐ WhatsApp                  │   │
+│ ├────────────────────────────────────────────────────┤   │
+│ │ MESSAGE                                             │   │
+│ │ Subject: [Term 2 Fee Payment Reminder]            │   │
+│ │                                                    │   │
+│ │ Template: [Fee Reminder ▼]  [Insert Merge Fields] │   │
+│ │ ┌────────────────────────────────────────────────┐ │   │
+│ │ │ Dear {{parent_name}},                          │ │   │
+│ │ │                                                │ │   │
+│ │ │ This is a reminder that {{student_name}}'s    │ │   │
+│ │ │ Term {{term}} fees of GHS {{balance_due}} are │ │   │
+│ │ │ overdue by {{days_overdue}} days.             │ │   │
+│ │ │                                                │ │   │
+│ │ │ Please pay via:                                │ │   │
+│ │ │ • MTN MoMo: *170#                              │ │   │
+│ │ │ • Bank: Novastar School, Acc: 1234567890      │ │   │
+│ │ │ • Cash at School Office                        │ │   │
+│ │ │                                                │ │   │
+│ │ │ Thank you,                                     │ │   │
+│ │ │ Novastar Montessori School                    │ │   │
+│ │ └────────────────────────────────────────────────┘ │   │
+│ ├────────────────────────────────────────────────────┤   │
+│ │ SCHEDULING                                          │   │
+│ │ Send: [Now ▼]  Schedule: [📅 Date] [⏰ Time]       │   │
+│ │ Repeat: [None ▼]  [Daily] [Weekly] [Monthly]      │   │
+│ ├────────────────────────────────────────────────────┤   │
+│ │ [Save Template]  [Preview]  [Test Send]  [Send]    │   │
+│ └────────────────────────────────────────────────────┘   │
+└──────────────────────────────────────────────────────────┘",
+      "fontSize": 13,
+      "fontFamily": 1,
+      "strokeColor": "#1e1e1e",
+      "textAlign": "left",
+      "verticalAlign": "top",
+      "containerId": "broadcast-composer",
+      "originalText": "BROADCAST COMPOSER — MULTI-CHANNEL\n\n┌──────────────────────────────────────────────────────────┐\n│ COMPOSE BROADCAST                                        │\n│ ┌────────────────────────────────────────────────────┐   │\n│ │ AUDIENCE                                            │   │\n│ │ ┌────────────────────────────────────────────────┐ │   │\n│ │ ☑ All Parents (380)                              │ │   │\n│ │ ☐ All Staff (48)                                 │ │   │
+│ │ ☐ Class: [3B ▼] (42 parents)                     │ │   │
+│ │ ☐ House: [Kwame Nkrumah ▼] (95 students)         │ │   │
+│ │ ☐ Custom: [Select recipients...]                 │ │   │
+│ │ └────────────────────────────────────────────────┘ │   │
+│ ├────────────────────────────────────────────────────┤   │
+│ │ CHANNELS (Select all that apply)                   │   │
+│ │ ☑ In-App Notification  ☑ Email  ☑ SMS             │   │
+│ │ ☑ Push Notification    ☐ WhatsApp                  │   │
+│ ├────────────────────────────────────────────────────┤   │
+│ │ MESSAGE                                             │   │
+│ │ Subject: [Term 2 Fee Payment Reminder]            │   │
+│ │                                                    │   │
+│ │ Template: [Fee Reminder ▼]  [Insert Merge Fields] │   │
+│ │ ┌────────────────────────────────────────────────┐ │   │
+│ │ │ Dear {{parent_name}},                          │ │   │
+│ │ │                                                │ │   │
+│ │ │ This is a reminder that {{student_name}}'s    │ │   │
+│ │ │ Term {{term}} fees of GHS {{balance_due}} are │ │   │
+│ │ │ overdue by {{days_overdue}} days.             │ │   │
+│ │ │                                                │ │   │
+│ │ │ Please pay via:                                │ │   │
+│ │ │ • MTN MoMo: *170#                              │ │   │
+│ │ │ • Bank: Novastar School, Acc: 1234567890      │ │   │
+│ │ │ • Cash at School Office                        │ │   │
+│ │ │                                                │ │   │
+│ │ │ Thank you,                                     │ │   │
+│ │ │ Novastar Montessori School                    │ │   │
+│ │ └────────────────────────────────────────────────┘ │   │
+│ ├────────────────────────────────────────────────────┤   │
+│ │ SCHEDULING                                          │   │
+│ │ Send: [Now ▼]  Schedule: [📅 Date] [⏰ Time]       │   │
+│ │ Repeat: [None ▼]  [Daily] [Weekly] [Monthly]      │   │
+│ ├────────────────────────────────────────────────────┤   │
+│ │ [Save Template]  [Preview]  [Test Send]  [Send]    │   │
+│ └────────────────────────────────────────────────────┘   │
+└──────────────────────────────────────────────────────────┘",
+      "autoResize": true
+    },
+    {
+      "type": "rectangle",
+      "id": "reports-center",
+      "x": 50,
+      "y": 550,
+      "width": 550,
+      "height": 400,
+      "roundness": { "type": 3 },
+      "backgroundColor": "#d0bfff",
+      "fillStyle": "solid",
+      "strokeColor": "#1e1e1e",
+      "strokeWidth": 2,
+      "boundElements": [{ "id": "reports-center-label", "type": "text" }]
+    },
+    {
+      "type": "text",
+      "id": "reports-center-label",
+      "x": 70,
+      "y": 570,
+      "width": 510,
+      "height": 360,
+      "text": "REPORTS CENTER — DESKTOP\n\n┌──────────────────────────────────────────────────────────┐\n│ REPORT CATEGORIES (Sidebar)                              │\n│ 📊 Academic    📅 Attendance  💰 Finance  👥 Staff       │\n│ 📈 Custom      🏛️ Compliance  📋 Scheduled               │\n├──────────────────────────────────────────────────────────┤\n│ ACADEMIC REPORTS                                         │\n│ ┌────────────────────────────────────────────────────┐   │\n│ │ [Class Performance] [Subject Analysis] [Trends]    │   │
+│ │ [Student Progress] [Promotion List] [Transcripts]  │   │\n│ └────────────────────────────────────────────────────┘   │
+│ ├──────────────────────────────────────────────────────────┤
+│ │ CLASS PERFORMANCE REPORT — 3B Term 2                    │   │
+│ │ ┌────────────────────────────────────────────────────┐ │   │
+│ │ │ Subject    │ Mean  │ Median │ Pass% │ Distinction │ │   │
+│ │ │ Mathematics│ 72%   │ 75%    │ 89%   │ 12%         │ │   │
+│ │ │ English    │ 78%   │ 80%    │ 94%   │ 18%         │ │   │
+│ │ │ Science    │ 68%   │ 70%    │ 82%   │ 8%          │ │   │
+│ │ │ Social St. │ 71%   │ 72%    │ 87%   │ 10%         │ │   │
+│ │ │ Ghanaian L.│ 75%   │ 76%    │ 91%   │ 15%         │ │   │
+│ │ │ Creative A.│ 82%   │ 85%    │ 98%   │ 25%         │ │   │
+│ │ │ Computing  │ 65%   │ 68%    │ 78%   │ 5%          │ │   │
+│ │ │ RME        │ 79%   │ 80%    │ 95%   │ 20%         │ │   │
+│ │ │ PHE        │ 85%   │ 88%    │ 100%  │ 30%         │ │   │
+│ │ ├────────────────────────────────────────────────────┤ │   │
+│ │ │ CLASS AVG  │ 75%   │        │ 90%   │ 15%         │ │   │
+│ │ └────────────────────────────────────────────────────┘ │   │
+│ │ [Chart: Radar] [Chart: Bars] [Export PDF] [Email]      │   │
+├──────────────────────────────────────────────────────────┤\n│ SCHEDULED REPORTS                                        │\n│ ┌────────────────────────────────────────────────────┐   │\n│ │ 📅 Daily: Attendance Summary → Headmaster 7:00 AM  │   │
+│ │ 📅 Weekly: Fee Collection → Bursar Mon 8:00 AM      │   │
+│ │ 📅 Termly: Terminal Reports → Parents (Auto)        │   │
+│ │ 📅 Monthly: Financial Summary → Board 1st of Month   │   │
+│ │ [+ New Schedule] [Pause] [Edit] [Run Now]           │   │
+│ └────────────────────────────────────────────────────┘   │\n└──────────────────────────────────────────────────────────┘",
+      "fontSize": 13,
+      "fontFamily": 1,
+      "strokeColor": "#1e1e1e",
+      "textAlign": "left",
+      "verticalAlign": "top",
+      "containerId": "reports-center",
+      "originalText": "REPORTS CENTER — DESKTOP\n\n┌──────────────────────────────────────────────────────────┐\n│ REPORT CATEGORIES (Sidebar)                              │\n│ 📊 Academic    📅 Attendance  💰 Finance  👥 Staff       │\n│ 📈 Custom      🏛️ Compliance  📋 Scheduled               │\n├──────────────────────────────────────────────────────────┤\n│ ACADEMIC REPORTS                                         │\n│ ┌────────────────────────────────────────────────────┐   │\n│ │ [Class Performance] [Subject Analysis] [Trends]    │   │
+│ │ [Student Progress] [Promotion List] [Transcripts]  │   │\n│ └────────────────────────────────────────────────────┘   │
+│ ├──────────────────────────────────────────────────────────┤
+│ │ CLASS PERFORMANCE REPORT — 3B Term 2                    │   │
+│ │ ┌────────────────────────────────────────────────────┐ │   │
+│ │ │ Subject    │ Mean  │ Median │ Pass% │ Distinction │ │   │
+│ │ │ Mathematics│ 72%   │ 75%    │ 89%   │ 12%         │ │   │
+│ │ │ English    │ 78%   │ 80%    │ 94%   │ 18%         │ │   │
+│ │ │ Science    │ 68%   │ 70%    │ 82%   │ 8%          │ │   │
+│ │ │ Social St. │ 71%   │ 72%    │ 87%   │ 10%         │ │   │
+│ │ │ Ghanaian L.│ 75%   │ 76%    │ 91%   │ 15%         │ │   │
+│ │ │ Creative A.│ 82%   │ 85%    │ 98%   │ 25%         │ │   │
+│ │ │ Computing  │ 65%   │ 68%    │ 78%   │ 5%          │ │   │
+│ │ │ RME        │ 79%   │ 80%    │ 95%   │ 20%         │ │   │
+│ │ │ PHE        │ 85%   │ 88%    │ 100%  │ 30%         │ │   │
+│ │ ├────────────────────────────────────────────────────┤ │   │
+│ │ │ CLASS AVG  │ 75%   │        │ 90%   │ 15%         │ │   │
+│ │ └────────────────────────────────────────────────────┘ │   │
+│ │ [Chart: Radar] [Chart: Bars] [Export PDF] [Email]      │   │
+├──────────────────────────────────────────────────────────┤\n│ SCHEDULED REPORTS                                        │\n│ ┌────────────────────────────────────────────────────┐   │\n│ │ 📅 Daily: Attendance Summary → Headmaster 7:00 AM  │   │
+│ │ 📅 Weekly: Fee Collection → Bursar Mon 8:00 AM      │   │
+│ │ 📅 Termly: Terminal Reports → Parents (Auto)        │   │
+│ │ 📅 Monthly: Financial Summary → Board 1st of Month   │   │
+│ │ [+ New Schedule] [Pause] [Edit] [Run Now]           │   │
+│ └────────────────────────────────────────────────────┘   │\n└──────────────────────────────────────────────────────────┘",
+      "autoResize": true
+    },
+    {
+      "type": "rectangle",
+      "id": "mobile-communication",
+      "x": 650,
+      "y": 550,
+      "width": 350,
+      "height": 400,
+      "roundness": { "type": 3 },
+      "backgroundColor": "#ffd8a8",
+      "fillStyle": "solid",
+      "strokeColor": "#1e1e1e",
+      "strokeWidth": 2,
+      "boundElements": [{ "id": "mobile-communication-label", "type": "text" }]
+    },
+    {
+      "type": "text",
+      "id": "mobile-communication-label",
+      "x": 670,
+      "y": 570,
+      "width": 310,
+      "height": 360,
+      "text": "COMMUNICATION — MOBILE\n\n┌─────────────────────┐\n│ ☰ [Logo]  [⋮]       │\n├─────────────────────┤\n│ TABS (Bottom Bar)   │\n│ [💬] [📧] [📱] [🔔]  │\n├─────────────────────┤\n│ INBOX               │\n│ ┌────────────────┐  │\n│ │ 📧 Broadcast   │  │\n│ │ Term 2 Fees    │  │
+│ │ 2h ago • 380   │  │
+│ └────────────────┘  │
+│ ┌────────────────┐  │\n│ │ 💬 Mr. Osei    │  │\n│ │ Math SBA clar. │  │
+│ │ 1h ago         │  │
+│ └────────────────┘  │
+│ ┌────────────────┐  │\n│ │ 📱 SMS: Ama    │  │
+│ │ Absent today   │  │
+│ │ 30m ago ✅     │  │
+│ └────────────────┘  │
+├─────────────────────┤\n│ COMPOSE (FAB)       │\n│ ┌────────────────┐  │\n│ │ [+ Broadcast]  │  │
+│ │ [+ Message]    │  │
+│ │ [+ Email]      │  │
+│ │ [+ SMS]        │  │
+│ └────────────────┘  │
+└─────────────────────┘",
+      "fontSize": 13,
+      "fontFamily": 1,
+      "strokeColor": "#1e1e1e",
+      "textAlign": "left",
+      "verticalAlign": "top",
+      "containerId": "mobile-communication",
+      "originalText": "COMMUNICATION — MOBILE\n\n┌─────────────────────┐\n│ ☰ [Logo]  [⋮]       │\n├─────────────────────┤\n│ TABS (Bottom Bar)   │\n│ [💬] [📧] [📱] [🔔]  │\n├─────────────────────┤\n│ INBOX               │\n│ ┌────────────────┐  │\n│ │ 📧 Broadcast   │  │\n│ │ Term 2 Fees    │  │
+│ │ 2h ago • 380   │  │
+│ └────────────────┘  │
+│ ┌────────────────┐  │\n│ │ 💬 Mr. Osei    │  │
+│ │ Math SBA clar. │  │
+│ │ 1h ago         │  │
+│ └────────────────┘  │
+│ ┌────────────────┐  │\n│ │ 📱 SMS: Ama    │  │
+│ │ Absent today   │  │
+│ │ 30m ago ✅     │  │
+│ └────────────────┘  │
+├─────────────────────┤\n│ COMPOSE (FAB)       │\n│ ┌────────────────┐  │\n│ │ [+ Broadcast]  │  │
+│ │ [+ Message]    │  │
+│ │ [+ Email]      │  │
+│ │ [+ SMS]        │  │
+│ └────────────────┘  │
+└─────────────────────┘",
+      "autoResize": true
+    },
+    {
+      "type": "text",
+      "id": "title7",
+      "x": 350,
+      "y": 10,
+      "width": 550,
+      "height": 40,
+      "text": "PORTAL — COMMUNICATION HUB & REPORTS CENTER",
+      "fontSize": 24,
+      "fontFamily": 1,
+      "strokeColor": "#1e1e1e",
+      "textAlign": "center",
+      "verticalAlign": "middle",
+      "originalText": "PORTAL — COMMUNICATION HUB & REPORTS CENTER",
+      "autoResize": true
+    }
+  ],
+  "appState": {
+    "viewBackgroundColor": "#ffffff"
+  }
+}

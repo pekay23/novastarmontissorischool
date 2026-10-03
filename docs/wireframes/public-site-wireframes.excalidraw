@@ -1,0 +1,158 @@
+{
+  "type": "excalidraw",
+  "version": 2,
+  "source": "hermes-agent",
+  "elements": [
+    {
+      "type": "rectangle",
+      "id": "desktop-home",
+      "x": 50,
+      "y": 50,
+      "width": 500,
+      "height": 700,
+      "roundness": { "type": 3 },
+      "backgroundColor": "#a5d8ff",
+      "fillStyle": "solid",
+      "strokeColor": "#1e1e1e",
+      "strokeWidth": 2,
+      "boundElements": [{ "id": "desktop-home-label", "type": "text" }]
+    },
+    {
+      "type": "text",
+      "id": "desktop-home-label",
+      "x": 70,
+      "y": 70,
+      "width": 460,
+      "height": 660,
+      "text": "HOME PAGE — DESKTOP (1280px+)\n\n┌────────────────────────────────────────────┐\n│ NAVBAR                                     │\n│ [Logo]  Home | About | Academics | Admis-  │\n│             Facilities | News | Contact    │\n│                                    [Apply] │\n├────────────────────────────────────────────┤\n│ HERO SECTION                               │\n│ ┌─────────────────────┐ ┌────────────────┐ │\n│ │ \"Nurturing Future   │ │  [Illustration │ │\n│ │  Leaders Through    │ │   Montessori   │ │\n│ │  Montessori        │ │   Environment] │ │\n│ │  Excellence\"       │ │                │ │\n│ │                     │ │                │ │\n│ │ [Explore Programs]  │ │                │ │\n│ │ [Apply Now]         │ │                │ │\n│ │                     │ │                │ │\n│ │ 📊 500+ Students   │ │                │ │\n│ │ 👨‍🏫 45+ Teachers  │ │                │ │\n│ │ 🏆 98% Pass Rate   │ │                │ │\n│ │ 📅 15+ Years       │ │                │ │\n│ └─────────────────────┘ └────────────────┘ │\n├────────────────────────────────────────────┤\n│ VALUE PROPOSITIONS (3 columns)             │\n│ ┌────────────┐ ┌────────────┐ ┌────────┐  │\n│ │ 🏫         │ │ 🧠         │ │ 🌍     │  │\n│ │ Authentic  │ │ Child-     │ │ Global │  │\n│ │ Montessori │ │ Centered   │ │ Citizen│  │\n│ │ Materials  │ │ Learning   │ │ Ready  │  │\n│ └────────────┘ └────────────┘ └────────┘  │\n├────────────────────────────────────────────┤\n│ PROGRAMS (4 cards horizontal)              │\n│ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌────┐ │\n│ │📷 Presch│ │📷 Primar│ │📷 JHS   │ │📷SHS│ │\n│ │ool      │ │y        │ │         │ │     │ │\n│ │KG1-KG2  │ │B1-B6    │ │B7-B9    │ │B10-│ │\n│ │[View →] │ │[View →] │ │[View →] │ │B12 │ │\n│ └─────────┘ └─────────┘ └─────────┘ └────┘ │\n├────────────────────────────────────────────┤\n│ TESTIMONIALS (Carousel - 3 items)          │\n│ ◄  \"My child thrives...\" - Parent  ►      │\n├────────────────────────────────────────────┤\n│ LATEST NEWS (3 cards + View All)           │\n│ ┌────────┐ ┌────────┐ ┌────────┐  [All]    │\n│ │📷 Title│ │📷 Title│ │📷 Title│           │\n│ │Excerpt │ │Excerpt │ │Excerpt │           │\n│ └────────┘ └────────┘ └────────┘           │\n├────────────────────────────────────────────┤\n│ FOOTER (4 columns)                         │\n│ Contact | Quick Links | Social | Newsletter│\n└────────────────────────────────────────────┘",
+      "fontSize": 13,
+      "fontFamily": 1,
+      "strokeColor": "#1e1e1e",
+      "textAlign": "left",
+      "verticalAlign": "top",
+      "containerId": "desktop-home",
+      "originalText": "HOME PAGE — DESKTOP (1280px+)\n\n┌────────────────────────────────────────────┐\n│ NAVBAR                                     │\n│ [Logo]  Home | About | Academics | Admis-  │\n│             Facilities | News | Contact    │\n│                                    [Apply] │\n├────────────────────────────────────────────┤\n│ HERO SECTION                               │\n│ ┌─────────────────────┐ ┌────────────────┐ │\n│ │ \"Nurturing Future   │ │  [Illustration │ │\n│ │  Leaders Through    │ │   Montessori   │ │\n│ │  Montessori        │ │   Environment] │ │\n│ │  Excellence\"       │ │                │ │\n│ │                     │ │                │ │\n│ │ [Explore Programs]  │ │                │ │\n│ │ [Apply Now]         │ │                │ │\n│ │                     │ │                │ │\n│ │ 📊 500+ Students   │ │                │ │\n│ │ 👨‍🏫 45+ Teachers  │ │                │ │\n│ │ 🏆 98% Pass Rate   │ │                │ │\n│ │ 📅 15+ Years       │ │                │ │\n│ └─────────────────────┘ └────────────────┘ │\n├────────────────────────────────────────────┤\n│ VALUE PROPOSITIONS (3 columns)             │\n│ ┌────────────┐ ┌────────────┐ ┌────────┐  │\n│ │ 🏫         │ │ 🧠         │ │ 🌍     │  │\n│ │ Authentic  │ │ Child-     │ │ Global │  │\n│ │ Montessori │ │ Centered   │ │ Citizen│  │\n│ │ Materials  │ │ Learning   │ │ Ready  │  │\n│ └────────────┘ └────────────┘ └────────┘  │\n├────────────────────────────────────────────┤\n│ PROGRAMS (4 cards horizontal)              │\n│ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌────┐ │\n│ │📷 Presch│ │📷 Primar│ │📷 JHS   │ │📷SHS│ │\n│ │ool      │ │y        │ │         │ │     │ │\n│ │KG1-KG2  │ │B1-B6    │ │B7-B9    │ │B10-│ │\n│ │[View →] │ │[View →] │ │[View →] │ │B12 │ │\n│ └─────────┘ └─────────┘ └─────────┘ └────┘ │\n├────────────────────────────────────────────┤\n│ TESTIMONIALS (Carousel - 3 items)          │\n│ ◄  \"My child thrives...\" - Parent  ►      │\n├────────────────────────────────────────────┤\n│ LATEST NEWS (3 cards + View All)           │\n│ ┌────────┐ ┌────────┐ ┌────────┐  [All]    │\n│ │📷 Title│ │📷 Title│ │📷 Title│           │\n│ │Excerpt │ │Excerpt │ │Excerpt │           │\n│ └────────┘ └────────┘ └────────┘           │\n├────────────────────────────────────────────┤\n│ FOOTER (4 columns)                         │\n│ Contact | Quick Links | Social | Newsletter│\n└────────────────────────────────────────────┘",
+      "autoResize": true
+    },
+    {
+      "type": "rectangle",
+      "id": "mobile-home",
+      "x": 600,
+      "y": 50,
+      "width": 350,
+      "height": 700,
+      "roundness": { "type": 3 },
+      "backgroundColor": "#b2f2bb",
+      "fillStyle": "solid",
+      "strokeColor": "#1e1e1e",
+      "strokeWidth": 2,
+      "boundElements": [{ "id": "mobile-home-label", "type": "text" }]
+    },
+    {
+      "type": "text",
+      "id": "mobile-home-label",
+      "x": 620,
+      "y": 70,
+      "width": 310,
+      "height": 660,
+      "text": "HOME PAGE — MOBILE (375px)\n\n┌─────────────────────┐\n│ NAVBAR              │\n│ ☰ [Logo]        [👤]│\n├─────────────────────┤\n│ HERO (Stacked)      │\n│ \"Nurturing Future   │\n│  Leaders Through    │\n│  Montessori        │\n│  Excellence\"       │\n│                     │\n│ [Explore Programs]  │\n│ [Apply Now]         │\n│                     │\n│ 📊 500+  👨‍🏫 45+   │\n│ 🏆 98%   📅 15+    │\n├─────────────────────┤\n│ VALUE PROPS         │\n│ (Stacked cards)     │\n│ ┌────────────────┐  │\n│ │ 🏫 Authentic   │  │\n│ │    Montessori  │  │\n│ └────────────────┘  │\n│ ┌────────────────┐  │\n│ │ 🧠 Child-      │  │\n│ │    Centered    │  │\n│ └────────────────┘  │\n│ ┌────────────────┐  │\n│ │ 🌍 Global      │  │\n│ │    Citizen     │  │\n│ └────────────────┘  │\n├─────────────────────┤\n│ PROGRAMS            │\n│ (Stacked cards)     │\n│ ┌────────────────┐  │\n│ │📷 Preschool    │  │\n│ │KG1-KG2 [View→] │  │\n│ └────────────────┘  │\n│ ┌────────────────┐  │\n│ │📷 Primary      │  │\n│ │B1-B6 [View→]   │  │\n│ └────────────────┘  │\n│ ┌────────────────┐  │\n│ │📷 JHS          │  │\n│ │B7-B9 [View→]   │  │\n│ └────────────────┘  │\n│ ┌────────────────┐  │\n│ │📷 SHS          │  │\n│ │B10-B12[View→]  │  │\n│ └────────────────┘  │\n├─────────────────────┤\n│ TESTIMONIALS        │\n│ (Swipe carousel)    │\n├─────────────────────┤\n│ NEWS (1 column)     │\n│ ┌────────────────┐  │\n│ │📷 Title        │  │\n│ │Excerpt [Read→] │  │\n│ └────────────────┘  │\n├─────────────────────┤\n│ FOOTER (Stacked)    │\n│ Contact | Links     │\n│ Social | Subscribe  │\n└─────────────────────┘",
+      "fontSize": 13,
+      "fontFamily": 1,
+      "strokeColor": "#1e1e1e",
+      "textAlign": "left",
+      "verticalAlign": "top",
+      "containerId": "mobile-home",
+      "originalText": "HOME PAGE — MOBILE (375px)\n\n┌─────────────────────┐\n│ NAVBAR              │\n│ ☰ [Logo]        [👤]│\n├─────────────────────┤\n│ HERO (Stacked)      │\n│ \"Nurturing Future   │\n│  Leaders Through    │\n│  Montessori        │\n│  Excellence\"       │\n│                     │\n│ [Explore Programs]  │\n│ [Apply Now]         │\n│                     │\n│ 📊 500+  👨‍🏫 45+   │\n│ 🏆 98%   📅 15+    │\n├─────────────────────┤\n│ VALUE PROPS         │\n│ (Stacked cards)     │\n│ ┌────────────────┐  │\n│ │ 🏫 Authentic   │  │\n│ │    Montessori  │  │\n│ └────────────────┘  │\n│ ┌────────────────┐  │\n│ │ 🧠 Child-      │  │\n│ │    Centered    │  │\n│ └────────────────┘  │\n│ ┌────────────────┐  │\n│ │ 🌍 Global      │  │\n│ │    Citizen     │  │\n│ └────────────────┘  │\n├─────────────────────┤\n│ PROGRAMS            │\n│ (Stacked cards)     │\n│ ┌────────────────┐  │\n│ │📷 Preschool    │  │\n│ │KG1-KG2 [View→] │  │\n│ └────────────────┘  │\n│ ┌────────────────┐  │\n│ │📷 Primary      │  │\n│ │B1-B6 [View→]   │  │\n│ └────────────────┘  │\n│ ┌────────────────┐  │\n│ │📷 JHS          │  │\n│ │B7-B9 [View→]   │  │\n│ └────────────────┘  │\n│ ┌────────────────┐  │\n│ │📷 SHS          │  │\n│ │B10-B12[View→]  │  │\n│ └────────────────┘  │\n├─────────────────────┤\n│ TESTIMONIALS        │\n│ (Swipe carousel)    │\n├─────────────────────┤\n│ NEWS (1 column)     │\n│ ┌────────────────┐  │\n│ │📷 Title        │  │\n│ │Excerpt [Read→] │  │\n│ └────────────────┘  │\n├─────────────────────┤\n│ FOOTER (Stacked)    │\n│ Contact | Links     │\n│ Social | Subscribe  │\n└─────────────────────┘",
+      "autoResize": true
+    },
+    {
+      "type": "rectangle",
+      "id": "admissions-desktop",
+      "x": 50,
+      "y": 800,
+      "width": 500,
+      "height": 400,
+      "roundness": { "type": 3 },
+      "backgroundColor": "#ffd8a8",
+      "fillStyle": "solid",
+      "strokeColor": "#1e1e1e",
+      "strokeWidth": 2,
+      "boundElements": [{ "id": "admissions-desktop-label", "type": "text" }]
+    },
+    {
+      "type": "text",
+      "id": "admissions-desktop-label",
+      "x": 70,
+      "y": 820,
+      "width": 460,
+      "height": 360,
+      "text": "ADMISSIONS PAGE — DESKTOP\n\n┌────────────────────────────────────────────┐\n│ PROCESS STEPPER (Horizontal)               │\n│ ① Enquire → ② Apply → ③ Assess →          │\n│ ④ Interview → ⑤ Admit                      │\n│ (Current step highlighted, lines connect)  │\n├────────────────────────────────────────────┤\n│ REQUIREMENTS (2-column grid, 8 items)      │\n│ ┌─────────────────┐ ┌─────────────────┐    │\n│ │ 📄 Birth Cert   │ │ 📄 Transfer     │    │\n│ │    Certificate  │ │    Certificate  │    │\n│ └─────────────────┘ └─────────────────┘    │\n│ ┌─────────────────┐ ┌─────────────────┐    │\n│ │ 📄 Medical      │ │ 📄 2 Passport   │    │\n│ │    Report       │ │    Photos       │    │\n│ └─────────────────┘ └─────────────────┘    │\n│ ┌─────────────────┐ ┌─────────────────┐    │\n│ │ 📄 Parent ID    │ │ 📄 Proof of     │    │\n│ │    Copies       │ │    Residence    │    │\n│ └─────────────────┘ └─────────────────┘    │\n│ ┌─────────────────┐ ┌─────────────────┐    │\n│ │ 📄 Academic     │ │ 📄 Immunization │    │\n│ │    Records      │ │    Records      │    │\n│ └─────────────────┘ └─────────────────┘    │\n├────────────────────────────────────────────┤\n│ FAQ ACCORDION (8 items)                    │\n│ ▼ What is the admission age?              │\n│ ▼ Is there an entrance assessment?        │\n│ ▼ What are the fees?                      │\n│ ▼ Do you offer scholarships?              │\n│ ▼ What curriculum do you follow?          │\n│ ▼ Is transport available?                 │\n│ ▼ How do I apply?                         │\n│ ▼ When does the academic year start?      │\n├────────────────────────────────────────────┤\n│ CTA: [Start Application →] (Full width)    │\n└────────────────────────────────────────────┘",
+      "fontSize": 13,
+      "fontFamily": 1,
+      "strokeColor": "#1e1e1e",
+      "textAlign": "left",
+      "verticalAlign": "top",
+      "containerId": "admissions-desktop",
+      "originalText": "ADMISSIONS PAGE — DESKTOP\n\n┌────────────────────────────────────────────┐\n│ PROCESS STEPPER (Horizontal)               │\n│ ① Enquire → ② Apply → ③ Assess →          │\n│ ④ Interview → ⑤ Admit                      │\n│ (Current step highlighted, lines connect)  │\n├────────────────────────────────────────────┤\n│ REQUIREMENTS (2-column grid, 8 items)      │\n│ ┌─────────────────┐ ┌─────────────────┐    │\n│ │ 📄 Birth Cert   │ │ 📄 Transfer     │    │\n│ │    Certificate  │ │    Certificate  │    │\n│ └─────────────────┘ └─────────────────┘    │\n│ ┌─────────────────┐ ┌─────────────────┐    │\n│ │ 📄 Medical      │ │ 📄 2 Passport   │    │\n│ │    Report       │ │    Photos       │    │\n│ └─────────────────┘ └─────────────────┘    │\n│ ┌─────────────────┐ ┌─────────────────┐    │\n│ │ 📄 Parent ID    │ │ 📄 Proof of     │\n│ │    Copies       │ │    Residence    │    │\n│ └─────────────────┘ └─────────────────┘    │\n│ ┌─────────────────┐ ┌─────────────────┐    │\n│ │ 📄 Academic     │ │ 📄 Immunization │    │\n│ │    Records      │ │    Records      │    │\n│ └─────────────────┘ └─────────────────┘    │\n├────────────────────────────────────────────┤\n│ FAQ ACCORDION (8 items)                    │\n│ ▼ What is the admission age?              │\n│ ▼ Is there an entrance assessment?        │\n│ ▼ What are the fees?                      │\n│ ▼ Do you offer scholarships?              │\n│ ▼ What curriculum do you follow?          │\n│ ▼ Is transport available?                 │\n│ ▼ How do I apply?                         │\n│ ▼ When does the academic year start?      │\n├────────────────────────────────────────────┤\n│ CTA: [Start Application →] (Full width)    │\n└────────────────────────────────────────────┘",
+      "autoResize": true
+    },
+    {
+      "type": "rectangle",
+      "id": "application-form",
+      "x": 600,
+      "y": 800,
+      "width": 550,
+      "height": 400,
+      "roundness": { "type": 3 },
+      "backgroundColor": "#ffc9c9",
+      "fillStyle": "solid",
+      "strokeColor": "#1e1e1e",
+      "strokeWidth": 2,
+      "boundElements": [{ "id": "application-form-label", "type": "text" }]
+    },
+    {
+      "type": "text",
+      "id": "application-form-label",
+      "x": 620,
+      "y": 820,
+      "width": 510,
+      "height": 360,
+      "text": "ONLINE APPLICATION FORM (Multi-Step)\n\n┌────────────────────────────────────────────────┐\n│ PROGRESS: Step 1 of 4  ████████░░░░░░  25%     │\n├────────────────────────────────────────────────┤\n│ STEP 1: STUDENT INFORMATION                    │\n│ ┌──────────────────────────────────────────┐  │\n│ │ First Name *  [________________________] │  │\n│ │ Middle Name   [________________________] │  │\n│ │ Last Name *   [________________________] │  │\n│ │ Date of Birth * [📅 ________________]   │  │\n│ │ Gender *      [Male ▼]                   │  │\n│ │ Class Applying * [KG1 ▼]                 │  │\n│ │ Term/Year *   [Term 1 2025/26 ▼]         │  │\n│ └──────────────────────────────────────────┘  │\n│                    [Next →]                    │\n├────────────────────────────────────────────────┤\n│ STEP 2: PARENT/GUARDIAN DETAILS                │\n│ ┌──────────────────────────────────────────┐  │\n│ │ Relationship * [Father ▼]                │  │\n│ │ Full Name *   [________________________] │  │\n│ │ Phone *       [+233 _________________]   │  │\n│ │ Email *       [________________________] │  │\n│ │ Occupation    [________________________] │  │\n│ │ Employer      [________________________] │  │\n│ │ Address       [________________________] │  │\n│ │ ☐ Primary Contact                        │  │\n│ │ (+ Add Second Guardian)                  │  │
+│ └──────────────────────────────────────────┘  │\n│          [← Back]          [Next →]          │\n├────────────────────────────────────────────────┤\n│ STEP 3: DOCUMENTS UPLOAD                       │\n│ Drag & drop or click to upload                 │\n│ ┌─────────────────┐ ┌─────────────────┐       │\n│ │ 📄 Birth Cert   │ │ 📄 Medical      │       │\n│ │   [Upload]      │ │   [Upload]      │       │
+│ └─────────────────┘ └─────────────────┘       │\n│ ┌─────────────────┐ ┌─────────────────┐       │\n│ │ 📄 Photos (2)   │ │ 📄 Parent IDs   │       │
+│ │   [Upload]      │ │   [Upload]      │       │
+│ └─────────────────┘ └─────────────────┘       │\n│ Max 5MB each | PDF, JPG, PNG                │\n│          [← Back]          [Next →]          │\n├────────────────────────────────────────────────┤\n│ STEP 4: REVIEW & SUBMIT                        │\n│ Summary of all entered data                    │\n│ ☐ I declare information is accurate            │\n│ ☐ I agree to terms & privacy policy            │\n│                                                │\n│         [← Back]      [Submit Application]     │\n└────────────────────────────────────────────────┘",
+      "fontSize": 12,
+      "fontFamily": 1,
+      "strokeColor": "#1e1e1e",
+      "textAlign": "left",
+      "verticalAlign": "top",
+      "containerId": "application-form",
+      "originalText": "ONLINE APPLICATION FORM (Multi-Step)\n\n┌────────────────────────────────────────────────┐\n│ PROGRESS: Step 1 of 4  ████████░░░░░░  25%     │\n├────────────────────────────────────────────────┤\n│ STEP 1: STUDENT INFORMATION                    │\n│ ┌──────────────────────────────────────────┐  │\n│ │ First Name *  [________________________] │  │\n│ │ Middle Name   [________________________] │  │\n│ │ Last Name *   [________________________] │  │\n│ │ Date of Birth * [📅 ________________]   │  │\n│ │ Gender *      [Male ▼]                   │  │\n│ │ Class Applying * [KG1 ▼]                 │  │\n│ │ Term/Year *   [Term 1 2025/26 ▼]         │  │\n│ └──────────────────────────────────────────┘  │\n│                    [Next →]                    │\n├────────────────────────────────────────────────┤\n│ STEP 2: PARENT/GUARDIAN DETAILS                │\n│ ┌──────────────────────────────────────────┐  │\n│ │ Relationship * [Father ▼]                │  │\n│ │ Full Name *   [________________________] │  │\n│ │ Phone *       [+233 _________________]   │  │\n│ │ Email *       [________________________] │  │\n│ │ Occupation    [________________________] │  │\n│ │ Employer      [________________________] │  │\n│ │ Address       [________________________] │  │\n│ │ ☐ Primary Contact                        │  │\n│ │ (+ Add Second Guardian)                  │  │
+│ └──────────────────────────────────────────┘  │\n│          [← Back]          [Next →]          │\n├────────────────────────────────────────────────┤\n│ STEP 3: DOCUMENTS UPLOAD                       │\n│ Drag & drop or click to upload                 │\n│ ┌─────────────────┐ ┌─────────────────┐       │\n│ │ 📄 Birth Cert   │ │ 📄 Medical      │       │\n│ │   [Upload]      │ │   [Upload]      │       │
+│ └─────────────────┘ └─────────────────┘       │\n│ ┌─────────────────┐ ┌─────────────────┐       │\n│ │ 📄 Photos (2)   │ │ 📄 Parent IDs   │       │
+│ │   [Upload]      │ │   [Upload]      │       │
+│ └─────────────────┘ └─────────────────┘       │\n│ Max 5MB each | PDF, JPG, PNG                │\n│          [← Back]          [Next →]          │\n├────────────────────────────────────────────────┤\n│ STEP 4: REVIEW & SUBMIT                        │\n│ Summary of all entered data                    │\n│ ☐ I declare information is accurate            │\n│ ☐ I agree to terms & privacy policy            │\n│                                                │\n│         [← Back]      [Submit Application]     │\n└────────────────────────────────────────────────┘",
+      "autoResize": true
+    },
+    {
+      "type": "text",
+      "id": "title2",
+      "x": 300,
+      "y": 10,
+      "width": 500,
+      "height": 40,
+      "text": "PUBLIC WEBSITE — RESPONSIVE WIREFRAMES",
+      "fontSize": 24,
+      "fontFamily": 1,
+      "strokeColor": "#1e1e1e",
+      "textAlign": "center",
+      "verticalAlign": "middle",
+      "originalText": "PUBLIC WEBSITE — RESPONSIVE WIREFRAMES",
+      "autoResize": true
+    }
+  ],
+  "appState": {
+    "viewBackgroundColor": "#ffffff"
+  }
+}
