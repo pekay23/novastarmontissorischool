@@ -1,0 +1,70 @@
+# =============================================================================
+# Line endings
+#
+# Why this file exists
+# --------------------
+# The repository's index was already 100% LF, but with `core.autocrlf=true`
+# Git converted LF to CRLF on checkout. That produced 48 fully-CRLF working-tree
+# files and 26 more with *mixed* endings inside a single file. The visible
+# symptom was phantom `git diff` output: status reported a file as modified, a
+# diff printed hunks, and a byte-level comparison showed the content identical
+# to HEAD. Two people editing at once saw three different "diffs" for one file
+# within a minute, which reads as lost work and is not.
+#
+# `core.autocrlf` is a per-machine Git setting, so relying on it means every
+# developer and every CI runner has to be configured identically or the
+# worktree diverges from the index. Checking the rule into the repository makes
+# the contract explicit and machine-independent instead.
+#
+# `text=auto` lets Git detect binary content itself and skip normalisation for
+# it, so the explicit binary rules below are belt-and-braces documentation
+# rather than load-bearing exclusions.
+# =============================================================================
+
+# Default: normalise to LF in the index and check out LF on every platform.
+# The Docker builds, the CI runners and the Linux deploy targets all assume LF.
+* text=auto eol=lf
+
+# -----------------------------------------------------------------------------
+# Windows scripts
+#
+# These are run by PowerShell on Windows only. They are the one place CRLF is
+# correct rather than merely tolerated.
+# -----------------------------------------------------------------------------
+*.ps1   text eol=crlf
+*.cmd   text eol=crlf
+*.bat   text eol=crlf
+
+# -----------------------------------------------------------------------------
+# Binary assets - never line-ending normalised.
+#
+# Without these, a file that happens to contain 0x0D 0x0A bytes in a font or a
+# PNG could be "normalised" and corrupted. `text=auto` already detects these,
+# but naming them keeps the intent obvious to anyone editing this file later.
+# -----------------------------------------------------------------------------
+*.png       binary
+*.jpg       binary
+*.jpeg      binary
+*.gif       binary
+*.ico       binary
+*.webp      binary
+*.avif      binary
+*.svg       binary
+*.woff      binary
+*.woff2     binary
+*.ttf       binary
+*.otf       binary
+*.eot       binary
+*.pdf       binary
+*.zip       binary
+*.gz        binary
+*.svgz      binary
+
+# -----------------------------------------------------------------------------
+# Lockfiles and generated assets
+#
+# Bun generates this and it is already LF. Declaring it keeps a future
+# `text=auto` misdetection from rewriting it, and gives a reviewer an obvious
+# place to look when a lockfile diff shows phantom whole-file changes.
+# -----------------------------------------------------------------------------
+bun.lock    text eol=lf
