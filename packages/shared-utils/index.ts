@@ -905,19 +905,25 @@ export function computeAcademicSummary(
         })),
       ),
     )
+    // Resolved from the percentage against the school's current bands, never from
+    // a key frozen on the score when it was graded.
+    const band = percentage === null ? null : resolveGradeBand(percentage, bands)
     return {
       subjectId,
       gradedAssessments: rows.length,
       percentage,
       weighting: buildWeightingBreakdown(rows),
-      // Resolved from the percentage against the school's current bands, never
-      // from a key frozen on the score when it was graded.
-      band: percentage === null ? null : resolveGradeBand(percentage, bands),
+      band,
       // Stated rather than rendered blank: a band withheld because the scale
       // itself cannot grade is a fault the head teacher has to see, not an empty
       // cell that looks like a missing score.
+      //
+      // Tied to THIS subject's band actually being withheld. Keying it off "the
+      // scale has some defect anywhere" would tell a correctly-graded subject it
+      // was withheld because an unrelated range elsewhere is broken, so the
+      // report would contradict itself next to a percentage that graded fine.
       bandProblem:
-        percentage !== null && bands.length > 0 && scaleDefects.length > 0
+        band === null && percentage !== null && bands.length > 0 && scaleDefects.length > 0
           ? scaleDefects.join('; ')
           : null,
     }

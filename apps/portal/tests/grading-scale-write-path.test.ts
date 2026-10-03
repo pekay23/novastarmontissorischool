@@ -758,4 +758,25 @@ describe('resolveGradeBand - a malformed scale cannot silently mis-grade a child
     expect(noScale.subjects[0]?.band).toBeNull()
     expect(noScale.subjects[0]?.bandProblem).toBeNull()
   })
+
+  it('states no problem for a subject the broken range cannot touch', () => {
+    // The scale still carries the 60-65% hole, so its defects are non-empty — but
+    // this subject graded cleanly at 75%, inside level_5. Reporting a fault here
+    // would set "Scale error" beside a percentage that resolved perfectly, and a
+    // report that contradicts itself is worse than one that is merely incomplete.
+    const graded = computeAcademicSummary(
+      [
+        {
+          subjectId: 'maths',
+          percentage: 75,
+          weight: 1,
+          assessmentType: 'Classwork',
+          assessmentTypeCode: 'CLASSWORK',
+        },
+      ],
+      mistyped,
+    )
+    expect(graded.subjects[0]?.band?.key).toBe('level_5')
+    expect(graded.subjects[0]?.bandProblem).toBeNull()
+  })
 })
