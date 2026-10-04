@@ -1,0 +1,6 @@
+# `bun test` needs a DOM before any module that touches one is imported, and an
+# import is hoisted above any setup a test file runs, so the registration has to
+# happen in a preload rather than in a `beforeAll`. jsdom is registered against
+# the globals here, once, for every test file in this package.
+[test]
+preload = ["./tests/setup.ts"]

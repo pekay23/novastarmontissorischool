@@ -4,11 +4,11 @@
     "lib": ["esnext"],
     "noEmit": true,
     "noUncheckedIndexedAccess": true,
-    "types": ["node"],
+    "types": ["node", "bun"],
     "paths": {
       "@novastar/*": ["../../packages/*/index.ts"]
     }
   },
-  "include": ["index.ts", "src/**/*.ts"],
+  "include": ["index.ts", "src/**/*.ts", "tests/**/*.ts", "tests/**/*.tsx"],
   "exclude": ["node_modules"]
 }

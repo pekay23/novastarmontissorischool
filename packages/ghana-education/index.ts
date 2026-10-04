@@ -243,7 +243,13 @@ export function calculateGhanaTermDates(academicYearStart: Date): TermDates {
     },
     holidays: {
       start: new Date(year + 1, 7, 15),  // Aug 15
-      end: new Date(year + 1, 8, 31),   // Sept 1 (start of next year)
+      // Day 1, not 31. Month 8 is September, which has 30 days, so `8, 31`
+      // rolls forward to October 1 and made the long vacation 17 days longer
+      // than the "Aug – Sept" above. `calculateTeachingDays` treats both ends
+      // as inclusive, so the extra window silently added 30 days to every
+      // academic year's teaching total — the kind of number a fee or an
+      // attendance report is built on.
+      end: new Date(year + 1, 8, 1),   // Sept 1
     },
   }
 }

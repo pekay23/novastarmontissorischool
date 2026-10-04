@@ -3,11 +3,11 @@
   "compilerOptions": {
     "lib": ["esnext"],
     "noEmit": true,
-    "types": ["node"],
+    "types": ["node", "bun"],
     "paths": {
       "~/*": ["./*"]
     }
   },
-  "include": ["*.ts"],
+  "include": ["*.ts", "tests/**/*.ts", "tests/**/*.tsx"],
   "exclude": ["node_modules", ".prisma", "prisma"]
 }

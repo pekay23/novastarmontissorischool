@@ -4,10 +4,10 @@
     "lib": ["ES2022"],
     "noEmit": true,
     "noUncheckedIndexedAccess": true,
-    "types": ["node"],
+    "types": ["node", "bun"],
     "paths": {
       "@novastar/*": ["../../packages/*/index.ts"]
     }
   },
-  "include": ["index.ts"]
+  "include": ["index.ts", "tests/**/*.ts", "tests/**/*.tsx"]
 }

@@ -6,6 +6,7 @@
   "types": "index.ts",
   "scripts": {
     "lint": "eslint . --ext .ts",
+    "test": "bun test",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -14,6 +15,7 @@
     "qrcode": "^1.5.4"
   },
   "devDependencies": {
+    "@types/bun": "^1.4.2",
     "typescript": "npm:@typescript/typescript6@^6.0.2"
   }
 }
