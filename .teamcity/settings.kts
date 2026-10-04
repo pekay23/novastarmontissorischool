@@ -74,6 +74,9 @@
 
 import jetbrains.buildServer.configs.kotlin.v2019_2.BuildType
 import jetbrains.buildServer.configs.kotlin.v2019_2.ReuseBuilds
+import jetbrains.buildServer.configs.kotlin.v2019_2.buildType
+import jetbrains.buildServer.configs.kotlin.v2019_2.id
+import jetbrains.buildServer.configs.kotlin.v2019_2.project
 import jetbrains.buildServer.configs.kotlin.v2019_2.buildSteps.script
 import jetbrains.buildServer.configs.kotlin.v2019_2.triggers.finishBuildTrigger
 import jetbrains.buildServer.configs.kotlin.v2019_2.triggers.vcs
@@ -101,11 +104,20 @@ import jetbrains.buildServer.configs.kotlin.v2019_2.triggers.vcs
 // why pinning "2026.2" while importing v2019_2 was never the contradiction it
 // looked like.
 //
-// Only subpackage symbols need naming here. Everything in the v2019_2 root package
-// arrives through the imports TeamCity injects by default: BuildType, ReuseBuilds,
-// the Dependencies.snapshot member, the params {} block, and ParametrizedWithType's
-// param/password/text. A wildcard import does not reach subpackages, so
-// buildSteps.script and the two triggers.* functions must be named explicitly.
+// Members reached through a receiver need no import: the params {} block,
+// Dependencies.snapshot, ParametrizedWithType's param/password/text,
+// BuildTypeSettings' vcs/dependencies/triggers/steps/features, and
+// VcsSettings' root/cleanCheckout.
+//
+// Everything that is a TOP-LEVEL function does need one, including the entry
+// points. project {} and buildType {} live in EntryPointKt and id() in IdsKt,
+// all in the v2019_2 package, and they are NOT injected here: with no version
+// line and no pom.xml, KotlinRunner logs "Unable to determine DSL API packages
+// type, .../pom.xml is not a file" and supplies no default imports, so
+// settings.kts[110] failed with "Unresolved reference: project".
+//
+// A wildcard import would not help either -- it does not reach subpackages,
+// which is why buildSteps.script and the two triggers.* are named explicitly.
 
 project {
     // No id() and no name= here on purpose.
