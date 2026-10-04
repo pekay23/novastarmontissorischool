@@ -380,6 +380,28 @@ async function sessionCookie(claims: Record<string, unknown>): Promise<string> {
 }
 
 /**
+ * A cookie bag shaped like Next's `RequestCookies`.
+ *
+ * `getToken` reads the session through `cookies.getAll()` when it is present and
+ * falls back to a `for...in` walk otherwise, so both shapes are offered and the
+ * keyed property is kept as a third. The CSRF check reads the same bag through
+ * `get(name)`, the way a real `NextRequest` does.
+ */
+function fakeCookies(cookie: string) {
+  return Object.assign(
+    {
+      get(name: string) {
+        return name === COOKIE_NAME && cookie ? { name, value: cookie } : undefined
+      },
+      getAll() {
+        return cookie ? [{ name: COOKIE_NAME, value: cookie }] : []
+      },
+    },
+    { [COOKIE_NAME]: cookie }
+  )
+}
+
+/**
  * The shape `withAuth` needs: a `nextUrl` with a `basePath`, a cookie bag it can
  * read the session off, headers for the rate limiter, and an absolute `url` for
  * the redirects.
@@ -387,8 +409,10 @@ async function sessionCookie(claims: Record<string, unknown>): Promise<string> {
 function request(path: string, cookie: string) {
   return {
     url: `${ORIGIN}${path}`,
-    // `getToken` reads the cookie off a plain object, so no NextRequest needed.
-    cookies: { [COOKIE_NAME]: cookie },
+    // The proxy reads this to decide whether the double-submit check applies;
+    // GET is the safe default these assertions were written against.
+    method: 'GET',
+    cookies: fakeCookies(cookie),
     headers: new Headers({ 'x-real-ip': '198.51.100.20' }),
     nextUrl: fakeNextUrl(path),
   }

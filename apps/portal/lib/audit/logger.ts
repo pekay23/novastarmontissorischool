@@ -76,23 +76,9 @@ export async function logAuditEvent(params: AuditLogParams, tx?: Prisma.Transact
   try {
     const timestamp = new Date()
 
-    // Fetch the most recent audit log entry for chain continuity
-    // Note: using a global query without tenant filter to find the latest hash
-    const lastEntry = await prisma.auditLog.findFirst({
-      orderBy: { createdAt: 'desc' },
-      select: { id: true, hash: true },
-    })
-
-    const previousHash = lastEntry?.hash ?? null
-    const hash = computeHash(
-      previousHash,
-      params.action,
-      params.entityId,
-      params.changes ?? params.details ?? {},
-      timestamp
-    )
-
-    // Resolve tenantId/schoolId from user if not explicitly provided
+    // Resolve tenantId/schoolId from user if not explicitly provided. This runs
+    // BEFORE the chain lookup because the chain is scoped by tenant — the previous
+    // order asked for the previous hash first, which is what forced it to be global.
     let tenantId: string | undefined = params.tenantId
     let schoolId: string | undefined = params.schoolId
     if (!tenantId && params.userId) {
@@ -109,6 +95,26 @@ export async function logAuditEvent(params: AuditLogParams, tx?: Prisma.Transact
     // Fallback for system-level logs
     tenantId = tenantId ?? 'system'
     schoolId = schoolId ?? 'system'
+
+    // Chain continuity is scoped to this tenant. The previous implementation asked
+    // for the globally most recent entry, so every tenant's chain was threaded
+    // through every other tenant's writes: a school could not verify its own log
+    // without entries it has no right to see, and one tenant's audit write silently
+    // became a link in another tenant's chain.
+    const lastEntry = await prisma.auditLog.findFirst({
+      where: { tenantId },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, hash: true },
+    })
+
+    const previousHash = lastEntry?.hash ?? null
+    const hash = computeHash(
+      previousHash,
+      params.action,
+      params.entityId,
+      params.changes ?? params.details ?? {},
+      timestamp
+    )
 
     const data: Prisma.AuditLogUncheckedCreateInput = {
       action: params.action,

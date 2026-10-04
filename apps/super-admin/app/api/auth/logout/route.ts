@@ -28,6 +28,12 @@ export async function POST(request: NextRequest): Promise<Response> {
     // operator the *verified* token claims — `operatorId` is a foreign key, so a
     // token naming an id that no longer exists makes the write fail and the entry is
     // dropped rather than dangling.
+    // Best effort, and deliberately the opposite of `login`, which refuses to issue
+    // a session it could not audit. Refusing to complete a sign-out would leave the
+    // operator authenticated because the audit table was briefly unavailable — a
+    // worse outcome than a missing LOGOUT row, and one an attacker could engineer by
+    // breaking the audit write first. Ending the session always succeeds; the gap is
+    // logged.
     if (claims) {
       await auditPlatformAction({
         action: AdminAuditAction.LOGOUT,

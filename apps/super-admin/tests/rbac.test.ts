@@ -979,7 +979,7 @@ describe('POST /api/auth/login', () => {
     expect(refused.ipAddress).toBeTruthy()
   })
 
-  it('should still sign in when the audit table is unreachable', async () => {
+  it('refuses to sign in when the sign-in audit entry cannot be written', async () => {
     givenOperators(OPERATOR)
     mocks.auditCreate.mockImplementation(async () => {
       throw new Error('audit unavailable')
@@ -989,8 +989,29 @@ describe('POST /api/auth/login', () => {
       identifier: OPERATOR.username,
       password: OPERATOR_PASSWORD,
     })
-    // An operator must be able to sign in to fix the thing that made the audit table
-    // unreachable. Tenant mutations do not get this leniency.
-    expect(response.status).toBe(200)
+
+    // The credential was correct, and the sign-in is still refused. Issuing the
+    // session anyway would hand out operator access that no audit row records, which
+    // is the failure mode this closes. 503 rather than 500: the cause is a
+    // dependency being briefly unavailable, so it is worth retrying once the audit
+    // table is back.
+    expect(response.status).toBe(503)
+  })
+
+  it('still records a refused attempt on a best-effort basis', async () => {
+    // The asymmetry is deliberate and is what keeps an audit outage from being a
+    // total lockout. A *failed* sign-in creates no session, so writing its audit row
+    // leniently costs no auditability — there is no access to be untraceable. Only
+    // the successful path, which hands out a session, is fail-closed.
+    mocks.auditCreate.mockImplementation(async () => {
+      throw new Error('audit unavailable')
+    })
+
+    const response = await login({
+      identifier: OPERATOR.username,
+      password: 'wrong-password',
+    })
+
+    expect(response.status).toBe(401)
   })
 })

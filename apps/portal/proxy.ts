@@ -10,6 +10,7 @@
  *
  * Runs on every matched request and enforces, in order:
  * - Per-client-IP rate limiting (20 req/min auth, 100 req/min API, 300 req/min pages)
+ * - CSRF double-submit verification, and issuance of the token cookie
  * - Session authentication via next-auth
  * - An outstanding password change, which confines the session to the
  *   credential-recovery pages
@@ -22,14 +23,26 @@
  * is what makes the public-path exemption mean "no session required" rather
  * than "no limits".
  *
+ * CSRF sits in the same slot for the same reason: it has to see the request
+ * before any handler runs, and a limiter that a flood could skip is no limiter.
+ * The check itself is a pure function in lib/security/csrf.ts, so the policy is
+ * unit-tested without constructing a NextRequest.
+ *
  * Tenant isolation is NOT enforced here: `token.schoolId` is a claim snapshot,
  * so per-request tenant scoping is resolved downstream in getTenantContext()
  * (apps/portal/lib/tenant.ts).
  */
 
 import { withAuth } from 'next-auth/middleware'
-import { NextResponse } from 'next/server'
+import { NextResponse, type NextFetchEvent, type NextRequest } from 'next/server'
 import { checkRateLimit, clientIdentifier } from '@/lib/rate-limit'
+import {
+  CSRF_COOKIE_NAME,
+  CSRF_HEADER_NAME,
+  csrfCookieOptions,
+  evaluateCsrf,
+  generateCsrfToken,
+} from '@/lib/security/csrf'
 
 // Paths that don't require authentication. These are exempted from the SESSION
 // check only — the rate limiter above still applies to them.
@@ -118,49 +131,92 @@ export const config = {
   ],
 }
 
-export default withAuth(
-  async function proxy(req) {
+const authedProxy = withAuth(
+  async function authedProxy(req) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const token = (req as any).nextauth?.token
     const { pathname } = req.nextUrl
-
-    // --- Rate limiting ---
-    // Before the public-path short-circuit, on purpose. The short-circuit
-    // returns before any limiting work, so `/api/auth/*` used to be reachable
-    // at unlimited rate; `/api/auth/totp` and the passkey registration pair were
-    // the consequence.
-    //
-    // Uses the shared limiter in lib/rate-limit.ts, which is covered by
-    // tests/rate-limit.test.ts. Its store is per-process; a multi-instance
-    // deployment needs a shared store (Redis/Upstash) to enforce globally.
     const isApi = pathname.startsWith('/api/')
-    const isAuthApi = pathname.startsWith('/api/auth')
-    const max = isAuthApi ? AUTH_RATE_LIMIT : isApi ? API_RATE_LIMIT : PAGE_RATE_LIMIT
-    const { success, reset } = checkRateLimit(clientIdentifier(req), max, RATE_LIMIT_WINDOW_MS)
 
-    if (!success) {
-      const retryAfterSeconds = Math.max(1, Math.ceil((reset - Date.now()) / 1000))
-      if (isApi) {
-        return NextResponse.json(
-          { error: 'Rate limit exceeded', retryAfter: retryAfterSeconds },
-          { status: 429, headers: { 'Retry-After': String(retryAfterSeconds) } }
+    // --- CSRF token issuance ---
+    // Any request that reaches the proxy without a token gets one issued on the
+    // way out, so the first page view seeds the cookie the client later echoes.
+    // Issued on every response path — including denials — because a 403 that
+    // hands back a usable token lets the caller's next attempt succeed without a
+    // reload, and handing the cookie to a cross-site attacker leaks nothing they
+    // could not already ride along with.
+    //
+    // `finalize` exists so no return below can forget the Set-Cookie; there are
+    // a dozen exit points and a missed one would silently strand the client
+    // without a token until the next full page load.
+    const existingToken = req.cookies.get(CSRF_COOKIE_NAME)?.value
+    const issuedToken = existingToken ? null : generateCsrfToken()
+    const finalize = (res: NextResponse) => {
+      if (issuedToken) {
+        res.cookies.set(
+          CSRF_COOKIE_NAME,
+          issuedToken,
+          csrfCookieOptions(process.env.NODE_ENV === 'production')
         )
       }
-      return new NextResponse('Too Many Requests', {
-        status: 429,
-        headers: { 'Retry-After': String(retryAfterSeconds) },
-      })
+      return res
+    }
+
+    // --- Rate limiting happens in the exported wrapper below, not here ---
+    //
+    // It used to sit here, which meant it never ran for the paths `withAuth`
+    // short-circuits. `withAuth` keeps its own `doesNotRequireAuth` list —
+    // `/api/auth`, `/api/health`, `/_next`, and the configured sign-in page —
+    // and returns `NextResponse.next()` for those WITHOUT invoking this handler.
+    // So `AUTH_RATE_LIMIT` was unreachable: `/api/auth/totp` and the passkey
+    // registration pair were reachable at unlimited rate from any address, while
+    // this file's own header claimed the limiter ran "before the public-path
+    // short-circuit". The wrapper runs first for every matched request, which is
+    // what makes that claim true.
+
+    // --- CSRF (double-submit) ---
+    //
+    // SameSite=Lax on the session cookie already blocks classic cross-site form
+    // POSTs. What Lax does NOT block is a same-site origin — a sibling
+    // subdomain, or anything else that can write cross-origin on our own site —
+    // because Lax judges the site, not the origin. Double-submit closes that: the
+    // browser attaches the cookie to such a request, but the attacker cannot read
+    // the cookie to copy it into the header, so the echo fails.
+    //
+    // The decision is delegated to evaluateCsrf (lib/security/csrf.ts) so the
+    // policy is a pure function and testable without a NextRequest. Mutating
+    // `/api/*` calls must present both a cookie and a matching `X-CSRF-Token`;
+    // `/api/auth/*` is exempt because sign-in cannot have a token yet.
+    //
+    // Rejection is a 403 JSON body, never a redirect: this is an API caller, and
+    // bouncing it to /login would turn a CSRF failure into a confusing sign-in
+    // loop rather than an error the client can act on.
+    const cookieToken = existingToken
+    const csrf = evaluateCsrf({
+      method: req.method,
+      pathname,
+      cookieToken,
+      headerToken: req.headers.get(CSRF_HEADER_NAME),
+    })
+
+    if (!csrf.allow) {
+      return finalize(
+        NextResponse.json(
+          { error: 'Invalid CSRF token', reason: csrf.reason },
+          { status: 403 }
+        )
+      )
     }
 
     // Allow public paths after limiting, so "public" means "no session needed"
     // rather than "no limits".
-    if (publicPaths.some((p) => pathname.startsWith(p))) return NextResponse.next()
+    if (publicPaths.some((p) => pathname.startsWith(p))) return finalize(NextResponse.next())
 
     if (!token) {
       const url = req.nextUrl.clone()
       url.pathname = '/login'
       url.searchParams.set('callbackUrl', pathname)
-      return NextResponse.redirect(url)
+      return finalize(NextResponse.redirect(url))
     }
 
     // A session that still owes a password change reaches nothing else.
@@ -180,7 +236,7 @@ export default withAuth(
     // mails a reset link, and `POST /api/auth/reset-password` is a write that
     // clears the flag.
     if (token.mustChangePassword) {
-      return NextResponse.redirect(new URL('/set-password', req.url))
+      return finalize(NextResponse.redirect(new URL('/set-password', req.url)))
     }
 
     const role = token.role as string
@@ -189,7 +245,7 @@ export default withAuth(
     // Check role-based permissions
     if (perms) {
       if (perms.includes('*')) {
-        return NextResponse.next()
+        return finalize(NextResponse.next())
       }
 
       // A role holding a `perms` array at all has been identified as a portal
@@ -198,7 +254,7 @@ export default withAuth(
       // already-total access into something narrower or differently ordered.
       const exempt = PATH_EXEMPT_PREFIXES[role]
       if (exempt?.some((prefix) => pathname.startsWith(prefix))) {
-        return NextResponse.next()
+        return finalize(NextResponse.next())
       }
 
       const sections = isApi
@@ -208,20 +264,20 @@ export default withAuth(
 
       const hasPerm = perms.some((p) => section === p || section.startsWith(p))
       if (!hasPerm) {
-        return NextResponse.redirect(new URL('/dashboard/unauthorized', req.url))
+        return finalize(NextResponse.redirect(new URL('/dashboard/unauthorized', req.url)))
       }
     } else {
       // Unknown role - deny access
-      return NextResponse.redirect(new URL('/login', req.url))
+      return finalize(NextResponse.redirect(new URL('/login', req.url)))
     }
 
     // Check school access (multi-tenant isolation)
     const requestedSchoolId = req.nextUrl.searchParams.get('schoolId')
     if (requestedSchoolId && requestedSchoolId !== token.schoolId) {
-      return NextResponse.redirect(new URL('/dashboard', req.url))
+      return finalize(NextResponse.redirect(new URL('/dashboard', req.url)))
     }
 
-    return NextResponse.next()
+    return finalize(NextResponse.next())
   },
   {
     pages: {
@@ -229,3 +285,36 @@ export default withAuth(
     },
   }
 )
+
+/**
+ * The exported proxy.
+ *
+ * Rate limiting lives out here, ahead of `withAuth`, because `withAuth` answers a
+ * set of paths itself and never calls the handler for them: `/api/auth`, `/api/health`,
+ * `/_next`, and the sign-in page. A limiter inside the handler therefore did not run for
+ * the credential endpoints — the exact surface that most needs one.
+ *
+ * Uses the shared limiter in lib/rate-limit.ts, covered by tests/rate-limit.test.ts. Its
+ * store is per-process; a multi-instance deployment needs a shared store (Redis/Upstash)
+ * to enforce globally.
+ */
+export default async function proxy(req: NextRequest, event: NextFetchEvent) {
+  const { pathname } = req.nextUrl
+  const isApi = pathname.startsWith('/api/')
+  const isAuthApi = pathname.startsWith('/api/auth')
+  const max = isAuthApi ? AUTH_RATE_LIMIT : isApi ? API_RATE_LIMIT : PAGE_RATE_LIMIT
+  const { success, reset } = checkRateLimit(clientIdentifier(req), max, RATE_LIMIT_WINDOW_MS)
+
+  if (!success) {
+    const retryAfterSeconds = Math.max(1, Math.ceil((reset - Date.now()) / 1000))
+    const headers = { 'Retry-After': String(retryAfterSeconds) }
+    if (isApi) {
+      return NextResponse.json({ error: 'Rate limit exceeded', retryAfter: retryAfterSeconds }, { status: 429, headers })
+    }
+    return new NextResponse('Too Many Requests', { status: 429, headers })
+  }
+
+  // `withAuth` narrows its request to `NextRequestWithAuth`, which is the same
+  // object at runtime with `nextauth` attached by the wrapper.
+  return authedProxy(req as Parameters<typeof authedProxy>[0], event)
+}

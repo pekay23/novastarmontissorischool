@@ -153,10 +153,45 @@ describe('createDelegation - the four configured roles are unaffected', () => {
     expect(delegationCreate).toHaveBeenCalledTimes(1)
     const data = (delegationCreate.mock.calls[0]?.[0] as QueryArgs).data
     expect(data?.permissions).toEqual(['system:manage'])
-    // `createDelegation` defaults the approval flag from its own input, not
-    // from the policy — the policy's `requiresApproval` is not read anywhere.
-    // Recorded so a future change to that is visible here.
+    // The approval flag is read from the HEADMASTER policy
+    // (`requiresApproval: false`, `maxDurationDays: 365`) rather than from the
+    // caller, and `isActive` is derived from that same resolved flag. Deriving
+    // `isActive` from the caller's raw input instead is what let a delegation that
+    // recorded "awaiting approval" be handed over anyway.
+    expect(data?.requiresApproval).toBe(false)
+    expect(data?.isActive).toBe(true)
+    // `maxDurationDays` is enforced even though the caller passed no expiry, so
+    // the delegation is bounded rather than open-ended.
+    expect(data?.expiresAt).toBeInstanceOf(Date)
+  })
+
+  it('leaves a policy-gated delegation inactive, so it cannot be used before approval', async () => {
+    // ASSISTANT_HEAD carries `requiresApproval: true`. The delegation is recorded
+    // as needing approval AND is not active — the two must never disagree.
+    actingAs('ASSISTANT_HEAD', ['academic:read'])
+
+    await delegate('academic:read')
+
+    const data = (delegationCreate.mock.calls[0]?.[0] as QueryArgs).data
     expect(data?.requiresApproval).toBe(true)
+    expect(data?.isActive).toBe(false)
+  })
+
+  it('caps the expiry at the policy limit instead of trusting the caller', async () => {
+    actingAs('ASSISTANT_HEAD', ['academic:read'])
+
+    // Ten years is far beyond the policy's 90-day cap.
+    await createDelegation({
+      ...DELEGATION,
+      permissions: ['academic:read'],
+      expiresAt: new Date(Date.now() + 3650 * 24 * 60 * 60 * 1000),
+    })
+
+    const data = (delegationCreate.mock.calls[0]?.[0] as QueryArgs).data
+    const expiresAt = data?.expiresAt as Date
+    const daysOut = (expiresAt.getTime() - Date.now()) / (24 * 60 * 60 * 1000)
+    expect(daysOut).toBeLessThanOrEqual(90)
+    expect(daysOut).toBeGreaterThan(89)
   })
 
   it('lets the academic coordinator delegate its academic prefixes', async () => {

@@ -86,17 +86,28 @@ export async function POST(request: NextRequest): Promise<Response> {
 
     clearLoginFailures(clientId)
 
-    await auditPlatformAction({
-      action: AdminAuditAction.LOGIN,
-      entity: 'operator',
-      entityId: operator.id,
-      operatorId: operator.id,
-      description: `Operator ${operator.username} signed in from ${clientId}`,
-      ipAddress: clientId,
-      userAgent: request.headers.get('user-agent'),
-    }).catch((error: unknown) => {
-      console.error('[super-admin] Could not record a sign-in:', error)
-    })
+    // Unlike the failed attempt above, this is not best-effort. Platform-operator
+    // access has to be auditable, and a session handed out without a matching audit
+    // row is exactly the unauditable access that requirement exists to prevent.
+    // The cookie is issued only after this resolves, so refusing here leaves no
+    // session behind rather than an untraceable one.
+    try {
+      await auditPlatformAction({
+        action: AdminAuditAction.LOGIN,
+        entity: 'operator',
+        entityId: operator.id,
+        operatorId: operator.id,
+        description: `Operator ${operator.username} signed in from ${clientId}`,
+        ipAddress: clientId,
+        userAgent: request.headers.get('user-agent'),
+      })
+    } catch (error) {
+      console.error('[super-admin] Refusing sign-in: could not record the audit entry:', error)
+      return NextResponse.json(
+        { error: 'Sign-in cannot be completed: the audit log is unavailable.' },
+        { status: 503 },
+      )
+    }
 
     const response = NextResponse.json({ operator: toOperatorProfile(operator) })
     response.cookies.set(

@@ -166,7 +166,25 @@ describe('RBAC - Factory Integration', () => {
     expect(delegation.fromUserId).toBe('user_1')
     expect(delegation.toUserId).toBe('user_2')
     expect(delegation.permissions).toEqual(['student:read'])
+    // A delegation awaiting approval must not come back active. The fixture used
+    // to emit `requiresApproval: true` beside `isActive: true`, which is the
+    // fail-open shape `createDelegation` had: a pending handover that was already
+    // live. `isActive` now follows the resolved approval flag.
     expect(delegation.requiresApproval).toBe(true)
+    expect(delegation.isActive).toBe(false)
+  })
+
+  it('builds an approved delegation that is active', () => {
+    const tenant = buildTenant()
+    const school = buildSchool({ tenantId: tenant.id })
+    const delegation = buildDelegation({
+      tenantId: tenant.id,
+      schoolId: school.id,
+      fromUserId: 'user_1',
+      toUserId: 'user_2',
+      requiresApproval: false,
+    })
+    expect(delegation.requiresApproval).toBe(false)
     expect(delegation.isActive).toBe(true)
   })
 
