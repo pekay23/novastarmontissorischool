@@ -68,7 +68,6 @@
         "@prisma/client": "^7.10.0",
         "@radix-ui/react-dialog": "^1.1.23",
         "@simplewebauthn/server": "^13.3.3",
-        "@tanstack/react-query": "^5.57.1",
         "@tanstack/react-table": "^8.21.3",
         "@tiptap/react": "^3.31.3",
         "@upstash/ratelimit": "^1.0.4",
@@ -354,6 +353,7 @@
       },
       "devDependencies": {
         "@eslint/js": "^9.18.0",
+        "@types/bun": "^1.4.2",
         "@types/pg": "^8.18.0",
         "@typescript-eslint/eslint-plugin": "^8.71.0",
         "@typescript-eslint/parser": "^8.71.0",
@@ -373,6 +373,23 @@
         "@eslint/js": "^9.18.0",
         "@types/bun": "^1.4.2",
         "@types/pg": "^8.18.0",
+        "@typescript-eslint/eslint-plugin": "^8.71.0",
+        "@typescript-eslint/parser": "^8.71.0",
+        "eslint": "^9.39.5",
+        "typescript": "npm:@typescript/typescript6@^6.0.2",
+      },
+    },
+    "tools/seed": {
+      "name": "@novastar/seed",
+      "version": "0.0.0",
+      "dependencies": {
+        "@novastar/shared-types": "workspace:*",
+        "@prisma/adapter-neon": "^7.10.0",
+        "@prisma/client": "^7.10.0",
+        "dotenv": "^17.2.3",
+      },
+      "devDependencies": {
+        "@types/bun": "^1.4.2",
         "@typescript-eslint/eslint-plugin": "^8.71.0",
         "@typescript-eslint/parser": "^8.71.0",
         "eslint": "^9.39.5",
@@ -408,6 +425,7 @@
         "novastar-tenant": "./index.ts",
       },
       "dependencies": {
+        "@novastar/auth": "workspace:*",
         "@novastar/database": "workspace:*",
         "@novastar/shared-types": "workspace:*",
         "dotenv": "^17.2.3",
@@ -925,6 +943,8 @@
 
     "@novastar/payments": ["@novastar/payments@workspace:packages/payments"],
 
+    "@novastar/seed": ["@novastar/seed@workspace:tools/seed"],
+
     "@novastar/shared-types": ["@novastar/shared-types@workspace:packages/shared-types"],
 
     "@novastar/shared-ui": ["@novastar/shared-ui@workspace:packages/shared-ui"],
@@ -1278,10 +1298,6 @@
     "@tailwindcss/postcss": ["@tailwindcss/postcss@4.3.3", "", { "dependencies": { "@alloc/quick-lru": "^5.2.0", "@tailwindcss/node": "4.3.3", "@tailwindcss/oxide": "4.3.3", "postcss": "^8.5.16", "tailwindcss": "4.3.3" } }, "sha512-JTSZZGQi1AyKirbLN3azmjVzef92tcX7h+iSqPdaeStyFpGpDlKvvpxeOE8njhbUanbRwr3z8DyzhICWnMtQeg=="],
 
     "@tailwindcss/typography": ["@tailwindcss/typography@0.5.20", "", { "dependencies": { "postcss-selector-parser": "6.0.10" }, "peerDependencies": { "tailwindcss": ">=3.0.0 || >=4.0.0 || insiders" } }, "sha512-hwbzQuNUfcPvbegQFatVPl/MY/tcM9KLl963hQ5laJKPh81TEZ1+dNG9PirGvcaDBkp+BCshExAyKVPW91dozw=="],
-
-    "@tanstack/query-core": ["@tanstack/query-core@5.103.2", "", {}, "sha512-I8DkFXls5jXLqtm8+QpOhEmG07hIblhSZFzafg9wHsMSEvMzULy9hK17wU1T/ahfhMbtITJhbxutwwCoihkR7A=="],
-
-    "@tanstack/react-query": ["@tanstack/react-query@5.103.2", "", { "dependencies": { "@tanstack/query-core": "5.103.2" }, "peerDependencies": { "react": "^18 || ^19" } }, "sha512-B+fWiYZBc+0uUD5zDZAeLw9dKj7XEsdnuu6zRZ+no6LNKpeE3P3bJ+N6HINjcIlWR6fW3vUoTneEaGa2V6ehqw=="],
 
     "@tanstack/react-table": ["@tanstack/react-table@8.21.3", "", { "dependencies": { "@tanstack/table-core": "8.21.3" }, "peerDependencies": { "react": ">=16.8", "react-dom": ">=16.8" } }, "sha512-5nNMTSETP4ykGegmVkhjcS8tTLW6Vl4axfEGQN3v0zdHYbK4UfoqfPChclTrJ4EoK9QynqAu9oUf8VEmrpZ5Ww=="],
 
@@ -3216,6 +3232,8 @@
     "@novastar/db-mirror/dotenv": ["dotenv@17.4.2", "", {}, "sha512-nI4U3TottKAcAD9LLud4Cb7b2QztQMUEfHbvhTH09bqXTxnSie8WnjPALV/WMCrJZ6UV/qHJ6L03OqO3LcdYZw=="],
 
     "@novastar/migrate/dotenv": ["dotenv@17.4.2", "", {}, "sha512-nI4U3TottKAcAD9LLud4Cb7b2QztQMUEfHbvhTH09bqXTxnSie8WnjPALV/WMCrJZ6UV/qHJ6L03OqO3LcdYZw=="],
+
+    "@novastar/seed/dotenv": ["dotenv@17.4.2", "", {}, "sha512-nI4U3TottKAcAD9LLud4Cb7b2QztQMUEfHbvhTH09bqXTxnSie8WnjPALV/WMCrJZ6UV/qHJ6L03OqO3LcdYZw=="],
 
     "@novastar/sync-cli/dotenv": ["dotenv@17.4.2", "", {}, "sha512-nI4U3TottKAcAD9LLud4Cb7b2QztQMUEfHbvhTH09bqXTxnSie8WnjPALV/WMCrJZ6UV/qHJ6L03OqO3LcdYZw=="],
 

@@ -106,24 +106,49 @@ jobs:
       - name: Build all apps
         run: bun run build
 
-      # The package is @novastar/database, not "database", so --filter=database
-      # matched nothing and turbo exited 1 with "No package found with name
-      # 'database' in workspace". Fixed, but the step is now GATED OFF.
+      # GATED OFF, and it stays off until a person resolves it. Two independent
+      # reasons, either of which alone is disqualifying:
       #
-      # It must stay off until the migration history is baselined. Neon has no
-      # _prisma_migrations table, because the live schema was built with
-      # `prisma db push` rather than `migrate deploy`, and the checked-in init
-      # migration is 56 bare CREATE TABLE / CREATE TYPE statements with no
-      # IF NOT EXISTS. Against a database that already has all of them it will
-      # fail partway through, leaving a partially applied migration recorded
-      # against production on every push to main.
+      # 1. The migration history is not baselined. Neon has no
+      #    _prisma_migrations table, because the live schema was built with
+      #    `prisma db push` rather than `migrate deploy`, and the checked-in init
+      #    migration is 56 bare CREATE TABLE / CREATE TYPE statements with no
+      #    IF NOT EXISTS. Against a database that already has all of them it
+      #    fails partway through, leaving a partially applied migration recorded
+      #    against production on every push to main.
       #
-      # To enable: baseline the live databases (mark the init migration as
-      # applied with `prisma migrate resolve --applied`, or diff and reconcile
-      # first), then set MIGRATE_ON_PUSH=true in the repository settings.
+      # 2. This step deliberately does NOT pass `--yes`. With no TTY and no
+      #    --yes, the guarded tool treats the confirmation as a refusal and
+      #    exits 1 (tools/migrate/README.md, "Safety properties"). That is the
+      #    intended failure mode: turning this step on must never quietly begin
+      #    applying migrations to production. `--yes --allow-production` is an
+      #    owner decision taken at the same time as baselining, not a CI default.
+      #
+      # The filter below was wrong until 2026-10-03: it named
+      # @novastar/database, which has no `db:migrate:deploy` script, so turbo
+      # resolved ZERO tasks and the step could not have done anything even with
+      # the gate open. @novastar/migrate owns it, and it is what the root
+      # `db:migrate:deploy` script resolves to (package.json) -- the guarded
+      # wrapper, never a raw `prisma migrate deploy`. `prisma migrate dev` is
+      # deliberately not wired into any CI path: it can offer to reset a live
+      # database.
+      #
+      # To enable, in this order (tools/migrate/README.md has the full contract):
+      #   a. Prove the files compose, against a throwaway Neon branch:
+      #      bun run db:migrate:compose -- --shadow-database-url <branch-url>
+      #   b. Preview the ledger write, then write it. `baseline` is declared in
+      #      turbo.json as task `baseline` and is a dry run unless --apply, and
+      #      it refuses an invocation that has not said what it is asserting
+      #      (--migration <name>, or --assert-all):
+      #      bunx turbo run baseline --filter=@novastar/migrate -- --migration <name>
+      #      bunx turbo run baseline --filter=@novastar/migrate -- --apply --migration <name> --yes
+      #      It also needs --allow-production and a backup attestation, and it
+      #      writes ledger rows claiming history - there is no honest undo.
+      #   c. Set MIGRATE_ON_PUSH=true in the repository settings, and decide
+      #      whether this step should then pass --yes.
       - name: Deploy database migrations
         if: env.MIGRATE_ON_PUSH == 'true'
-        run: bunx turbo run db:migrate:deploy --filter=@novastar/database
+        run: bunx turbo run db:migrate:deploy --filter=@novastar/migrate
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
@@ -278,7 +303,8 @@ jobs:
 # Disabled until you opt in:
 #   repo variable VERCEL_DEPLOY_ENABLED = true
 #   repo secrets VERCEL_TOKEN, VERCEL_ORG_ID,
-#                VERCEL_PROJECT_ID_PORTAL, VERCEL_PROJECT_ID_PUBLIC
+#                VERCEL_PROJECT_ID_PORTAL, VERCEL_PROJECT_ID_PUBLIC,
+#                VERCEL_PROJECT_ID_SUPER_ADMIN
 # ============================================================================
   deploy:
     name: Deploy to Vercel
@@ -296,6 +322,7 @@ jobs:
       VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
       VERCEL_PROJECT_ID_PORTAL: ${{ secrets.VERCEL_PROJECT_ID_PORTAL }}
       VERCEL_PROJECT_ID_PUBLIC: ${{ secrets.VERCEL_PROJECT_ID_PUBLIC }}
+      VERCEL_PROJECT_ID_SUPER_ADMIN: ${{ secrets.VERCEL_PROJECT_ID_SUPER_ADMIN }}
 
     steps:
       - name: Checkout
@@ -339,8 +366,29 @@ jobs:
           npx --yes vercel@latest build --prod --token="$VERCEL_TOKEN"
           npx --yes vercel@latest deploy --prebuilt --prod --yes --token="$VERCEL_TOKEN"
 
+      # The cross-tenant operator console. It was built by `bun run build` in the
+      # build job but had no deploy path at all until 2026-10-03, so it was
+      # unreachable in every deployed environment while still passing CI.
+      #
+      # Same shape as the two above, and the same secrets rule: its DATABASE_URL
+      # and PLATFORM_SESSION_SECRET are Vercel PROJECT settings fetched by
+      # `vercel pull`, not repository secrets, and they do not appear in runner
+      # logs. PLATFORM_SESSION_SECRET is the one that matters here -- without it
+      # no operator session can be signed or verified and every route denies.
+      #
+      # Ordering note: this runs last, so if the project id is missing the two
+      # deployments above have already succeeded and only this step fails.
+      - name: Deploy super admin
+        id: super-admin
+        working-directory: apps/super-admin
+        run: |
+          npx --yes vercel@latest pull --yes --environment=production --token="$VERCEL_TOKEN"
+          npx --yes vercel@latest build --prod --token="$VERCEL_TOKEN"
+          npx --yes vercel@latest deploy --prebuilt --prod --yes --token="$VERCEL_TOKEN"
+
       - name: Summary
         run: |
           echo "### Vercel deploy" >> "$GITHUB_STEP_SUMMARY"
           echo "- portal: ${{ steps.portal.outputs.deployment-url }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- public-site: ${{ steps.public.outputs.deployment-url }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- super-admin: ${{ steps.super-admin.outputs.deployment-url }}" >> "$GITHUB_STEP_SUMMARY"

@@ -10,6 +10,141 @@
 
 ---
 
+## Verification pass - 2026-10-03
+
+**Status (verified 2026-10-03): this document is a strategy and cost baseline,
+not a build plan - it has no phases with deliverables to verify against, and
+most of it is NOT-A-CODE-ITEM.** What follows covers the two sections that make
+checkable claims: section 1 PROJECT STRUCTURE and the tech-stack line above.
+
+This document predates every build plan in `docs/technical/`. It was written on
+2026-09-24 and its per-phase status is tracked in those plans, not here. It is
+also marked `Status: READY FOR EXECUTION` at the foot, which was true when it was
+written and should not be read as current.
+
+Every BUILT / NOT-BUILT verdict below comes from reading the tree, and those verdicts
+are unchanged. **Corrected 2026-10-03:** this pass originally ran nothing, which made
+every runtime claim in it UNVERIFIABLE. The repo's build, typecheck, lint, test and
+encoding commands have since been run and all passed, so the runtime claims below now
+carry measured results. See "Not claimed" at the foot of this section.
+
+### section 1 PROJECT STRUCTURE, directory by directory
+
+`apps/*` - all three exist and all three are full apps. `packages/*` - eleven of
+the seventeen listed exist; `tools/*` - all five exist but only four are
+workspace members.
+
+| Path | Status (verified 2026-10-03) |
+|---|---|
+| `apps/public-site/` | **BUILT** - Next 16 static export, 8 content routes, `sitemap.ts`, `robots.ts`, `not-found.tsx`, Prisma-backed `lib/data.ts` |
+| `apps/portal/` | **BUILT** - Next 16 standalone, `proxy.ts`, 26 API route groups under `app/api/` |
+| `apps/super-admin/` | **BUILT** - full cross-tenant app with its own auth. See `docs/technical/2026-10-01_000000-build-plan-super-admin-app.md` |
+| `packages/shared-types/` | **BUILT** |
+| `packages/shared-ui/` | **BUILT** - Radix component library. See the ADR-016 conflict in the verification note there |
+| `packages/shared-utils/` | **BUILT** |
+| `packages/sync-engine/` | **BUILT** - injectable storage (`MemorySyncStorage`, `IndexedDbSyncStorage`), not the Yjs/Automerge stub the plan implies |
+| `packages/auth/` | **BUILT** - `hasPermission`, `createDelegation`, `approveDelegation`, `revokeDelegation`, `logAudit` |
+| `packages/database/` | **BUILT** - Prisma schema with **63 models** (this plan says 57) plus 4 migrations and `prisma/rls/tenant-isolation.sql` |
+| `packages/ghana-education/` | **BUILT** |
+| `packages/reports/` | **NOT-BUILT** - the directory does not exist. Report generation lives in the portal (`app/api/reports/academic/[studentId]/route.ts`) |
+| `packages/notifications/` | **BUILT** |
+| `packages/payments/` | **BUILT** - MTN MoMo, bank, cash |
+| `packages/plugin-registry/` | **NOT-BUILT** - absent, correctly. Its dead `tsconfig.base.json` alias has been removed |
+| `packages/plugins/{library,canteen,clinic,alumni,learning,analytics}/` | **NOT-BUILT** - all six absent. Library and inventory ship *inside* the portal instead (`app/api/library/`, `app/api/inventory/`) |
+| `packages/testing/` | **BUILT** - factories, MSW handlers, page objects, storage state |
+| *(not in this plan)* `packages/domain/` | **BUILT** - exists, is a workspace member, and is absent from section 1's structure. The structure diagram is out of date |
+| `tools/seed/` | **PARTIAL** - `index.ts` and `verify-admin.ts` only. **No `package.json`**, so it is not a workspace member and no `typecheck` task reaches it |
+| `tools/migrate/` | **BUILT** - fingerprints, guarded deploy, rollback, reset |
+| `tools/sync-cli/` | **PARTIAL** - the CLI is built; the portal-side endpoint it talks to (`apps/portal/app/api/sync/route.ts`) does not exist, so it cannot work end to end |
+| `tools/tenant-cli/` | **BUILT** - provision, clone, config, suspend/reactivate, operator |
+| `tools/db-mirror/` | **BUILT** - 15 `.ts` files, plus `.github/workflows/db-mirror.yml` |
+| `docs/{architecture,wireframes,adr,api}/` | **BUILT** - all four exist |
+| `turbo.json`, `package.json`, `.bunfig.toml`, `tsconfig.base.json`, `eslint.config.mjs`, `biome.json` | **BUILT** - all six present. `tsconfig.base.json` is now 12 lines and is extended by all 18 workspace tsconfigs |
+| `README.md` (repo root) | **NOT-BUILT** - no root `README.md` exists. `AGENTS.md` occupies that role |
+| `.hermes/plans/` | **BUILT** - holds four revisions of this plan (v2, v3, final, and an earlier draft) plus `plan.md` |
+
+### Tech-stack claims that the code contradicts
+
+| This plan says | The code does | Status |
+|---|---|---|
+| Auth.js v5 | `next-auth` **v4**. `apps/portal/lib/auth.ts` imports `Credentials from 'next-auth/providers/credentials'` and types `NextAuthOptions`; `proxy.ts:30` uses `withAuth` from `next-auth/middleware`; `app/api/auth/[...nextauth]/route.ts` mounts `NextAuth`. section 2.1's own dependency list is honest about this - it pins `next-auth: ^4.24.15` - so the header line and the manifest disagree with each other | **DOC-STALE** - the header line is wrong, section 2.1 is right |
+| SQLite (local via sql.js WASM) for offline-first | No `sql.js` and no `better-sqlite3` anywhere in `apps/` or `packages/`. Local offline storage is IndexedDB, via `IndexedDbSyncStorage` in `packages/sync-engine` | **SUPERSEDED** - by IndexedDB |
+| Vitest | Zero `from 'vitest'` imports repo-wide. Every test file uses `bun:test`. ADR-015 ("Testing: Vitest Unit + Playwright E2E + MSW Mocking") is still marked *Planned* in `docs/adr/README.md` and its file does not exist | **SUPERSEDED** - by `bun test`, before the ADR was ever written |
+| TanStack Query 5 | **BUILT** - `apps/portal/package.json:32` pins `@tanstack/react-query: ^5.57.1` | **BUILT** |
+| TypeScript 7 native | **BUILT** - root `devDependencies` carries both `"@typescript/native": "npm:typescript@^7.0.2"` and `"typescript": "npm:@typescript/typescript6@^6.0.2"`, exactly as section 2.2 specifies | **BUILT** |
+| Bun 1.4+, `centralStore = true`, Next 16.3.3, React 19.2, Prisma 7.10, Tailwind 4.3.3, Zod 4 | **BUILT** - all present in the manifests | **BUILT** |
+
+### section 5's mirror design was not what shipped
+
+This plan is emphatic that the Neon -> Supabase mirror should run as **pg_cron
+inside Neon**, on the grounds that it costs zero GitHub Actions minutes, and it
+lists a GH Actions schedule only as a fallback. What exists is the fallback:
+`tools/db-mirror/` (15 TypeScript files) driven by
+`.github/workflows/db-mirror.yml` on `cron: '17 */6 * * *'` - every six hours,
+not the 30 minutes section 5 specifies. `prisma/rls/tenant-isolation.sql` exists and
+the workflow also runs `verify-restore.ts` and `verify-rls-enforced.ts`, so the
+verification story is arguably better than the plan's; the scheduling mechanism is
+the part that diverged. **SUPERSEDED** by the Bun tool plus a GH Actions
+schedule. Whether the six-hour cadence is deliberate or a stopgap is not
+recorded anywhere.
+
+### section 7 and section 8 spot checks
+
+- **section 7 "Configuration-First"**: **BUILT.** `app/api/config/[entityType]/route.ts`
+  and `app/api/config/entities/[type]/route.ts` provide generic CRUD over
+  Prisma models, gated by `hasPermission(userId, 'config:read' | 'config:write',
+  ...)`, and `packages/shared-types` holds the entity config map.
+- **section 8 "Headmaster Delegation UI" at `/portal/settings/delegation`**: **PARTIAL.**
+  The engine is complete - `createDelegation`, `approveDelegation`,
+  `revokeDelegation`, `getEffectivePermissions`, and `hasPermission` resolving
+  delegations - and `apps/portal/tests/delegation-fail-closed.test.ts` covers
+  it. **The page does not exist.** `app/(portal)/settings/` contains
+  `admissions`, `attendance-takers`, `audit-logs`, `entities`, `platform`,
+  `roles`, `school` and `subjects` - no `delegation`.
+- **section 8 "Teacher Attendance" at `/portal/settings/attendance-takers`**: **BUILT**  - 
+  the route and `app/api/attendance-takers/route.ts` both exist.
+- **section 9 Phase 3 deliverable "PWA"**: **NOT-BUILT.**
+  `apps/portal/public/` contains only `.gitkeep` - no `manifest.json`, no service
+  worker.
+
+### NOT-A-CODE-ITEM
+
+section 3 free-tier limits, section 4 cost breakdown and TCO, section 6 school profile and mission
+copy, section 10 next steps and section 11 git conventions are business and process documents.
+They are not verifiable against the repository and are not restated here. Two
+notes that are: section 6's school details are the source of the values now living in
+`apps/public-site/lib/metadata.ts`, so the marketing copy and this section must
+change together; and section 11's commit conventions are Conventional Commits, which the
+repository does follow.
+
+### Not claimed
+
+No phase in section 9 was assessed for completion. That work is tracked per-phase by
+the build plans in `docs/technical/`, which is where a reader should look. The
+`Phase 0 - monorepo initialization, design system, free tier setup` item in
+`docs/README.md`'s Next Steps is also stale: the monorepo is initialised.
+
+To settle the section 9 phases, the per-plan status markers are the index; to settle the
+build state of any workspace member without trusting a document:
+
+```bash
+bun run lint && bun run typecheck && bun run build && bun run test
+```
+
+**Measured 2026-10-03 - that block now passes.** `bunx turbo run build` 4/4 tasks
+successful (`portal`, `public-site`, `super-admin`, `@novastar/shared-ui`); `bunx turbo
+run typecheck` 18/18; `bunx turbo run lint` 18/18, 0 errors and 1 pre-existing warning
+(`packages/shared-types/permission-keys.test.ts:10`, unused `ROLE_GRANT_RULES`);
+`bun run test` 7/7 tasks, **1396 pass / 0 fail** (portal 976, super-admin 150,
+tenant-cli 94, sync-cli 90, migrate 56, sync-engine 30); `bun run check:encoding` all 6
+checks clean.
+
+That covers this repo only. `bun run test:e2e` (Playwright), `db:seed`, any Prisma
+migration or live-database command, and the Docker / TeamCity / Vercel paths are
+**still UNVERIFIABLE** and were not run.
+
+---
+
 ## 1. PROJECT STRUCTURE (Monorepo — Multi-Tenancy Ready)
 
 ```

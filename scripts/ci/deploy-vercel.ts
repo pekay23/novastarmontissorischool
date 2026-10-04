@@ -1,5 +1,5 @@
 /**
- * CI: deploy both apps to Vercel.
+ * CI: deploy every Vercel-hosted app.
  *
  * Flow is pull -> build -> deploy --prebuilt for each app.
  *
@@ -33,13 +33,48 @@ const target = process.env.VERCEL_TARGET ?? 'production'
 const environment = target === 'production' ? 'production' : 'preview'
 const repoRoot = resolve(import.meta.dir, '..', '..')
 
+interface DeployTarget {
+  readonly name: string
+  readonly dir: string
+  readonly projectIdEnv: string
+  /**
+   * Skip this app instead of aborting when its project id is unset.
+   *
+   * See the comment at the skip site. Required for an app whose project id is
+   * not declared in every caller of this script.
+   */
+  readonly optIn?: true
+}
+
 const apps = [
   { name: 'portal', dir: 'apps/portal', projectIdEnv: 'VERCEL_PROJECT_ID_PORTAL' },
   { name: 'public-site', dir: 'apps/public-site', projectIdEnv: 'VERCEL_PROJECT_ID_PUBLIC' },
-] as const
+  {
+    name: 'super-admin',
+    dir: 'apps/super-admin',
+    projectIdEnv: 'VERCEL_PROJECT_ID_SUPER_ADMIN',
+    optIn: true,
+  },
+] satisfies readonly DeployTarget[]
+
+const skippedApps: string[] = []
 
 for (const app of apps) {
   const projectId = process.env[app.projectIdEnv]
+
+  // Not a soft default, and not an oversight: this script is called by
+  // `.teamcity/settings.kts` (DeployVercelPreview and DeployVercelProduction),
+  // which declares parameters for the first two project ids only. A required
+  // check here would abort the whole run -- including the two apps that do have
+  // a project -- until that file is edited to declare the third. Skipping keeps
+  // today's behaviour byte-identical for an operator who has not created a
+  // super-admin Vercel project yet, and deploys it the moment they have.
+  if (app.optIn === true && !projectId) {
+    log(step, `${app.name}: SKIPPED - ${app.projectIdEnv} is unset (opt-in app)`)
+    skippedApps.push(app.name)
+    continue
+  }
+
   requireEnv(app.projectIdEnv)
 
   const env = {
@@ -69,4 +104,9 @@ for (const app of apps) {
   log(step, `${app.name}: deployed`)
 }
 
-log(step, 'All apps deployed')
+log(
+  step,
+  skippedApps.length === 0
+    ? 'All apps deployed'
+    : `All apps deployed except: ${skippedApps.join(', ')} (no Vercel project configured)`,
+)

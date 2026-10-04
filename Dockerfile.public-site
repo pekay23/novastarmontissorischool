@@ -48,7 +48,13 @@ COPY packages/shared-types/package.json ./packages/shared-types/
 COPY packages/shared-ui/package.json  ./packages/shared-ui/
 COPY packages/shared-utils/package.json ./packages/shared-utils/
 COPY packages/sync-engine/package.json ./packages/sync-engine/
+COPY packages/testing/package.json    ./packages/testing/
+COPY apps/super-admin/package.json    ./apps/super-admin/
 COPY tools/db-mirror/package.json     ./tools/db-mirror/
+COPY tools/migrate/package.json       ./tools/migrate/
+COPY tools/seed/package.json          ./tools/seed/
+COPY tools/sync-cli/package.json      ./tools/sync-cli/
+COPY tools/tenant-cli/package.json    ./tools/tenant-cli/
 # --- end workspace manifests ---
 
 RUN bun install --frozen-lockfile

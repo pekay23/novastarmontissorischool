@@ -20,6 +20,29 @@
 #   .tsx file therefore cannot invalidate the install layer. Adding a workspace
 #   means adding one COPY line below -- `bun install --frozen-lockfile` will
 #   otherwise not see the new manifest and will not update the lockfile.
+#
+# This image is the PORTAL and nothing else. apps/super-admin is deliberately
+# NOT in it, and that is an architectural boundary rather than an oversight:
+#
+#   super-admin is a second Next.js standalone server. apps/super-admin/
+#   next.config.ts sets output: 'standalone' and traces from the repo root,
+#   exactly like the portal, so it is a long-running process with its own port,
+#   CMD and healthcheck -- not files that can be copied in. This image has one
+#   CMD and one HEALTHCHECK, and the HEALTHCHECK probes :3000 only, so folding
+#   super-admin in means a shell-wrapped multi-process CMD (no health signal for
+#   the second server, no orderly shutdown of either child) or a process
+#   supervisor that node:alpine does not ship.
+#
+#   The repo already has the pattern for this: Dockerfile.public-site is a
+#   separate file producing a separate image, and docker-compose.yml gives it a
+#   separate service. super-admin needs the same treatment -- its own
+#   Dockerfile.super-admin, image, port and service entry.
+#
+#   It also could not be built here as written. The manifest list below is
+#   missing five workspace members, two of which super-admin requires:
+#   apps/super-admin itself, and tools/tenant-cli (how it reaches
+#   @novastar/tenant-cli). See
+#   docs/technical/2026-10-02_193000-ci-cd-teamcity-docker-vercel.md, open item 1.
 # ============================================================================
 
 ARG NODE_VERSION=22
@@ -64,7 +87,13 @@ COPY packages/shared-types/package.json ./packages/shared-types/
 COPY packages/shared-ui/package.json  ./packages/shared-ui/
 COPY packages/shared-utils/package.json ./packages/shared-utils/
 COPY packages/sync-engine/package.json ./packages/sync-engine/
+COPY packages/testing/package.json    ./packages/testing/
+COPY apps/super-admin/package.json    ./apps/super-admin/
 COPY tools/db-mirror/package.json     ./tools/db-mirror/
+COPY tools/migrate/package.json       ./tools/migrate/
+COPY tools/seed/package.json          ./tools/seed/
+COPY tools/sync-cli/package.json      ./tools/sync-cli/
+COPY tools/tenant-cli/package.json    ./tools/tenant-cli/
 # --- end workspace manifests ---
 
 RUN bun install --frozen-lockfile

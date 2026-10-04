@@ -73,25 +73,39 @@
 // =============================================================================
 
 import jetbrains.buildServer.configs.kotlin.v2019_2.BuildType
-import jetbrains.buildServer.configs.kotlin.v2019_2.Project
 import jetbrains.buildServer.configs.kotlin.v2019_2.ReuseBuilds
 import jetbrains.buildServer.configs.kotlin.v2019_2.buildSteps.script
-import jetbrains.buildServer.configs.kotlin.v2019_2.dependencies.snapshot
-import jetbrains.buildServer.configs.kotlin.v2019_2.parameters.password
-import jetbrains.buildServer.configs.kotlin.v2019_2.parameters.text
-import jetbrains.buildServer.configs.kotlin.v2019_2.parameters.*
-import jetbrains.buildServer.configs.kotlin.v2019_2.triggers.finishedBuild
+import jetbrains.buildServer.configs.kotlin.v2019_2.triggers.finishBuildTrigger
 import jetbrains.buildServer.configs.kotlin.v2019_2.triggers.vcs
 
-// The DSL API artifact this server ships is org.jetbrains.teamcity:configs-dsl-kotlin
-// at 2026.2 -- that exact string is declared as ${teamcity.dsl.version} in
-// configs-dsl-kotlin-parent, which is what resolves the API below. Its Kotlin
-// packages stop at v2019_2, which is why the imports use v2019_2 while the
-// version says 2026.2. Pinning anything else (2024.07, 2019.2) makes Maven look
-// for an artifact that does not exist, and the generator dies on a ~2 minute
-// network timeout that surfaces as "synchronization with VCS has been stopped
-// due to: unknown reason".
-version = "2026.2"
+// There is deliberately no `version = "..."` line.
+//
+// Declaring one makes TeamCity resolve org.jetbrains.teamcity:configs-dsl-kotlin
+// at that version through Maven before it compiles this file. That artifact is in
+// no local repository on this server, so every attempt started a cold resolution
+// and none finished inside the generator's 120 second ceiling:
+//
+//   Failed to generate updated settings for revision <sha>:
+//   ConfigGenerationException: Configs generator runs longer than 120 seconds
+//   (enable debug to see stacktrace)          [teamcity-versioned-settings.log]
+//
+// Nothing was ever cached, so nothing got faster: caches\dslDependenciesMaven,
+// caches\kotlinDslData and caches\maven were all still empty afterwards. Omitting
+// the line makes TeamCity use the DSL API it already ships in
+// webapps\ROOT\WEB-INF\plugins\.unpacked\configs-dsl\server, which needs no
+// network access at all.
+//
+// The API that ships is 2026.2. Its Kotlin packages stop at v2019_2, which is why
+// the imports above say v2019_2. Those are independent axes -- the artifact version
+// names the Maven coordinate, the package name is the API generation -- which is
+// why pinning "2026.2" while importing v2019_2 was never the contradiction it
+// looked like.
+//
+// Only subpackage symbols need naming here. Everything in the v2019_2 root package
+// arrives through the imports TeamCity injects by default: BuildType, ReuseBuilds,
+// the Dependencies.snapshot member, the params {} block, and ParametrizedWithType's
+// param/password/text. A wildcard import does not reach subpackages, so
+// buildSteps.script and the two triggers.* functions must be named explicitly.
 
 project {
     // No id() and no name= here on purpose.
@@ -133,7 +147,7 @@ project {
     // Override the real values in the UI:
     //   Administration -> Project -> Parameters
     // -------------------------------------------------------------------------
-    parameters {
+    params {
         // --- Build cache ---
         param("env.TURBO_TOKEN", password("SET_IN_TEAMCITY"))
         param("env.TURBO_TEAM", "pekay23")
@@ -177,6 +191,9 @@ project {
         param("env.VERCEL_ORG_ID", "SET_IN_TEAMCITY")
         param("env.VERCEL_PROJECT_ID_PORTAL", "SET_IN_TEAMCITY")
         param("env.VERCEL_PROJECT_ID_PUBLIC", "SET_IN_TEAMCITY")
+        // The cross-tenant operator console. Without this the deploy step added for
+        // super-admin is skipped, so the app would build in CI and ship nowhere.
+        param("env.VERCEL_PROJECT_ID_SUPER_ADMIN", "SET_IN_TEAMCITY")
 
         // --- Container registry (only used when DOCKER_PUSH=true) ---
         param("env.DOCKER_REGISTRY", "ghcr.io")
@@ -237,11 +254,10 @@ object Verify : BuildType({
     }
 
     dependencies {
-        snapshot {
-            buildType = Install
-            // ALWAYS: a newer commit that passes lint should not be blocked
+        snapshot(Install) {
+            // ANY: a newer commit that passes lint should not be blocked
             // waiting for the previous commit's build to finish.
-            reuseBuilds = ReuseBuilds.ALWAYS
+            reuseBuilds = ReuseBuilds.ANY
         }
     }
 
@@ -253,7 +269,7 @@ object Verify : BuildType({
     }
 
     triggers {
-        finishedBuild {
+        finishBuildTrigger {
             buildType = Install
             successfulOnly = true
             branchFilter = "+:refs/heads/main"
@@ -272,13 +288,12 @@ object E2ETest : BuildType({
     }
 
     dependencies {
-        snapshot {
-            buildType = Verify
-            reuseBuilds = ReuseBuilds.ALWAYS
+        snapshot(Verify) {
+            reuseBuilds = ReuseBuilds.ANY
         }
     }
 
-    parameters {
+    params {
         param("env.CI", "true")
         param("env.E2E_PORT", "3100")
     }
@@ -301,7 +316,7 @@ object E2ETest : BuildType({
     }
 
     triggers {
-        finishedBuild {
+        finishBuildTrigger {
             buildType = Verify
             successfulOnly = true
             branchFilter = "+:refs/heads/main"
@@ -320,9 +335,8 @@ object DockerBuild : BuildType({
     }
 
     dependencies {
-        snapshot {
-            buildType = E2ETest
-            reuseBuilds = ReuseBuilds.ALWAYS
+        snapshot(E2ETest) {
+            reuseBuilds = ReuseBuilds.ANY
         }
     }
 
@@ -334,7 +348,7 @@ object DockerBuild : BuildType({
     }
 
     triggers {
-        finishedBuild {
+        finishBuildTrigger {
             buildType = E2ETest
             successfulOnly = true
             branchFilter = "+:refs/heads/main"
@@ -353,9 +367,8 @@ object DeployLocal : BuildType({
     }
 
     dependencies {
-        snapshot {
-            buildType = DockerBuild
-            reuseBuilds = ReuseBuilds.NEVER
+        snapshot(DockerBuild) {
+            reuseBuilds = ReuseBuilds.NO
         }
     }
 
@@ -370,7 +383,7 @@ object DeployLocal : BuildType({
     }
 
     triggers {
-        finishedBuild {
+        finishBuildTrigger {
             buildType = DockerBuild
             successfulOnly = true
             branchFilter = "+:refs/heads/main"
@@ -389,13 +402,12 @@ object DeployVercelPreview : BuildType({
     }
 
     dependencies {
-        snapshot {
-            buildType = E2ETest
-            reuseBuilds = ReuseBuilds.NEVER
+        snapshot(E2ETest) {
+            reuseBuilds = ReuseBuilds.NO
         }
     }
 
-    parameters {
+    params {
         param("env.VERCEL_TARGET", "preview")
     }
 
@@ -407,7 +419,7 @@ object DeployVercelPreview : BuildType({
     }
 
     triggers {
-        finishedBuild {
+        finishBuildTrigger {
             buildType = E2ETest
             successfulOnly = true
             branchFilter = "+:refs/heads/main"
@@ -433,13 +445,12 @@ object DeployVercelProduction : BuildType({
     }
 
     dependencies {
-        snapshot {
-            buildType = E2ETest
-            reuseBuilds = ReuseBuilds.NEVER
+        snapshot(E2ETest) {
+            reuseBuilds = ReuseBuilds.NO
         }
     }
 
-    parameters {
+    params {
         param("env.VERCEL_TARGET", "production")
     }
 

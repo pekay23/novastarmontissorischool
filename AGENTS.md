@@ -41,6 +41,15 @@ Rules:
 
 ## Repository conventions
 
+- **Root `test`, `lint` and `typecheck` carry no `--filter`.** All three are
+  `turbo run <task>` over the whole workspace, so `bun run test --filter <pkg>`
+  narrows to exactly `<pkg>`. Turbo filters combine as a **union**, so a filter
+  baked into the script cannot be narrowed by a later `--filter` — it is added to.
+  The script used to hardcode seven filters, which made `bun run test --filter
+  portal` run all seven workspaces and quietly turn a portal result into a
+  whole-repo one. Verify with `bun run test --dry=json | ... taskId`, not by
+  reasoning about it. A caller that needs a fixed subset gets its own script
+  (`test:packages`); it does not go in `test`.
 - **`proxy.ts`, not `middleware.ts`.** Next.js 16.3.3 deprecates
   `middleware.ts`; the portal's request-level auth lives in
   `apps/portal/proxy.ts`. Both files cannot coexist — having both fails the
