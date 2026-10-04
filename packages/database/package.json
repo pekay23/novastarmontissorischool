@@ -5,7 +5,7 @@
   "main": "index.ts",
   "types": "index.ts",
   "scripts": {
-    "db:push": "prisma db push",
+    "db:push": "bun run ../../tools/migrate/index.ts push",
     "db:migrate": "prisma migrate dev",
     "db:studio": "prisma studio",
     "db:seed": "bun run ../../tools/seed/index.ts",

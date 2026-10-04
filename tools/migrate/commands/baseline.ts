@@ -13,7 +13,13 @@
  *
  *   - **Dry run is the default.** `--apply` is required to write anything, and
  *     even then a confirmation is required.
- *   - `verify` is the recommended pre-check, not a post-check. Run it first.
+ *   - **Every migration must be named, or `--assert-all` must be passed.** A
+ *     bare `baseline` used to resolve every unsettled migration, which turned
+ *     one keystroke into the assertion that the entire history had run. Those
+ *     ledger rows cannot be honestly undone.
+ *   - `compose` is the pre-check, not `verify`, and it runs first. `verify`
+ *     compares the **live schema** with `schema.prisma`; it never reads the
+ *     migration directory. `compose` is the one that proves the files compose.
  *   - The guards run before the preview: an uncommitted schema, or no restore
  *     point, stops the command before it prints a plan to execute.
  *   - A production host needs `--allow-production`, same as `deploy`.
@@ -40,6 +46,11 @@ export interface BaselineOptions {
   readonly target: Target;
   /** Explicit `--migration` names. Empty means "everything unsettled". */
   readonly migrations: readonly string[];
+  /**
+   * `--assert-all`: the caller is asserting by hand that every unsettled
+   * migration already ran. Required when `migrations` is empty.
+   */
+  readonly assertAll: boolean;
   /** `--apply`. Without it, this command only prints. */
   readonly apply: boolean;
   readonly yes: boolean;
@@ -60,13 +71,58 @@ export interface BaselinePlan {
 }
 
 /**
+ * Refuses an invocation that would assert history nobody named.
+ *
+ * Deliberately a separate step from `planBaseline`, and deliberately independent
+ * of the ledger: this runs *before* the read-only connection is opened, so an
+ * unqualified invocation is refused without contacting a database at all. A
+ * guard that first requires a database round trip is a guard that reports
+ * "could not connect" instead of "you did not say what you are asserting".
+ *
+ * `planBaseline` calls it too, so the pure path cannot drift from the command.
+ */
+export function assertBaselineQualified(
+  requested: readonly string[],
+  assertAll: boolean,
+  onDisk: readonly string[],
+): void {
+  // Nothing on disk means nothing to assert. `runBaseline` already refuses an
+  // empty migrations directory one step earlier, so this branch only exists to
+  // keep the pure function honest about its own input rather than to paper over
+  // that refusal.
+  if (onDisk.length === 0) return;
+  if (requested.length > 0 || assertAll) return;
+  throw new Error(
+    `baseline with no --migration would assert that every migration on disk ` +
+      `already ran: ${onDisk.join(", ") || "(none)"}.\n` +
+      "Some of those may already be recorded, in which case they are skipped; the " +
+      "rest would be recorded on the strength of your word alone. That is a claim " +
+      "about the past, written into a ledger with no honest undo " +
+      "(`prisma migrate resolve --rolled-back` is the reversal, and it is itself " +
+      "an assertion).\n" +
+      "Either name each one you are asserting, which is repeatable:\n" +
+      `  --migration <name>${onDisk.length > 1 ? " --migration <name> ..." : ""}\n` +
+      "or pass --assert-all, which is one word that says out loud that you are " +
+      "writing the ledger from a claim rather than from evidence.\n" +
+      "Run `compose --shadow-database-url <url>` first: that is the check that " +
+      "proves the migration files on disk compose to schema.prisma. `verify` is " +
+      "not a substitute — it compares the live schema and never reads the " +
+      "migration directory.",
+  );
+}
+
+/**
  * Works out what `resolve --applied` would write. Pure, so the plan can be
  * tested and printed before anything is executed.
+ *
+ * `assertAll` is a required parameter rather than a default, so that adding a
+ * caller cannot silently inherit the old "resolve everything" behaviour.
  */
 export function planBaseline(
   onDisk: readonly string[],
   ledger: Parameters<typeof compareLedger>[1],
   requested: readonly string[],
+  assertAll: boolean,
 ): BaselinePlan {
   const comparison = compareLedger(onDisk, ledger);
   const settled = new Set(comparison.settled);
@@ -78,6 +134,8 @@ export function planBaseline(
         `Checked: ${onDisk.join(", ") || "(none)"}`,
     );
   }
+
+  assertBaselineQualified(requested, assertAll, onDisk);
 
   return {
     onDisk,
@@ -111,6 +169,12 @@ export async function runBaseline(ctx: Context, options: BaselineOptions): Promi
   if (!options.apply) {
     warn("dry run: this command will print the plan and write nothing. Pass --apply to execute it.");
   }
+  warn(
+    "`compose --shadow-database-url <url>` is the pre-check for this command, " +
+      "not `verify`: it proves the migration files on disk compose to " +
+      "schema.prisma, which is what the rows below would claim. `verify` only " +
+      "compares the live schema.",
+  );
 
   const onDisk = migrationsOnDisk();
   if (onDisk.length === 0) {
@@ -119,10 +183,19 @@ export async function runBaseline(ctx: Context, options: BaselineOptions): Promi
     );
   }
 
+  // Before the connection, not after it: an invocation that has not said what it
+  // is asserting must be refused without touching a database at all.
+  assertBaselineQualified(options.migrations, options.assertAll, onDisk);
+
   const client = await openReadOnly(options.target.url);
   let plan: BaselinePlan;
   try {
-    plan = planBaseline(onDisk, await readLedger(client), options.migrations);
+    plan = planBaseline(
+      onDisk,
+      await readLedger(client),
+      options.migrations,
+      options.assertAll,
+    );
   } finally {
     await client.end().catch(() => undefined);
   }

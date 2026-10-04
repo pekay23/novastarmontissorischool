@@ -3,8 +3,8 @@
   "compilerOptions": {
     "lib": ["esnext"],
     "noEmit": true,
-    "types": ["node"]
+    "types": ["node", "bun"]
   },
-  "include": ["*.ts"],
+  "include": ["*.ts", "guards/**/*.ts", "tests/**/*.ts"],
   "exclude": ["node_modules"]
 }

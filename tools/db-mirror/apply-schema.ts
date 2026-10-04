@@ -1,4 +1,6 @@
 import { loadEnv, requireEnv } from "./env";
+import { createInterface } from "node:readline";
+import { decideProductionAck, type ApplyTarget } from "./guards/production-ack";
 /**
  * Applies a reviewed DDL file to a chosen database.
  *
@@ -12,9 +14,12 @@ import { loadEnv, requireEnv } from "./env";
  *   bun run tools/db-mirror/apply-schema.ts <ddl-file> neon
  *
  * Flags:
- *   --allow-nonempty   permit a target that already has tables (required for
- *                      additive migrations against a populated database)
- *   --dry-run          report what would run, then exit without writing
+ *   --allow-nonempty       permit a target that already has tables (required for
+ *                          additive migrations against a populated database)
+ *   --dry-run              report what would run, then exit without writing
+ *   --allow-production     acknowledge that the neon target is production;
+ *                          required for neon, or the command will prompt at a TTY
+ *                          or fail in CI
  */
 import { Client } from "pg";
 import { readFileSync, existsSync } from "node:fs";
@@ -27,7 +32,7 @@ const flags = new Set(raw.filter((a) => a.startsWith("--")));
 const args = raw.filter((a) => !a.startsWith("--"));
 
 const ddlPath = args[0];
-const target = (args[1] ?? "supabase").toLowerCase();
+const targetArg = (args[1] ?? "supabase").toLowerCase();
 
 if (!ddlPath) {
   console.error(
@@ -40,18 +45,27 @@ if (!existsSync(ddlPath)) {
   process.exit(1);
 }
 
-const envVar =
-  target === "neon"
-    ? "DATABASE_URL"
-    : target === "supabase"
-      ? "SUPABASE_DIRECT_URL"
-      : null;
-if (!envVar) {
-  console.error(`Unknown target '${target}'. Use 'neon' or 'supabase'.`);
+/**
+ * The two targets, and where each one's connection string comes from.
+ *
+ * A lookup rather than a conditional so that an unknown target is a refusal at
+ * this line rather than a silently mislabelled one further down: `target` is
+ * typed `ApplyTarget` from here, which is what makes the guard below total.
+ */
+const ENV_VAR: Record<ApplyTarget, string> = {
+  neon: "DATABASE_URL",
+  supabase: "SUPABASE_DIRECT_URL",
+};
+
+function parseTarget(value: string): ApplyTarget {
+  if (value === "neon" || value === "supabase") return value;
+  console.error(`Unknown target '${value}'. Use 'neon' or 'supabase'.`);
   process.exit(1);
 }
 
-const url = requireEnv(envVar);
+const target = parseTarget(targetArg);
+
+const url = requireEnv(ENV_VAR[target]);
 
 const ddl = readFileSync(ddlPath, "utf-8");
 
@@ -65,12 +79,50 @@ async function main() {
   const direct = url.replace(":6543/", ":5432/");
   const host = new URL(direct).hostname;
 
-  const expected = target === "neon" ? /neon/i : /supabase/i;
-  if (!expected.test(host)) {
-    console.error(
-      `Refusing to run: '${target}' was requested but the host is ${host}`
-    );
+  // The host match and the production acknowledgement are one decision, in
+  // ./guards/production-ack.ts, so they can be tested without a database.
+  const verdict = decideProductionAck({
+    target,
+    host,
+    allowProduction: flags.has("--allow-production"),
+    hasTty: process.stdin.isTTY === true,
+  });
+
+  if (!verdict.proceed) {
+    console.error(`\nRefusing to run: ${verdict.reason}`);
     process.exit(1);
+  }
+
+  if (verdict.how === "flag" && target === "neon") {
+    console.log(
+      `[apply-schema] PRODUCTION target acknowledged via --allow-production: ${host}`,
+    );
+  }
+
+  if (verdict.how === "prompt") {
+    const rl = createInterface({ input: process.stdin, output: process.stdout });
+    const answer = await new Promise<string>((resolvePromise) => {
+      const timer = setTimeout(() => {
+        rl.close();
+        resolvePromise("");
+      }, 120_000);
+      rl.question(
+        `\nYou are about to apply DDL to a PRODUCTION database (${host}).\n` +
+          `Type "yes" to proceed: `,
+        (a) => {
+          clearTimeout(timer);
+          rl.close();
+          resolvePromise(a.trim().toLowerCase());
+        },
+      );
+    });
+    if (answer !== "yes") {
+      console.error("Refused. Nothing applied.");
+      process.exit(1);
+    }
+    console.log(
+      `[apply-schema] PRODUCTION target confirmed at the terminal: ${host}`,
+    );
   }
 
   const client = new Client({

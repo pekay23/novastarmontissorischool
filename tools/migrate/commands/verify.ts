@@ -10,6 +10,13 @@
  * comparison itself failed. `migrate diff` is documented read-only and writes
  * to neither datasource, so this command cannot change the database.
  *
+ * WHAT THIS DOES NOT ANSWER, because it is asked constantly: `--from-config-
+ * datasource` is the live database, so this command never opens
+ * `prisma/migrations`. Whether the migration *files* compose to
+ * `schema.prisma` is a different question, answered by `compose`
+ * (`--from-migrations`), and that is the one `baseline` depends on. A green
+ * `verify` is not evidence that the files on disk compose.
+ *
  * When there is drift, the same comparison is re-run with `--script` to render
  * what Prisma would do, and the quoted identifiers in that script are
  * intersected with the tables that actually exist so the report names the
@@ -153,6 +160,9 @@ export async function runVerify(ctx: Context, options: VerifyOptions): Promise<v
   throw new Error(
     "the live schema does not match schema.prisma. Review the diff above, " +
       "then either commit a migration for it or run `baseline` if the ledger " +
-      "is what is out of step. Nothing was written.",
+      "is what is out of step. Nothing was written.\n" +
+      "If the ledger is what is out of step, run `compose` first: this command " +
+      "compares the live schema only, and `baseline` asserts something `compose` " +
+      "is the one that actually tests.",
   );
 }

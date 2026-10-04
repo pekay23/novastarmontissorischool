@@ -8,8 +8,9 @@ import type { Target } from "../env";
 import { confirm } from "../guards/confirm";
 import { evaluateMirrorAge, type AgeVerdict } from "../guards/require-backup";
 import { assertDevOnlyTarget } from "../commands/reset";
+import { assertLocalPushTarget } from "../commands/push";
 import { compareLedger, type LedgerRow } from "../commands/status";
-import { planBaseline } from "../commands/baseline";
+import { planBaseline, assertBaselineQualified } from "../commands/baseline";
 
 const target = (host: string): Target => ({
   kind: "primary",
@@ -56,6 +57,78 @@ describe("reset locks", () => {
 
   test("allows localhost with --dev-only", () => {
     expect(() => assertDevOnlyTarget(target("127.0.0.1"), true)).not.toThrow();
+  });
+});
+
+describe("push host guard", () => {
+  /**
+   * The single property ADR-023 rests on: there is no host this guard will let
+   * `prisma db push` reach except a developer's own machine, and no flag that
+   * turns it off. Each local spelling is listed because `isLocalHost` is an
+   * allowlist — a spelling added there is a spelling accepted here.
+   */
+  test.each([
+    "localhost",
+    "app.localhost",
+    "127.0.0.1",
+    "127.1.2.3",
+    "::1",
+    "0.0.0.0",
+    "host.docker.internal",
+    "LOCALHOST",
+  ])("allows %s", (host) => {
+    expect(() => assertLocalPushTarget(target(host))).not.toThrow();
+  });
+
+  test.each([
+    "ep-frosty-pond.us-east-2.aws.neon.tech",
+    "db.supabase.co",
+    "db.example.com",
+    "10.0.0.5",
+    "192.168.1.20",
+    "localhost.evil.com",
+    "notlocalhost",
+    "<unparseable>",
+  ])("refuses %s", (host) => {
+    expect(() => assertLocalPushTarget(target(host))).toThrow(/not a local address/);
+  });
+
+  /**
+   * The error is the only thing an operator sees when this fires, so it has to
+   * carry the host, the reason, and the command that does work.
+   */
+  test("the refusal names the host, the ledger, and the supported alternative", () => {
+    let message = "";
+    try {
+      assertLocalPushTarget(target("ep-frosty-pond.us-east-2.aws.neon.tech"));
+    } catch (err) {
+      message = (err as Error).message;
+    }
+    expect(message).toContain("ep-frosty-pond.us-east-2.aws.neon.tech");
+    expect(message).toContain("_prisma_migrations");
+    expect(message).toContain("db:migrate:deploy");
+  });
+
+  /**
+   * The mirror is the failsafe database. The guard keys on the resolved host
+   * rather than on the target's kind, so a *local* mirror is fine — that is a
+   * developer's own copy of it — while a remote one, which is the case that
+   * matters, is refused.
+   */
+  test("allows a local mirror and refuses a remote one", () => {
+    const local: Target = {
+      ...target("localhost"),
+      kind: "mirror",
+      source: "SUPABASE_DATABASE_URL",
+    };
+    expect(() => assertLocalPushTarget(local)).not.toThrow();
+
+    const remote: Target = {
+      ...target("db.project.supabase.co"),
+      kind: "mirror",
+      source: "SUPABASE_DATABASE_URL",
+    };
+    expect(() => assertLocalPushTarget(remote)).toThrow(/not a local address/);
   });
 });
 
@@ -178,11 +251,76 @@ describe("compareLedger", () => {
 describe("planBaseline", () => {
   const ON_DISK = ["20260929000000_init", "20261002103000_platform_config"];
 
-  test("defaults to every migration the ledger has not settled", () => {
-    expect(planBaseline(ON_DISK, undefined, []).toResolve).toEqual(ON_DISK);
+  test("the bare form refuses rather than asserting the whole history", () => {
+    // The regression this pins: `planBaseline(onDisk, ledger, [])` used to
+    // resolve every unsettled migration, so `baseline --apply` asserted that
+    // 20260929000000_init had run and every later deploy skipped it.
+    expect(() => planBaseline(ON_DISK, undefined, [], false)).toThrow(
+      /would assert that every migration on disk already ran/,
+    );
   });
 
-  test("skips what is already recorded", () => {
+  test("the refusal says verify is not the check, and points at compose", () => {
+    let message = "";
+    try {
+      planBaseline(ON_DISK, undefined, [], false);
+    } catch (err) {
+      message = (err as Error).message;
+    }
+    expect(message).toContain("verify` is not a substitute");
+    expect(message).toContain("compose");
+  });
+
+  test("the refusal names the migrations and both ways out", () => {
+    let message = "";
+    try {
+      planBaseline(ON_DISK, undefined, [], false);
+    } catch (err) {
+      message = (err as Error).message;
+    }
+    for (const name of ON_DISK) expect(message).toContain(name);
+    expect(message).toContain("--migration");
+    expect(message).toContain("--assert-all");
+  });
+
+  test("the refusal needs no ledger, so it can fire before any connection", () => {
+    // Same message with and without a ledger: the guard cannot depend on a value
+    // that is only known after a database round trip.
+    const withLedger = () => {
+      try {
+        planBaseline(
+          ON_DISK,
+          [{ migration_name: ON_DISK[0] as string, started_at: null, finished_at: "x", rolled_back_at: null, applied_steps_count: 1, logs: null }],
+          [],
+          false,
+        );
+        return "";
+      } catch (err) {
+        return (err as Error).message;
+      }
+    };
+    expect(withLedger()).toBe(
+      (() => {
+        try {
+          planBaseline(ON_DISK, undefined, [], false);
+          return "";
+        } catch (err) {
+          return (err as Error).message;
+        }
+      })(),
+    );
+  });
+
+  test("an explicit list is honoured and sorted, oldest first", () => {
+    const plan = planBaseline(ON_DISK, undefined, [ON_DISK[1] as string, ON_DISK[0] as string], false);
+    expect(plan.toResolve).toEqual(ON_DISK);
+  });
+
+  test("--assert-all resolves everything the ledger has not settled", () => {
+    expect(planBaseline(ON_DISK, undefined, [], true).toResolve).toEqual(ON_DISK);
+  });
+
+  test("--assert-all skips what is already recorded", () => {
     const ledger = [
       {
         migration_name: ON_DISK[0] as string,
@@ -193,17 +331,49 @@ describe("planBaseline", () => {
         logs: null,
       },
     ];
-    expect(planBaseline(ON_DISK, ledger, []).toResolve).toEqual([ON_DISK[1]]);
+    expect(planBaseline(ON_DISK, ledger, [], true).toResolve).toEqual([ON_DISK[1]]);
+  });
+
+  test("a fully settled ledger still needs the assertion named, so nothing is asserted by accident", () => {
+    const ledger = ON_DISK.map((n) => ({
+      migration_name: n,
+      started_at: null,
+      finished_at: "x",
+      rolled_back_at: null,
+      applied_steps_count: 1,
+      logs: null,
+    }));
+    expect(() => planBaseline(ON_DISK, ledger, [], false)).toThrow(/no --migration/);
   });
 
   test("refuses a migration that is not on disk rather than inventing it", () => {
-    expect(() => planBaseline(ON_DISK, undefined, ["20261111000000_nope"])).toThrow(
+    expect(() => planBaseline(ON_DISK, undefined, ["20261111000000_nope"], false)).toThrow(
       /no such migration on disk/,
     );
   });
+});
 
-  test("an explicit list is honoured and sorted, oldest first", () => {
-    const plan = planBaseline(ON_DISK, undefined, [ON_DISK[1] as string, ON_DISK[0] as string]);
-    expect(plan.toResolve).toEqual(ON_DISK);
+describe("assertBaselineQualified", () => {
+  const ON_DISK = ["20260929000000_init", "20261002103000_platform_config"];
+
+  test("an empty repository has nothing to assert and needs no flag", () => {
+    expect(() => assertBaselineQualified([], false, [])).not.toThrow();
+  });
+
+  test("a named migration needs no flag, and no name is invented either", () => {
+    expect(() => assertBaselineQualified([ON_DISK[0] as string], false, ON_DISK)).not.toThrow();
+    expect(() => assertBaselineQualified(["nope"], false, ON_DISK)).not.toThrow();
+  });
+
+  test("--assert-all alone is enough", () => {
+    expect(() => assertBaselineQualified([], true, ON_DISK)).not.toThrow();
+  });
+
+  test("the bare form is refused even when the ledger already settles everything", () => {
+    // The dangerous case is exactly this one: a ledger that looks complete still
+    // leaves the bare form able to record the next migration nobody checked.
+    expect(() => assertBaselineQualified([], false, ON_DISK)).toThrow(
+      /no honest undo/,
+    );
   });
 });

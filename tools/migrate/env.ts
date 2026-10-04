@@ -127,7 +127,7 @@ function read(env: NodeJS.ProcessEnv, name: string): string | undefined {
 }
 
 /** Validates that a value is a Postgres URL before it reaches a DDL command. */
-function asPostgresUrl(url: string, source: string): string {
+export function asPostgresUrl(url: string, source: string): string {
   const scheme = /^postgres(ql)?:\/\//.test(url) ? url : undefined;
   if (!scheme) {
     throw new Error(

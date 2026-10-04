@@ -12,9 +12,26 @@
  * and never will: that command drops a schema, and a variable in the
  * environment is not a decision a person made.
  */
-import { isLocalHost, redact, type Target } from "../env";
+import { isLocalHost, redact } from "../env";
 
 export type TargetLabel = "prod" | "dev";
+
+/**
+ * The minimum a guard needs to judge and to name a database: enough to classify
+ * the host, print it safely, and say which flag or variable supplied it.
+ *
+ * Narrower than `Target` on purpose. `compose` has no `--target` to resolve — it
+ * is handed a shadow URL directly — and widening the guard to this shape is what
+ * lets it reuse the same classification instead of inventing a second one or
+ * pretending a throwaway database is a primary. `Target` satisfies it structurally,
+ * so every existing caller is unaffected.
+ */
+export interface GuardTarget {
+  readonly url: string;
+  /** Which flag or variable supplied it, for logging. */
+  readonly source: string;
+  readonly host: string;
+}
 
 export interface ClassifyOptions {
   /** `--target prod` / `--target dev`, when the operator declared one. */
@@ -28,7 +45,7 @@ export interface Verdict {
   readonly reason: string;
 }
 
-export function classifyTarget(target: Target, options: ClassifyOptions = {}): Verdict {
+export function classifyTarget(target: GuardTarget, options: ClassifyOptions = {}): Verdict {
   const local = isLocalHost(target.host);
 
   if (options.declared === "prod") {
@@ -61,7 +78,7 @@ export function classifyTarget(target: Target, options: ClassifyOptions = {}): V
  * or `SKIP_PRODUCTION_GUARD`) and confirmed at a TTY or with `--yes`.
  */
 export async function assertProductionAllowed(
-  target: Target,
+  target: GuardTarget,
   options: ClassifyOptions & {
     readonly allowProduction: boolean;
     readonly yes: boolean;

@@ -23,12 +23,14 @@ import type { TargetLabel } from "./guards/refuse-production";
 import type { BackupGuardOptions } from "./commands/baseline";
 import { runStatus } from "./commands/status";
 import { runVerify } from "./commands/verify";
+import { resolveShadowTarget, runCompose } from "./commands/compose";
 import { runDeploy } from "./commands/deploy";
 import { runBaseline } from "./commands/baseline";
 import { runRollback } from "./commands/rollback";
 import { runReset } from "./commands/reset";
 import { runMirror } from "./commands/mirror";
 import { runCreate } from "./commands/create";
+import { runPush } from "./commands/push";
 
 const COMMANDS = [
   "status",
@@ -36,9 +38,11 @@ const COMMANDS = [
   "deploy",
   "baseline",
   "verify",
+  "compose",
   "rollback",
   "mirror",
   "reset",
+  "push",
 ] as const;
 type Command = (typeof COMMANDS)[number];
 
@@ -51,9 +55,12 @@ usage: bun run tools/migrate/index.ts <command> [flags]
   deploy     guarded \`prisma migrate deploy\`, then verify
   baseline   record existing history (\`prisma migrate resolve --applied\`), dry run first
   verify     read-only: does the live schema match schema.prisma?
+  compose    do the migration files compose to schema.prisma? Needs --shadow-database-url.
+             Resets and replays into that throwaway database; touches no live one.
   rollback   guided, manual, writes nothing
   mirror     delegate to @novastar/db-mirror
   reset      drop and rebuild a LOCAL database. Requires --dev-only.
+  push       delegate to \`prisma db push\`. LOCAL databases only.
 
 global flags
   --yes                 never prompt; required for any write in CI
@@ -67,7 +74,7 @@ target flags
                                      direct:  DIRECT_URL || DATABASE_URL
                                      mirror:  SUPABASE_DATABASE_URL
 
-write flags (deploy, baseline)
+write flags (deploy, baseline, compose)
   --prod | --dev        declare what the target is. Absent, a non-local host
                         is treated as production.
   --allow-production    acknowledge a production target
@@ -81,9 +88,17 @@ command flags
   create     --name <name>          required
              --create-only          write the migration, touch no database
   baseline   --apply                leave the dry run (default: dry run)
-             --migration <name>     repeatable; default: everything unsettled
+             --migration <name>     repeatable; required unless --assert-all
+             --assert-all           assert BY HAND that every unsettled migration
+                                   already ran. The ledger records a claim, not
+                                   evidence, and there is no honest undo.
   verify     --sql-lines <n>        lines of SQL to print (default 40)
              --no-script            do not render the drift SQL
+  compose    --shadow-database-url <url>   REQUIRED. Reset and replayed into. No
+                                   default: a default would run DDL somewhere
+                                   unintended. Use a throwaway Neon branch.
+             --sql-lines <n>        lines of SQL to print on divergence (default 40)
+             --no-script            do not render the diverging SQL
   rollback   --migration <name>     default: the most recently applied
              --limit <n>            how many applied migrations to list (default 10)
   reset      --dev-only             required. --seed opts back into the seed.
@@ -119,6 +134,7 @@ const BOOLEAN_FLAGS = new Set([
   "allow-pending",
   "allow-production",
   "apply",
+  "assert-all",
   "create-only",
   "dev",
   "dev-only",
@@ -280,6 +296,7 @@ const ALLOWED: Record<Command, readonly string[]> = {
     "dev",
     "allow-production",
     "apply",
+    "assert-all",
     "dry-run",
     "migration",
     "max-mirror-age-hours",
@@ -287,9 +304,18 @@ const ALLOWED: Record<Command, readonly string[]> = {
     "require-mirror-age",
   ],
   verify: ["target", "sql-lines", "no-script"],
+  compose: [
+    "shadow-database-url",
+    "prod",
+    "dev",
+    "allow-production",
+    "sql-lines",
+    "no-script",
+  ],
   rollback: ["target", "migration", "limit", "sql-lines"],
   mirror: ["verify-only"],
   reset: ["target", "dev-only", "seed"],
+  push: ["target"],
 };
 
 function rejectUnknownFlags(parsed: Parsed, command: Command): void {
@@ -368,6 +394,26 @@ async function dispatch(parsed: Parsed): Promise<number> {
         }),
       );
 
+    case "compose": {
+      const label = declared(parsed);
+      const allowProduction = bool(parsed, "allow-production", false);
+      const raw = one(parsed, "shadow-database-url");
+      const sqlLines = number(parsed, "sql-lines", 40);
+      return run("prisma migrate diff --from-migrations --shadow-database-url", async (ctx) => {
+        // Resolved inside the callback so a missing URL is reported against this
+        // command's mechanism, and so the refusal happens before any guard runs.
+        const shadow = resolveShadowTarget(raw, env);
+        return runCompose(ctx, {
+          shadow,
+          showScript: !bool(parsed, "no-script", false),
+          sqlLines,
+          yes: parsed.yes,
+          ...(label !== undefined ? { declared: label } : {}),
+          allowProduction,
+        });
+      });
+    }
+
     case "create":
       return run("prisma migrate dev", (ctx) =>
         runCreate(ctx, {
@@ -407,6 +453,17 @@ async function dispatch(parsed: Parsed): Promise<number> {
       }
       const label = declared(parsed);
       const migrations = many(parsed, "migration");
+      const assertAll = bool(parsed, "assert-all", false);
+      if (assertAll && migrations.length > 0) {
+        // Contradictory rather than merely redundant: naming migrations is the
+        // precise form, and silently accepting both would let `--assert-all`
+        // ride along on an invocation that did not mean it.
+        throw new UsageError(
+          "--assert-all and --migration contradict each other. Naming the " +
+            "migrations is the precise form; --assert-all is only for the bare " +
+            "case where you are asserting every unsettled migration by hand.",
+        );
+      }
       const allowProduction = bool(parsed, "allow-production", false);
       const backup = backupGuard(parsed);
       return run("prisma migrate resolve --applied", async (ctx) => {
@@ -414,6 +471,7 @@ async function dispatch(parsed: Parsed): Promise<number> {
         await runBaseline({ ...ctx, dryRun: !apply }, {
           target,
           migrations,
+          assertAll,
           apply,
           yes: parsed.yes,
           ...(label !== undefined ? { declared: label } : {}),
@@ -454,6 +512,16 @@ async function dispatch(parsed: Parsed): Promise<number> {
           skipSeed: !seed,
           status: { allowPending: false },
         }),
+      );
+    }
+
+    case "push": {
+      return run(
+        "prisma db push (local database only)",
+        async (ctx) => {
+          const target = resolveTarget(targetKind, env);
+          return runPush(ctx, { target });
+        },
       );
     }
   }
