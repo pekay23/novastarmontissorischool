@@ -122,6 +122,13 @@ const COMMANDS: readonly CommandSpec[] = [
     load: () => import("./commands/operator"),
     entry: "runOperator",
   },
+  {
+    name: "setup-link",
+    summary: "Print an account's one-time password setup link when no mail provider is configured",
+    usage: "novastar-tenant setup-link [--tenant <code>] --email <email> [--allow-remote-database]",
+    load: () => import("./commands/setup-link"),
+    entry: "runSetupLink",
+  },
 ];
 
 function renderHelp(): string {
@@ -146,11 +153,15 @@ function renderHelp(): string {
     "  TENANT_ADMIN_PASSWORD           initial administrator password; never defaulted",
     "  PLATFORM_OPERATOR_PASSWORD      operator password for `operator`; never defaulted",
     "",
+    "  setup-link exists because RESEND_API_KEY is unset. Setting that variable is",
+    "  the real fix; the command is a development aid for finishing an account setup",
+    "  by hand when no mail provider is configured.",
+    "",
     "Run `novastar-tenant <command> --help` for a command's own options.",
     "",
     "Authorisation: possession of DATABASE_URL is authorisation. This tool",
-    "deletes nothing, never prints a credential, and never invents a default",
-    "password. See README.md.",
+    "deletes nothing, never prints a credential to anywhere but your own",
+    "terminal, and never invents a default password. See README.md.",
   ];
   return lines.join("\n");
 }

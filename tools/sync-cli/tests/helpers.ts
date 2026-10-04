@@ -267,6 +267,31 @@ export function createHarness(
   }
 }
 
+/**
+ * Per-test budget for anything that spawns the real CLI.
+ *
+ * Bun's default is 5000ms. That default is sized for an in-process assertion, and
+ * a spawned-CLI test does nothing else: it starts a fresh `bun`, transpiles and
+ * resolves `index.ts`'s module graph (config, dotenv, the `pg` adapter and ten
+ * command modules), drains both pipes and waits for the exit code. Measured
+ * single-spawn wall time for `bun index.ts --help` on this repo (Windows, 4
+ * logical CPUs) was 0.22-0.31s warm and 0.31s with an empty transpiler cache, but
+ * 0.89-4.75s under 8x CPU oversubscription -- which is what `turbo run test`
+ * does to this package while eight other workspaces are testing.
+ *
+ * 5000ms therefore sat *inside* that distribution rather than above it, and these
+ * tests failed with `this test timed out after 5000ms` plus
+ * `expect(received).toBe(expected) / Expected: 0 / Received: 143`. The 143 is not
+ * a separate defect and says nothing about the CLI: 143 is 128 + SIGTERM, and at
+ * the timeout Bun kills the child it spawned ("killed 1 dangling process"), so a
+ * SIGTERM'd child reports 143. No assertion was ever reached.
+ *
+ * 30s is roughly 6x the worst observation above. It bounds process-start cost and
+ * nothing else: a real deadlock still fails here, just five seconds later than it
+ * otherwise would.
+ */
+export const SPAWN_TIMEOUT_MS = 30_000;
+
 /** Spawns the real CLI in a child process. Used where exit codes matter. */
 export async function runCli(
   args: string[],

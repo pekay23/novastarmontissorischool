@@ -14,7 +14,7 @@ import {
   resolveTenantId,
   scopeToSchool,
 } from '../config'
-import { TEST_ENV, runCli } from './helpers'
+import { TEST_ENV, runCli, SPAWN_TIMEOUT_MS } from './helpers'
 
 describe('parseFlags', () => {
   test('reads values, --key=value and boolean flags', () => {
@@ -169,13 +169,13 @@ describe('the built CLI', () => {
     expect(result.exitCode).toBe(0)
     expect(result.stdout).toContain('novastar-sync')
     expect(result.stdout).toContain('DESTROYS UNSYNCED WORK')
-  })
+  }, SPAWN_TIMEOUT_MS)
 
   test('no arguments at all prints help and exits 0', async () => {
     const result = await runCli([], { DATABASE_URL: '', DIRECT_URL: '' })
     expect(result.exitCode).toBe(0)
     expect(result.stdout).toContain('Usage:')
-  })
+  }, SPAWN_TIMEOUT_MS)
 
   test('a missing DATABASE_URL exits non-zero and names the variable', async () => {
     const result = await runCli(['status', '--json'], {
@@ -185,11 +185,11 @@ describe('the built CLI', () => {
     })
     expect(result.exitCode).not.toBe(0)
     expect(result.stderr).toContain('DATABASE_URL')
-  })
+  }, SPAWN_TIMEOUT_MS)
 
   test('an unknown command exits non-zero', async () => {
     const result = await runCli(['frobnicate'], { DATABASE_URL: '' })
     expect(result.exitCode).toBe(2)
     expect(result.stderr).toContain('Unknown command')
-  })
+  }, SPAWN_TIMEOUT_MS)
 })

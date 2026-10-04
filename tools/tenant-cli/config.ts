@@ -86,6 +86,48 @@ export function redactDatabase(): string {
   return redact(requireDatabaseUrl());
 }
 
+/**
+ * The host the tool is about to write to, or `<unparseable>`.
+ *
+ * `requireDatabaseUrl` has already proved the value parses, so this never throws
+ * in practice; the placeholder keeps the type total rather than throwing from a
+ * function whose result is only ever used in a message.
+ */
+export function databaseHost(): string {
+  try {
+    return new URL(requireDatabaseUrl()).hostname;
+  } catch {
+    return "<unparseable>";
+  }
+}
+
+/**
+ * Hosts that are unambiguously this developer's own machine.
+ *
+ * The set is deliberately narrow and matches `isLocalHost` in
+ * `tools/migrate/env.ts`: an unrecognised host counts as remote, and remote means
+ * guarded. It is duplicated as a literal rather than imported because
+ * `@novastar/migrate` is a separate tool with its own `Context` and env
+ * conventions, and importing one tool's internals from another couples two
+ * command surfaces that are otherwise independent -- the same trade
+ * `commands/operator.ts` makes for `MIN_OPERATOR_PASSWORD_LENGTH`, and for the
+ * same reason.
+ *
+ * The consequence is stated plainly, because it is the whole reason
+ * `commands/setup-link.ts` gates on an acknowledgement flag instead: the Prisma
+ * client speaks Neon's SQL-over-HTTP protocol (`.env.example`, "Database"), so a
+ * local `postgres` cannot serve this schema and `DATABASE_URL` is *always* a
+ * managed host in practice. A local-host-only gate would therefore never open,
+ * which makes it a gate that always refuses.
+ */
+export function isLocalHost(host: string): boolean {
+  const h = host.trim().toLowerCase().replace(/^\[|\]$/g, "");
+  if (h === "localhost" || h.endsWith(".localhost")) return true;
+  if (h === "::1" || h === "0.0.0.0") return true;
+  if (h === "host.docker.internal") return true;
+  return /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(h);
+}
+
 /** The lazily-constructed shared Prisma client. */
 export function getPrisma(): PrismaClient {
   requireDatabaseUrl();

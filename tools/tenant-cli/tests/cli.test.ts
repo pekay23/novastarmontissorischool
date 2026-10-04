@@ -13,6 +13,34 @@ import { ArgMap } from "../commands/shared";
 const packageRoot = join(import.meta.dir, "..");
 const entryPoint = join(packageRoot, "index.ts");
 
+/**
+ * Per-test budget for anything that spawns the real CLI.
+ *
+ * Bun's default is 5000ms. That default is sized for an in-process assertion, and
+ * these tests do nothing else: each one starts a fresh `bun`, transpiles and
+ * resolves the CLI's module graph, drains both pipes and waits for the exit code.
+ * Measured single-spawn wall time for `bun index.ts --help` on this repo (Windows,
+ * 4 logical CPUs) was 0.24-0.44s warm, 1.1s with an empty transpiler cache, and
+ * 5.7s on the first invocation after the OS page cache had been dropped. Under 8x
+ * CPU oversubscription -- which is what `turbo run test` does to this file while
+ * eight other workspaces are testing -- the same command took 0.9-4.8s.
+ *
+ * 5000ms therefore sat *inside* that distribution rather than above it, and these
+ * tests failed with `this test timed out after 5000ms` plus
+ * `expect(received).toBe(expected) / Expected: 0 / Received: 143`. The 143 is not
+ * a separate defect and not a signal about the CLI: 143 is 128 + SIGTERM, and at
+ * the timeout Bun kills the child it spawned ("killed 1 dangling process"), so a
+ * SIGTERM'd child reports 143. No assertion was ever reached.
+ *
+ * 30s is roughly 5x the worst observation above. It bounds process-start cost and
+ * nothing else: a real deadlock still fails here, just five seconds later than it
+ * otherwise would. Raising this number is not what fixed the flakiness -- moving
+ * the `@novastar/database` import in `provision.ts` off module load did that, by
+ * cutting the cold spawn from 3.1s to 1.1s -- this is the margin that stops an
+ * unlucky page-cache miss from reading as a broken CLI.
+ */
+const SPAWN_TIMEOUT_MS = 30_000;
+
 interface RunResult {
   readonly code: number;
   readonly stdout: string;
@@ -40,32 +68,32 @@ describe("--help with no database", () => {
     expect(result.code).toBe(0);
     expect(result.stdout).toContain("novastar-tenant");
     expect(result.stdout).toContain("Commands:");
-  });
+  }, SPAWN_TIMEOUT_MS);
 
   test("exits 0 with --help and no DATABASE_URL", async () => {
     const result = await run(["--help"], { DATABASE_URL: "" });
     expect(result.code).toBe(0);
     expect(result.stdout).toContain("novastar-tenant <command> [options]");
-  });
+  }, SPAWN_TIMEOUT_MS);
 
   test("exits 0 with -h", async () => {
     const result = await run(["-h"], { DATABASE_URL: "" });
     expect(result.code).toBe(0);
     expect(result.stdout).toContain("Commands:");
-  });
+  }, SPAWN_TIMEOUT_MS);
 
   test("exits 0 for `help`", async () => {
     const result = await run(["help"], { DATABASE_URL: "" });
     expect(result.code).toBe(0);
     expect(result.stdout).toContain("Commands:");
-  });
+  }, SPAWN_TIMEOUT_MS);
 
   test("never mentions the connection string or a secret", async () => {
     const result = await run(["--help"], { DATABASE_URL: "" });
     expect(result.stdout).not.toContain("postgresql://");
     expect(result.stderr).not.toContain("DATABASE_URL is not set");
     expect(result.stderr).toBe("");
-  });
+  }, SPAWN_TIMEOUT_MS);
 
   test("lists every command", async () => {
     const { stdout } = await run(["--help"], { DATABASE_URL: "" });
@@ -83,16 +111,17 @@ describe("--help with no database", () => {
       "reactivate",
       "user",
       "operator",
+      "setup-link",
     ]) {
       expect(stdout).toContain(command);
     }
-  });
+  }, SPAWN_TIMEOUT_MS);
 
   test("a subcommand's own --help also works without a database", async () => {
     const result = await run(["clone", "--help"], { DATABASE_URL: "" });
     expect(result.code).toBe(0);
     expect(result.stdout).toContain("--from <code>");
-  });
+  }, SPAWN_TIMEOUT_MS);
 });
 
 describe("dispatch errors", () => {
@@ -100,7 +129,7 @@ describe("dispatch errors", () => {
     const result = await run(["not-a-command"], { DATABASE_URL: "" });
     expect(result.code).toBe(2);
     expect(result.stdout).toContain("Commands:");
-  });
+  }, SPAWN_TIMEOUT_MS);
 });
 
 describe("ArgMap", () => {

@@ -10,17 +10,53 @@
  * The one platform API it reaches for is `Bun.password`, which hashes rather
  * than prints.
  */
-import { prisma } from "@novastar/database";
-import type { Prisma, School, Tenant } from "@novastar/database";
-import { PERMISSION_CATALOG, PLATFORM_ROLE_NAMES, permissionsForRole } from "@novastar/shared-types";
+import type { Prisma, PrismaClient, School, Tenant } from "@novastar/database";
 import {
   ValidationError,
 parseEstablished,
-  parseOptionalSettings,
-  validateCode,
-  validateDomain,
-  validateEmail,
+parseOptionalSettings,
+validateCode,
+validateDomain,
+validateEmail,
 } from "./validate";
+
+/**
+ * Both `@novastar/database` and `@novastar/shared-types` are resolved on first
+ * use rather than at module load.
+ *
+ * `index.ts` re-exports this file so `@novastar/tenant-cli` can be imported as a
+ * library. A static `import { prisma } from "@novastar/database"` here would
+ * therefore load the whole generated Prisma client on *every* `novastar-tenant`
+ * start, including `novastar-tenant --help`, which is exactly what `index.ts`
+ * promises never happens: "nothing loads dotenv or `@novastar/database` until a
+ * command that actually needs a database has been named".
+ *
+ * It is not a rounding error. Measured on Windows (4 logical CPUs), one
+ * `bun index.ts --help` spawn cost 0.64-1.20s warm and 3.09s against an empty
+ * transpiler cache with the client loaded at import time; 5.65s on the first
+ * invocation after the OS page cache had gone cold. With both imports moved
+ * here the same command costs 0.24-0.44s warm and 1.11s against an empty cache.
+ * `tests/cli.test.ts` starts a fresh process per assertion, so that gap is the
+ * difference between a suite that passes and one that blows Bun's 5000ms default
+ * per-test timeout.
+ *
+ * Each promise is memoised, so a process still resolves each module once, and
+ * resolution happens inside the call rather than at import time, so a
+ * `mock.module("@novastar/database", ...)` registered by a test before the call
+ * is honoured exactly as it is for a static import.
+ */
+let database: Promise<PrismaClient> | undefined;
+let sharedTypes: Promise<typeof import("@novastar/shared-types")> | undefined;
+
+function client(): Promise<PrismaClient> {
+  database ??= import("@novastar/database").then((module) => module.prisma);
+  return database;
+}
+
+function platform(): Promise<typeof import("@novastar/shared-types")> {
+  sharedTypes ??= import("@novastar/shared-types");
+  return sharedTypes;
+}
 
 /**
  * The role granted to the initial administrator when the caller names none.
@@ -235,6 +271,7 @@ export async function hashPassword(password: string): Promise<string> {
 export async function provisionTenant(input: ProvisionInput): Promise<ProvisionedTenant> {
   const normalized = normalizeProvisionInput(input);
   const passwordHash = input.admin ? await hashPassword(assertAdminPassword(input.admin)) : null;
+  const prisma = await client();
 
   return prisma.$transaction(async (tx) => {
     const existing = await tx.tenant.findUnique({
@@ -332,7 +369,7 @@ export async function provisionTenant(input: ProvisionInput): Promise<Provisione
           schoolId: school.id,
           name: normalized.admin.roleName,
           isSystem: true,
-          permissions: permissionsForRoleSafe(normalized.admin.roleName),
+          permissions: await permissionsForRoleSafe(normalized.admin.roleName),
         },
         update: {},
       });
@@ -379,6 +416,7 @@ export async function provisionTenant(input: ProvisionInput): Promise<Provisione
 }
 
 async function seedPermissions(tx: Prisma.TransactionClient, tenantId: string): Promise<number> {
+  const { PERMISSION_CATALOG } = await platform();
   for (const permission of PERMISSION_CATALOG) {
     await tx.permission.upsert({
       where: { tenantId_key: { tenantId, key: permission.key } },
@@ -403,6 +441,7 @@ async function seedPlatformRoles(
   tenantId: string,
   schoolId: string,
 ): Promise<number> {
+  const { PLATFORM_ROLE_NAMES, permissionsForRole } = await platform();
   // Scoped to the school rather than the tenant, matching `tools/seed`. Prisma
   // types a nullable column inside a compound unique as `string`, so a
   // tenant-scoped role (`schoolId: null`) cannot be selected through
@@ -424,7 +463,8 @@ async function seedPlatformRoles(
   return PLATFORM_ROLE_NAMES.length;
 }
 
-function permissionsForRoleSafe(roleName: string): string[] {
+async function permissionsForRoleSafe(roleName: string): Promise<string[]> {
+  const { PLATFORM_ROLE_NAMES, permissionsForRole } = await platform();
   const known = PLATFORM_ROLE_NAMES.includes(roleName as (typeof PLATFORM_ROLE_NAMES)[number]);
   return known ? permissionsForRole(roleName as (typeof PLATFORM_ROLE_NAMES)[number]) : [];
 }

@@ -2,7 +2,8 @@
 
 Operator tool for tenant lifecycle: onboard a school, copy one school's
 configuration into another, inspect and edit tenant configuration, suspend and
-reactivate, and export or import a tenant's configuration as a versionable file.
+reactivate, export or import a tenant's configuration as a versionable file, and
+mint a single password setup link by hand when no mail provider is configured.
 
 The schema has been multi-tenant from day one. This tool is what makes that
 claim testable, because it is the only thing in the repository that can create a
@@ -23,8 +24,10 @@ Three properties are deliberate and load-bearing:
   password. The password is read from `TENANT_ADMIN_PASSWORD` or from a masked
   prompt, it is never a command-line argument (argv is world-readable and
   shell history keeps it), and it is never printed.
-- **It never prints a secret.** No connection string, no password hash, no
-  session token.
+- **It never prints a secret**, with one deliberate and named exception. No
+  connection string, no password hash, no session token. `setup-link` prints
+  the one credential it mints, to the operator's own stdout, and to nowhere
+  else — see its section below.
 
 ## Requirements
 
@@ -35,7 +38,7 @@ overrides a CI variable only when both exist.
 | Variable | Needed by | Purpose |
 | --- | --- | --- |
 | `DATABASE_URL` | every command except `--help` | Primary connection |
-| `TENANT_CODE` | `show`, `set`, `config *`, `suspend`, `reactivate`, `user`, `import` | Default tenant when `--tenant` is omitted |
+| `TENANT_CODE` | `show`, `set`, `config *`, `suspend`, `reactivate`, `user`, `setup-link`, `import` | Default tenant when `--tenant` is omitted |
 | `TENANT_ADMIN_EMAIL` | `create` | Default initial administrator |
 | `TENANT_ADMIN_PASSWORD` | `create --admin-email`, `user` | Initial or rotated password. Never defaulted |
 
@@ -158,6 +161,49 @@ Passwords are hashed with `Bun.password.hash(..., { algorithm: "argon2id" })`,
 matching `tools/seed`. `argon2` and `bcryptjs` are deliberately not used; both
 have unresolved version conflicts elsewhere in this repository.
 
+### setup-link
+
+```bash
+bun index.ts setup-link --tenant another --email head@another.example.com
+bun index.ts setup-link --tenant another --email head@another.example.com --allow-remote-database --yes
+```
+
+Mints an account's one-time "set your password" link and prints it. Use it only
+to finish an account setup by hand when **no email provider is configured**.
+
+**`RESEND_API_KEY` is the real fix.** Set it in `.env` (see `.env.example`) and
+the portal and the super-admin console deliver this link by email; `setup-link`
+is then unnecessary. Without it `sendEmail` in `packages/notifications` throws
+`EmailDeliveryError('not-configured')`, every staff-account creation ends
+`502 created-not-delivered`, and the "set my password" journey cannot be
+completed at all.
+
+There is no manual workaround, which is what this command exists for.
+`issueEmailToken` stores `hashEmailToken(token)` — a SHA-256 digest — in
+`User.verifyToken`, so the link cannot be reconstructed from the database, and
+neither invite route returns it on failure. `novastar-tenant user --rotate` does
+recover, but it sets the password directly and so bypasses the journey under
+test.
+
+The printed URL is a single-use credential: following it sets the password for
+that account. It goes to your terminal and nowhere else — no file, no
+`--out`, no `--json`, no log line, and no error message. Only its digest is
+stored, so the plaintext cannot be recovered afterwards; re-run to mint another.
+
+What it refuses:
+
+| Refusal | Why |
+| --- | --- |
+| the account already has a `passwordHash` | mirrors `409 already-has-password` in `apps/portal/app/api/auth/set-password/route.ts`. Without it this command is a password reset for anyone who can run the CLI |
+| `DATABASE_URL` is not on this machine, without `--allow-remote-database` | it writes a live credential, so that is acknowledged explicitly — the `--allow-production` shape `tools/migrate`'s `baseline` uses. `tools/migrate`'s `reset --dev-only` local-host-only rule is deliberately *not* copied: `.env.example` records that the Prisma client speaks Neon's SQL-over-HTTP, so a local `postgres` cannot serve this schema and a local-only gate could never open against the real database |
+| a `--token` value, or any positional argument | `argv` is world-readable and shell history keeps it. This command mints its own token and will not take one |
+| no `--yes` when stdin is not a terminal | the standard `requireConfirmation` gate |
+| neither `NEXTAUTH_URL` nor `NEXT_PUBLIC_ORIGIN` | resolved **before** the mint, so a missing origin cannot leave an unreadable digest on the row |
+
+The account is always resolved through the tenant code and then
+`tenantId_email`, never by email alone: the same address can exist in two
+tenants. Run `bun index.ts setup-link --help` for the full text.
+
 ## Shared provisioning
 
 `provision.ts` is the single implementation of provisioning. `apps/super-admin`
@@ -199,15 +245,17 @@ Guarantees, all covered by `tests/provision.test.ts`:
 ```
 tools/tenant-cli/
   index.ts              subcommand dispatch, shebang, --help with no database
-  config.ts             env loading, requireEnv, redact
+  config.ts             env loading, requireEnv, redact, isLocalHost
   output.ts             --json / --table rendering
   validate.ts           code / domain / email / date / settings validation
   provision.ts          the shared provisioning function (library-safe)
   commands/             one module per subcommand; all I/O lives here
     shared.ts           argument parsing and confirmation gates
     clone.ts            configuration clone and the NEVER_CLONED denylist
+    setup-link.ts       mint and print one password setup link; its refusals are
+                        the specification
     config/             get, set, export
-  tests/                validate, provision, clone, cli
+  tests/                validate, provision, clone, cli, operator, setup-link
     support/fake-prisma.ts   an in-memory Prisma stand-in
 ```
 
