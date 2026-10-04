@@ -136,16 +136,24 @@ export interface CreateDelegationInput {
   fromUserId: string
   toUserId: string
   permissions: string[]
-  requiresApproval?: boolean
   context?: string
   expiresAt?: Date
   tenantId: string
   schoolId: string
 }
 
+const MS_PER_DAY = 24 * 60 * 60 * 1000
+
 /**
- * Create a delegation. If requiresApproval=true, it goes to pending state
- * until approved by an authorized user (typically Headmaster).
+ * Create a delegation.
+ *
+ * Whether the delegation needs approval, and how long it may live, are both read
+ * from the delegator's own delegation policy — never from the caller. A caller
+ * that could pass `requiresApproval: false` was able to self-approve its own
+ * delegation, and a caller that passed nothing got `requiresApproval: true`
+ * recorded while `isActive` was computed from the same absent field, so the
+ * delegation went live anyway. Both are now impossible: the policy decides, and
+ * one resolved flag drives the stored value and `isActive` together.
  */
 export async function createDelegation(input: CreateDelegationInput): Promise<Delegation> {
   // Verify: fromUser has all delegated permissions
@@ -166,19 +174,35 @@ export async function createDelegation(input: CreateDelegationInput): Promise<De
     throw new Error('Source user not found or has no role')
   }
 
-  // Check if delegation rules allow this
-  const delegationRules = await getDelegationRules(fromUser.roleId!, input.tenantId)
+  // Check if delegation rules allow this. `getDelegationRules` resolves a single
+  // roleId to at most one rule, so `policy` is that role's rule and is the
+  // authority for approval and duration alike.
+  const [policy] = await getDelegationRules(fromUser.roleId!, input.tenantId)
   for (const perm of input.permissions) {
-    const allowed = delegationRules.some(rule => {
-      const ruleAllowsPerm = rule.permissions.some(
-  (granted) => granted === '*' || permissionMatches(granted, perm)
-)
-      return ruleAllowsPerm
-    })
+    const allowed = policy?.permissions.some(
+      (granted) => granted === '*' || permissionMatches(granted, perm)
+    )
     if (!allowed) {
       throw new Error(`Your role does not allow delegating "${perm}"`)
     }
   }
+
+  // Resolved once and used for both fields. Deriving `isActive` from anything but
+  // this const is the fail-open: the record said "awaiting approval" while the
+  // row was handed over anyway.
+  const requiresApproval = policy?.requiresApproval ?? true
+
+  // `maxDurationDays` is a ceiling the caller cannot raise. An absent expiry is
+  // bounded by the cap too — leaving it null would hand out an open-ended
+  // delegation, which is the thing the cap exists to prevent.
+  const capMs = policy?.maxDurationDays === undefined ? undefined : policy.maxDurationDays * MS_PER_DAY
+  const expiresAt = capMs === undefined
+    ? input.expiresAt
+    : (() => {
+        const latest = new Date(Date.now() + capMs)
+        if (!input.expiresAt) return latest
+        return input.expiresAt.getTime() > latest.getTime() ? latest : input.expiresAt
+      })()
 
   // Create delegation record
   const delegation = await prisma.delegation.create({
@@ -188,10 +212,10 @@ export async function createDelegation(input: CreateDelegationInput): Promise<De
       fromUserId: input.fromUserId,
       toUserId: input.toUserId,
       permissions: input.permissions,
-      requiresApproval: input.requiresApproval ?? true,
+      requiresApproval,
       context: input.context,
-      expiresAt: input.expiresAt,
-      isActive: !input.requiresApproval, // active immediately if no approval needed
+      expiresAt,
+      isActive: !requiresApproval, // active immediately if no approval needed
     },
   })
 

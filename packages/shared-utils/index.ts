@@ -121,9 +121,26 @@ export function validateGhanaID(id: string): boolean {
 
 // --- Percentage Calculations ---
 
-export function calculatePercentage(marks: number, total: number): number {
-  if (total === 0) return 0
-  return Math.round((marks / total) * 100 * 100) / 100
+/**
+ * A mark as a percentage of what it was scored against, or null when the two
+ * cannot produce one.
+ *
+ * Refusing rather than rounding or clamping is the point. `rawScore` and
+ * `Assessment.maxScore` are bounded independently, so a teacher who typed 150
+ * into a 100-mark assessment used to get 150% — and `Score.grade`, the audit
+ * record of what the gradebook decided, recorded the top band for it. A
+ * percentage is by definition inside 0-100; anything else is not a percentage
+ * that needs rounding, it is a mark that does not belong on this assessment.
+ *
+ * `null` is also what keeps `Score.percentage` (`Decimal(5,2)`) reachable: a
+ * ratio such as 9999/1 would otherwise become a 500 from the database rather
+ * than a 400 to the teacher who typed the mark.
+ */
+export function calculatePercentage(marks: number, total: number): number | null {
+  if (!Number.isFinite(marks) || !Number.isFinite(total) || total === 0) return null
+  const percentage = Math.round((marks / total) * 100 * 100) / 100
+  if (percentage < 0 || percentage > 100) return null
+  return percentage
 }
 
 export function calculateAverage(scores: number[]): number {
@@ -296,19 +313,26 @@ function findGradeBandHoleProblems(bands: readonly NamedGradeBand[]): string[] {
   const ordered = bands
     .filter((band) => band.minScore <= band.maxScore)
     .sort((a, b) => a.minScore - b.minScore)
-  for (let index = 1; index < ordered.length; index += 1) {
-    const previous = ordered[index - 1]!
-    const current = ordered[index]!
-    if (Math.min(previous.maxScore, current.maxScore) >= Math.max(previous.minScore, current.minScore)) {
-      continue
-    }
-    const holeFrom = previous.maxScore + 1
-    const holeTo = current.minScore - 1
-    if (holeTo >= holeFrom) {
+  // The highest `maxScore` reached by ANY earlier band, not the previous row's
+  // own. A band that ends inside its predecessor claims nothing beyond it, so
+  // with `a 0-49, c 30-45, b 50-100` the percentage 46 is claimed by `a`, and
+  // comparing `b` against `c` alone reported a "hole" that no percentage can
+  // fall into — naming a defect that does not exist, and refusing through
+  // `assertBandsCoverZeroToHundred` a scale that grades every percentage once.
+  //
+  // An overlap still reports no hole, without a special case: where two bands
+  // overlap the later one starts at or below what earlier bands already reached,
+  // which is the same statement as "nothing new begins here".
+  let reached: number | null = null
+  let boundaryKey = ''
+  for (const band of ordered) {
+    if (reached !== null && band.minScore > reached + 1) {
       problems.push(
-        `${holeFrom}-${holeTo}% falls between ${previous.key} and ${current.key} and matches no band`,
+        `${reached + 1}-${band.minScore - 1}% falls between ${boundaryKey} and ${band.key} and matches no band`,
       )
     }
+    reached = reached === null ? band.maxScore : Math.max(reached, band.maxScore)
+    boundaryKey = band.key
   }
   return problems
 }
@@ -332,10 +356,15 @@ function findGradeBandHoleProblems(bands: readonly NamedGradeBand[]): string[] {
  * A scale that does not reach 0, or does not reach 100, is NOT a defect here: a
  * school that reports nothing below 50 has decided something legitimate, and a
  * scale still being built one band at a time looks the same. There is no reading
- * of a mid-scale hole that is not a mis-grade, which is why that one is fatal
- * everywhere while the edges are not. `findGradeBandCoverageGaps` reports the
- * edges, and `assertBandsCoverZeroToHundred` is the strict form that requires the
- * whole 0-100 span.
+ * of a mid-scale hole that is not a mis-grade, which is why this one is fatal to
+ * GRADING while the edges are not: a percentage in a hole resolves to no band at
+ * all, and a percentage below the floor is a child the school chose not to
+ * report. So the two are enforced in two different places — resolution refuses
+ * the hole, and `findGradeBandCoverageGaps` names the edges for the strict
+ * `assertBandsCoverZeroToHundred` the seed calls.
+ *
+ * Nothing in this list is refused by a single-row admin write. See
+ * `findGradeBandWriteConflicts` for why a hole in particular cannot be.
  */
 export function findGradeBandDefects(
   bands: readonly NamedGradeBand[],
@@ -367,9 +396,20 @@ export function findGradeBandDefects(
  *
  * What IS refused here is what no legitimate intermediate state contains: a band
  * that runs backwards, a band outside 0-100, and two bands claiming the same
- * percentage. The hole is enforced where it can actually be decided — at
- * resolution, which refuses to grade a percentage no band claims and says which
- * range is at fault rather than guessing the band beneath it.
+ * percentage.
+ *
+ * What is NOT enforced anywhere on this path, so that nothing here is read as a
+ * stronger promise than it keeps:
+ *
+ * - an interior hole, which is why the mitigation is at resolution — it refuses
+ *   to grade a percentage no band claims and says which range is at fault rather
+ *   than guessing the band beneath it;
+ * - coverage of 0-100, or of both edges, which `findGradeBandCoverageGaps`
+ *   reports and only `assertBandsCoverZeroToHundred` (the seed) refuses. A school
+ *   may legitimately hold a scale that stops at 70, and may empty one entirely.
+ *
+ * So the honest statement of the admin write path's guarantee is: no band it
+ * writes runs backwards, leaves 0-100, or doubles up a percentage. Nothing more.
  */
 export function findGradeBandWriteConflicts(
   bands: readonly NamedGradeBand[],
@@ -444,7 +484,14 @@ export interface CrossRowWriteContext {
   write: Record<string, unknown>
   /** The stored row being replaced or deleted; null on create. */
   existing: Record<string, unknown> | null
-  /** Every band currently stored for a scale. */
+  /**
+   * Every band currently stored for a scale.
+   *
+   * The route supplies this, so it is the route that must scope it: a rule that
+   * judges a write against another school's bands would refuse it for a conflict
+   * it did not cause, and would name those bands' keys in the 400 that explains
+   * why. A scale the caller cannot see has to read as empty.
+   */
   readScaleBands: (gradingScaleId: string) => Promise<readonly NamedGradeBand[]>
 }
 
@@ -452,6 +499,65 @@ export interface CrossRowWriteContext {
 export type CrossRowWriteRule = (
   context: CrossRowWriteContext,
 ) => Promise<string[]> | string[]
+
+/**
+ * What a write does, without the read that goes with it.
+ *
+ * Deciding who a write belongs to needs nothing from the database, so the parent
+ * check takes this and never touches the reader a conflict check has to have.
+ */
+export type CrossRowWriteTarget = Omit<CrossRowWriteContext, 'readScaleBands'>
+
+/**
+ * The tenant and school a request is being served for.
+ *
+ * `schoolId` is null for a caller with no school assigned — a tenant-level admin —
+ * which is why the predicates below treat it as a value to match rather than as
+ * a filter to skip.
+ */
+export interface CallerScope {
+  tenantId: string
+  schoolId: string | null
+}
+
+/**
+ * A Prisma `where` clause, written without depending on Prisma's generated
+ * types — the lowest layer of the type graph cannot import them.
+ *
+ * A rule that narrows this to the shape it actually produces keeps its
+ * `where` clause assignable to the delegate it is handed to, which is what lets
+ * the route read a parent without casting the query it did not write.
+ */
+export type PrismaWhereClause = Record<string, unknown>
+
+/**
+ * The row a write attaches to, and the predicate that proves it is the caller's.
+ *
+ * A row that names a foreign key is only safe when the parent it names is
+ * checked. Owning the row being written says nothing about the row it hangs
+ * from: a `grading_level` row has no `schoolId` column, so the school that
+ * grades a child against a band is the school of the band's scale, and a band
+ * whose own `tenantId` is the caller's can still hang from another school's
+ * scale. The band is then invisible to the school whose grading it has changed,
+ * because that school would filter it out, and unremovable through the API.
+ *
+ * Declared per cross-row kind, so the constraint travels with the entity
+ * definition the way `CrossRowWriteRule` does. Kept free of a database client:
+ * the route supplies the read, and this module stays pure.
+ *
+ * `Where` is the clause this kind produces, narrowed to its real shape. It is a
+ * type parameter rather than a cast so the query the route hands to Prisma is
+ * still type-checked against the model it is aimed at.
+ */
+export interface ParentScopeWriteRule<Where = PrismaWhereClause> {
+  /**
+   * The parent this write names, or the one the stored row already belongs to.
+   * Null when neither can be resolved, which no write can be allowed past.
+   */
+  parentId: (context: CrossRowWriteTarget) => string | null
+  /** The where-clause under which a parent row counts as the caller's. */
+  scopeWhere: (scope: CallerScope & { id: string }) => Where
+}
 
 function recordString(value: unknown): string | null {
   return typeof value === 'string' && value.length > 0 ? value : null
@@ -496,6 +602,50 @@ export function gradeBandWriteProblems(params: {
 }
 
 /**
+ * Which scale a band write belongs to: the one it names, or — for a write that
+ * names none — the one the stored row already belongs to.
+ *
+ * The ownership check and the sibling check must resolve the destination scale
+ * the same way, or a band can pass one and be judged against the other.
+ */
+export function gradingScaleParentId(context: CrossRowWriteTarget): string | null {
+  return (
+    recordString(context.write.gradingScaleId) ??
+    recordString(context.existing?.gradingScaleId)
+  )
+}
+
+/**
+ * The predicate that makes a grading scale the caller's to write against.
+ *
+ * `schoolId` is an `OR`, never an equality. `GradingScale.schoolId` is nullable
+ * and a tenant-wide scale (null) is shared by every school in the tenant, which
+ * is a legitimate parent — an equality would refuse every band written against a
+ * shared scale, and refusing the shared case would be the same bug wearing the
+ * opposite hat: the band belongs to nobody's school and everybody's report.
+ * A caller with no school assigned therefore reaches only tenant-wide scales,
+ * which is the most it can be trusted with.
+ */
+export function gradingScaleScopeWhere(
+  scope: CallerScope & { id: string },
+): {
+  id: string
+  tenantId: string
+  OR: Array<{ schoolId: string | null }>
+} {
+  return {
+    id: scope.id,
+    tenantId: scope.tenantId,
+    OR: [{ schoolId: scope.schoolId }, { schoolId: null }],
+  }
+}
+
+export const gradingScaleParentScopeWriteRule: ParentScopeWriteRule<ReturnType<typeof gradingScaleScopeWhere>> = {
+  parentId: gradingScaleParentId,
+  scopeWhere: gradingScaleScopeWhere,
+}
+
+/**
  * The `grading_level` rule: one band write must leave its scale able to grade.
  *
  * Registered by kind from the entity registry (`ENTITY_CONFIG_MAP`), so the
@@ -505,9 +655,7 @@ export function gradeBandWriteProblems(params: {
  * to — so moving a band between scales is validated against the destination.
  */
 export const gradingScaleBandWriteRule: CrossRowWriteRule = async (context) => {
-  const scaleId =
-    recordString(context.write.gradingScaleId) ??
-    recordString(context.existing?.gradingScaleId)
+  const scaleId = gradingScaleParentId(context)
   if (scaleId === null) return []
   const existingId = recordString(context.existing?.id)
   const stored = await context.readScaleBands(scaleId)
@@ -565,40 +713,40 @@ export const gradingScaleBandWriteRule: CrossRowWriteRule = async (context) => {
  * mistyped one boundary from 65 to 66. Both now resolve to null, and
  * `findGradeBandDefects` is what names the cause.
  *
- * One out-of-scale case still resolves, and only one: a percentage ABOVE the top
- * band. Nothing beneath it is missing — the score has run off the end of the
- * school's scale — so the top band is the last label the school defined before
- * that happened, and reporting it is honest where inventing a better band would
- * not be. Below the bottom band there is nothing beneath either, so it stays
- * ungraded rather than being called the worst band the school happens to name.
+ * And no band is invented for a percentage that is not a percentage. That rule
+ * is about the VALUE and never about the scale's extent, because those are two
+ * different questions:
+ *
+ * 1. Outside 0-100 is out of range whatever the school configured. A child
+ *    scoring 100.5 or 150 has not run off the end of the scale — they have a mark
+ *    that cannot exist, usually a typo (`15` written as `150`) that nothing
+ *    related back to `Assessment.maxScore`. The code this replaced handed such a
+ *    value to "the band with the highest `minScore`", so a child who scored 15
+ *    was recorded as `level_6` — Excellent — on the assessment, and `Score.grade`
+ *    is the audit record of what the gradebook decided.
+ * 2. A scale that legitimately does not span 0-100 is a different thing. "Report
+ *    nothing below 50" is a school's own decision, `findGradeBandDefects`
+ *    accepts it and `tools/seed` treats it as not a defect. A child at 45%
+ *    against such a scale is below the school's floor, so it stays null — the
+ *    same answer as before, and for the same reason: no band claims it.
+ *
+ * So there is one implementation of "which band is this percentage", and out of
+ * range is an answer it knows: none.
  */
 export function resolveGradeBand<T extends GradeBandBounds>(
   percentage: number,
   gradingScale: readonly T[],
 ): ResolvedBand<T> | null {
-  if (!Number.isFinite(percentage) || gradingScale.length === 0) return null
+  if (!Number.isFinite(percentage)) return null
+  if (percentage < 0 || percentage > 100) return null
+  if (gradingScale.length === 0) return null
   const claimed = gradingScale.filter(
     (band) => percentage >= band.minScore && percentage <= band.maxScore,
   )
   // Two bands claiming one percentage is the overlap defect: answering here would
   // make the winning band a function of row order rather than of the score.
   if (claimed.length > 1) return null
-  if (claimed.length === 1) return claimed[0]!
-  const ceiling = gradingScale.reduce(
-    (top, band) => Math.max(top, band.maxScore),
-    Number.NEGATIVE_INFINITY,
-  )
-  if (percentage <= ceiling) return null
-  const below = gradingScale.filter((band) => band.minScore <= percentage)
-  const nearest = below.reduce((best, band) =>
-    band.minScore > best.minScore ? band : best,
-  below[0]!)
-  // Two bands sharing the boundary this would land on is the same ambiguity as an
-  // overlap, so it is refused for the same reason rather than resolved by row order.
-  if (below.filter((band) => band.minScore === nearest.minScore).length > 1) {
-    return null
-  }
-  return nearest
+  return claimed[0] ?? null
 }
 
 export function determineGrade(
@@ -611,6 +759,72 @@ export function determineGrade(
 }
 
 /**
+ * The order a read must present grading scales in for `resolveApplicableGradingScale`
+ * to answer the same way twice: default first, then oldest first, then by id.
+ *
+ * The rule is "prefer a scale naming the level, else the default", and `Array.find`
+ * takes the FIRST match — so with no ordering clause the winning scale was whatever
+ * order the database happened to return rows in. Verified before this was pinned:
+ * two scales both claiming `B9` and both marked default resolved to whichever came
+ * first, so `[C, B]` gave `C` and `[B, C]` gave `B`, and a routine VACUUM was enough
+ * to move a cohort of children from one band to another with no error anywhere.
+ *
+ * Each key earns its place. `isDefault` first, because a scale the school has
+ * explicitly marked as the default is its stated preference among the scales that
+ * claim the level. `createdAt` ascending next, so the scale that was in place first
+ * wins over a later copy of it — the review's scenario is a head teacher duplicating
+ * "Ghana Primary (GES 6-level)" as "Ghana Primary 2026", and a copy must never
+ * displace the original. `id` last because `createdAt` is a timestamp rather than a
+ * unique key, and without it the order is still not a total one.
+ *
+ * Both readers pass this same ordering as their Prisma `orderBy`, and the helper
+ * below re-imposes it on whatever it is handed, so a caller that forgets it still
+ * gets a stable answer rather than an arbitrary one.
+ */
+export const GRADING_SCALE_RESOLUTION_ORDER = [
+  { isDefault: 'desc' },
+  { createdAt: 'asc' },
+  { id: 'asc' },
+] as const
+
+type OrderedGradingScale = {
+  appliesToLevels: readonly string[]
+  isDefault: boolean
+  createdAt?: Date | string
+  id?: string
+}
+
+/**
+ * `createdAt` as a comparable number, or `Infinity` when the row carries none.
+ *
+ * `Infinity` sorts a scale with no timestamp after every scale that has one, which
+ * is the safe direction: a real row read through Prisma always carries `createdAt`,
+ * so this only orders the hand-built fixtures and the degenerate caller. Returning a
+ * number rather than a Date is what keeps `Infinity - Infinity` — `NaN`, and a
+ * comparator that returns `NaN` is not a comparator — out of the comparison below.
+ */
+function gradingScaleCreatedAtValue(scale: OrderedGradingScale): number {
+  const createdAt = scale.createdAt
+  if (createdAt instanceof Date) return createdAt.getTime()
+  if (typeof createdAt === 'string') {
+    const parsed = Date.parse(createdAt)
+    return Number.isNaN(parsed) ? Number.POSITIVE_INFINITY : parsed
+  }
+  return Number.POSITIVE_INFINITY
+}
+
+/** The total order `GRADING_SCALE_RESOLUTION_ORDER` describes, as a comparator. */
+function compareGradingScaleApplicability(
+  a: OrderedGradingScale,
+  b: OrderedGradingScale,
+): number {
+  if (a.isDefault !== b.isDefault) return a.isDefault ? -1 : 1
+  const createdAt = gradingScaleCreatedAtValue(a) - gradingScaleCreatedAtValue(b)
+  if (createdAt !== 0) return createdAt
+  return (a.id ?? '').localeCompare(b.id ?? '')
+}
+
+/**
  * The grading scale that applies to a class level: one whose
  * `appliesToLevels` names the level, else the tenant default, else null.
  *
@@ -620,22 +834,91 @@ export function determineGrade(
  * resolves its scale with this rule and stores the resulting band `key`, so a
  * report that resolved it any other way would grade the same student's work
  * against a different band from the one the gradebook used.
+ *
+ * Ties are broken by `GRADING_SCALE_RESOLUTION_ORDER` rather than by the array's
+ * order, so the answer is a function of the configuration and not of the row order
+ * the database happened to use. Two scales claiming one level is still a
+ * misconfiguration and is named by `findGradingScaleApplicabilityProblems`; this
+ * function answers deterministically about it rather than refusing, because the
+ * gradebook has to store something and the read has to agree with it.
  */
-export function resolveApplicableGradingScale<T extends {
-  appliesToLevels: readonly string[]
-  isDefault: boolean
-}>(
+export function resolveApplicableGradingScale<T extends OrderedGradingScale>(
   scales: readonly T[],
   levelKeys: ReadonlyArray<string | null | undefined>,
 ): T | null {
   const keys = levelKeys.filter(
     (key): key is string => typeof key === 'string' && key.length > 0,
   )
+  const candidates = [...scales].sort(compareGradingScaleApplicability)
   return (
-    scales.find((scale) => keys.some((key) => scale.appliesToLevels.includes(key))) ??
-    scales.find((scale) => scale.isDefault) ??
+    candidates.find((scale) => keys.some((key) => scale.appliesToLevels.includes(key))) ??
+    candidates.find((scale) => scale.isDefault) ??
     null
   )
+}
+
+/** One grading scale as the applicability check sees it: enough to name it in a 400. */
+export interface GradingScaleApplicability extends OrderedGradingScale {
+  name?: string | null
+}
+
+/**
+ * Why a set of grading scales cannot decide which one grades a class, in sentences
+ * a head teacher can act on. An empty list means the set is unambiguous.
+ *
+ * Two defects, and both are silent rather than loud: whichever scale the reader
+ * happened to pick first is the one that grades the child, and nothing on any card
+ * says the choice was arbitrary. `@@unique([tenantId, schoolId, name])` stops two
+ * scales sharing a NAME, so "Ghana Primary (GES 6-level)" and "Ghana Primary 2026"
+ * are both legal rows that both name `B1`-`B6`.
+ *
+ * 1. Two or more scales claiming one level code. `resolveApplicableGradingScale`
+ *    answers deterministically about it now — see `GRADING_SCALE_RESOLUTION_ORDER` —
+ *    but "which of these two identical copies grades B4" is a question about the
+ *    school's configuration, and the answer should not be a coin that happens to fall
+ *    the same way twice.
+ * 2. Two or more scales marked `isDefault`. The default is the fallback for every
+ *    level no scale names, so two defaults make every KG and Creche class — and
+ *    every level a school has not configured — a matter of row order.
+ *
+ * Not enforced on the write path yet, and the reason is structural rather than an
+ * oversight: `POST/PATCH /api/config/[entityType]` hands a cross-row rule only a
+ * `readScaleBands(gradingScaleId)` reader and a mandatory parent-scope check, and a
+ * grading scale is its own parent and names no band — so the route would answer 404
+ * for every scale create before this rule ever ran. Wiring it needs the route to
+ * supply a sibling-scale read and to treat the parent check as optional, which is
+ * `apps/portal/app/api/config/**`.
+ */
+export function findGradingScaleApplicabilityProblems(
+  scales: readonly GradingScaleApplicability[],
+): string[] {
+  const problems: string[] = []
+  const label = (scale: GradingScaleApplicability): string =>
+    scale.name ? `"${scale.name}"` : `scale ${scale.id ?? '(unnamed)'}`
+
+  const claimants = new Map<string, GradingScaleApplicability[]>()
+  for (const scale of scales) {
+    for (const level of scale.appliesToLevels) {
+      if (level.length === 0) continue
+      claimants.set(level, [...(claimants.get(level) ?? []), scale])
+    }
+  }
+  for (const [level, claiming] of [...claimants].sort(([a], [b]) => a.localeCompare(b))) {
+    if (claiming.length < 2) continue
+    problems.push(
+      `level ${level} is claimed by ${claiming.length} scales (${claiming.map(label).join(', ')}); ` +
+        'a class at that level would be graded against whichever one the database returned first',
+    )
+  }
+
+  const defaults = scales.filter((scale) => scale.isDefault)
+  if (defaults.length > 1) {
+    problems.push(
+      `${defaults.length} scales are marked the default (${defaults.map(label).join(', ')}); ` +
+        'every level no scale names would fall back to whichever one the database returned first',
+    )
+  }
+  return problems
 }
 
 // --- Academic Summary Metrics ---
@@ -691,6 +974,128 @@ export interface WeightingBreakdown {
   components: WeightingComponent[]
 }
 
+/**
+ * Why a subject carries the band it carries — computed, never read back out of an
+ * absent value.
+ *
+ * `band === null` used to mean all of these at once, and the report rendered
+ * every one of them as a bare "-": a school with no scale, a child below the
+ * scale's floor, a child above its ceiling, a scale whose bands have all been
+ * deleted, a percentage in a hole, and a percentage two bands claim. A parent
+ * reads "-" as a missing mark, and the faults behind two of those six were
+ * invisible across a whole class. The discriminator is what turns the absence
+ * into a sentence.
+ *
+ * | value          | produced when                                                             |
+ * |----------------|--------------------------------------------------------------------------|
+ * | `ok`           | exactly one band claims the percentage — the only state with a `band`      |
+ * | `no-scale`     | no bands were supplied at all (see the note below)                        |
+ * | `no-bands`     | bands exist, but not one of them can ever claim a percentage               |
+ * | `below-scale`  | the percentage is under the lowest band that can claim anything            |
+ * | `above-scale`  | the percentage is over the highest such band                              |
+ * | `hole`         | it is between two bands, inside the scale's span, and claimed by neither    |
+ * | `ambiguous`    | two or more bands claim it, so the winner would be a function of row order  |
+ * | `no-percentage`| there is no percentage to band, or not one a band can hold                 |
+ *
+ * `no-scale` is deliberately the coarse one. This function is handed the bands
+ * and nothing else, and "no scale applies to this class" and "the scale that
+ * applies has had every band deleted from it" are the same empty list from here.
+ * The report resolves the finer truth — it is told which scale applied.
+ */
+export type BandStatus =
+  | 'ok'
+  | 'no-scale'
+  | 'no-bands'
+  | 'below-scale'
+  | 'above-scale'
+  | 'hole'
+  | 'ambiguous'
+  | 'no-percentage'
+
+/** Statuses that mean the scale, not the mark, is what withheld the band. */
+const BAND_SCALE_FAULTS: ReadonlySet<BandStatus> = new Set<BandStatus>([
+  'no-bands',
+  'below-scale',
+  'above-scale',
+  'hole',
+  'ambiguous',
+])
+
+/**
+ * Which of the `BandStatus` states a percentage is in against a scale.
+ *
+ * Decided from the percentage and the bands together, because "no band claimed
+ * it" is the answer to a question with several different true answers. A band
+ * that runs backwards, or that lies wholly outside 0-100, can never claim
+ * anything, so it is excluded before the edges are read — otherwise a scale whose
+ * only band is `150-200` would report a child at 68% as "below the scale" rather
+ * than as a scale that cannot grade at all.
+ */
+function classifyBand(
+  percentage: number | null,
+  bands: readonly GradeBand[],
+): BandStatus {
+  if (
+    percentage === null ||
+    !Number.isFinite(percentage) ||
+    percentage < 0 ||
+    percentage > 100
+  ) {
+    return 'no-percentage'
+  }
+  if (bands.length === 0) return 'no-scale'
+  const usable = bands.filter(
+    (band) =>
+      band.minScore <= band.maxScore &&
+      band.maxScore >= 0 &&
+      band.minScore <= 100,
+  )
+  if (usable.length === 0) return 'no-bands'
+  const claimants = usable.filter(
+    (band) => percentage >= band.minScore && percentage <= band.maxScore,
+  )
+  if (claimants.length > 1) return 'ambiguous'
+  if (claimants.length === 1) return 'ok'
+  const floor = Math.min(...usable.map((band) => band.minScore))
+  const ceiling = Math.max(...usable.map((band) => band.maxScore))
+  if (percentage < floor) return 'below-scale'
+  if (percentage > ceiling) return 'above-scale'
+  return 'hole'
+}
+
+/**
+ * The reason a subject's band is not on the card, or null when there is none to
+ * give.
+ *
+ * Two different things can be wrong, and they are reported on different terms:
+ *
+ * - The scale does not cover 0-100. That is a fact about the SCALE, not about this
+ *   subject, so it is stated on every subject whether or not this one resolved —
+ *   a class where two subjects grade and one does not is exactly how a partly
+ *   broken scale stays invisible. `findGradeBandCoverageGaps` produces the range
+ *   strings.
+ * - This subject's own percentage fell in something the scale got wrong: a hole,
+ *   an overlap, an empty scale. The defect sentences come from
+ *   `findGradeBandDefects`, and they are added to the coverage strings rather than
+ *   replacing them, because on a scale whose bands are all corrupt the coverage
+ *   sentence is true and useless ("no band covers 0-149%") while the defect names
+ *   the row to fix.
+ *
+ * Nothing is reported for a percentage the scale simply does not cover at either
+ * end while the child's own band resolved — that scale's edges are the school's
+ * decision, not a fault, and a correct grade must not carry a fault beside it.
+ */
+function bandProblemFor(
+  status: BandStatus,
+  coverage: readonly string[],
+  defects: readonly string[],
+): string | null {
+  const problems = BAND_SCALE_FAULTS.has(status)
+    ? [...coverage, ...defects]
+    : [...coverage]
+  return problems.length > 0 ? problems.join('; ') : null
+}
+
 export interface SubjectSummary {
   subjectId: string
   /** 0-100, weighted within the subject. Null when the subject's weights sum to zero. */
@@ -698,14 +1103,15 @@ export interface SubjectSummary {
   gradedAssessments: number
   /** How this subject's own percentage was composed. */
   weighting: WeightingBreakdown
-  /** The school-configured band this percentage falls in, or null when the school has no applicable scale. */
+  /** The school-configured band this percentage falls in, or null when nothing claims it. */
   band: GradeBand | null
+  /** Why `band` is what it is, stated rather than inferred from `band === null`. See `BandStatus`. */
+  bandStatus: BandStatus
   /**
-   * Why `band` is null when the school's own scale is why, in the words
-   * `findGradeBandDefects` produces. Null in the ordinary case — the percentage
-   * resolved, or the school simply has no scale for this class — and non-null
-   * only when a band was withheld because the scale cannot grade without
-   * guessing. It travels on the payload so a missing band is reported as a
+   * Why the scale could not grade, in the words `findGradeBandCoverageGaps` and
+   * `findGradeBandDefects` produce. Null whenever the scale is sound for this
+   * subject — including when there is no scale at all, which `bandStatus` reports
+   * as `no-scale`. It travels on the payload so a withheld band is reported as a
    * misconfigured scale rather than rendered as a blank cell.
    */
   bandProblem: string | null
@@ -752,17 +1158,27 @@ export interface ResolvedAssessmentWeight {
  * instead, silently. There is no sentinel here now, and no value that means two
  * things — a school can run one assessment fully weighted, at 1.00, and get 1.00.
  *
- * An explicit 0 is NOT "excluded from the average". It is an unusable weight
- * that falls through to the type default, for two reasons. A normalised weighted
- * mean with every weight at 0 has nothing to divide by, so a school that excluded
- * every one of its assessments would get an undefined terminal figure rather than
- * a result; and the read path hands this function `Number(assessment.weight)`,
- * which turns the column's NULL into 0 — so treating 0 as "excluded" would
- * silently drop every assessment that carries no weight of its own, which is the
- * majority of them. Exclusion needs a stored value NULL cannot impersonate and a
- * boundary that rejects a bare 0; neither exists, and inventing one here would
- * mis-grade a term rather than protect one. `positiveWeight` is therefore the
- * single place that decides what a usable weight is.
+ * An explicit 0 is NOT "excluded from the average". It is an unusable weight that
+ * falls through to the type default, for two reasons. A normalised weighted mean
+ * with every weight at 0 has nothing to divide by, so a school that excluded every
+ * one of its assessments would get an undefined terminal figure rather than a
+ * result; and the read path hands this function `Number(assessment.weight)`, which
+ * turns the column's NULL into 0 — so treating 0 as "excluded" would silently drop
+ * every assessment that carries no weight of its own, which is the majority of them.
+ *
+ * The boundary that can act on this now exists and refuses a bare 0 where a teacher
+ * can be told: `AssessmentTypeConfig.defaultWeight` is `z.number().positive()`, so a
+ * school cannot configure an excluded component and be quietly given its type's
+ * weight instead. What remains unreachable is an `Assessment.weight` of exactly 0
+ * written by a path other than the schema, and exclusion still needs a stored value
+ * NULL cannot impersonate — inventing one here would mis-grade a term rather than
+ * protect one. `positiveWeight` is therefore the single place that decides what a
+ * usable weight is.
+ *
+ * This is why `POST /api/assessments` leaves `Assessment.weight` NULL rather than
+ * copying the type's `defaultWeight` into the row: a copy is an explicit weight, an
+ * explicit weight outranks the type, and every retune of the type afterwards would
+ * be inert for a row the school never asked to be pinned.
  *
  * Composition is a normalised weighted mean, so these are relative weights: see
  * `calculateWeightedAverage`.
@@ -873,13 +1289,30 @@ export function computeAcademicSummary(
   assessments: readonly ReportableAssessment[],
   bands: readonly GradeBand[] = [],
 ): AcademicSummaryMetrics {
+  // Range, not merely finiteness. A percentage outside 0-100 is not a score, and
+  // averaging one would report a terminal mark no child earned. The write path
+  // refuses to store such a percentage, so what this catches is a row that
+  // predates that guard — the guard at the boundary stops new ones, this stops
+  // them being read as if they were marks. The assessment then contributes
+  // nothing: it is absent from `gradedAssessments`, from `subjects[]` and from
+  // both mean percentages, which is the honest description of a mark that
+  // cannot be read.
   const graded = assessments.filter(
-    (a) => a.percentage !== null && Number.isFinite(a.percentage),
+    (a) =>
+      a.percentage !== null &&
+      Number.isFinite(a.percentage) &&
+      a.percentage >= 0 &&
+      a.percentage <= 100,
   )
 
-  // Computed once for the whole summary: it describes the scale, not a score, and
-  // it is what turns a withheld band into a stated reason.
+  // Computed once for the whole summary: each describes the scale, not a score,
+  // and they are what turns a withheld band into a stated reason.
   const scaleDefects = findGradeBandDefects(bands)
+  // Skipped for an empty scale on purpose. `findGradeBandCoverageGaps([])` answers
+  // "the scale has no bands", which would put a statement about a scale that need
+  // not exist onto a school that has none; `bandStatus` reports `no-scale` instead
+  // and the caller, which knows which scale applied, resolves which it is.
+  const scaleCoverage = bands.length > 0 ? findGradeBandCoverageGaps(bands) : []
 
   // Insertion-ordered so the subject list follows the report's own ordering
   // rather than a Map iteration surprise.
@@ -908,24 +1341,20 @@ export function computeAcademicSummary(
     // Resolved from the percentage against the school's current bands, never from
     // a key frozen on the score when it was graded.
     const band = percentage === null ? null : resolveGradeBand(percentage, bands)
+    // Decided alongside the band rather than from its absence: `band` is null in
+    // six different states and four of them are faults the head teacher has to see.
+    const bandStatus = classifyBand(percentage, bands)
     return {
       subjectId,
       gradedAssessments: rows.length,
       percentage,
       weighting: buildWeightingBreakdown(rows),
       band,
+      bandStatus,
       // Stated rather than rendered blank: a band withheld because the scale
       // itself cannot grade is a fault the head teacher has to see, not an empty
       // cell that looks like a missing score.
-      //
-      // Tied to THIS subject's band actually being withheld. Keying it off "the
-      // scale has some defect anywhere" would tell a correctly-graded subject it
-      // was withheld because an unrelated range elsewhere is broken, so the
-      // report would contradict itself next to a percentage that graded fine.
-      bandProblem:
-        band === null && percentage !== null && bands.length > 0 && scaleDefects.length > 0
-          ? scaleDefects.join('; ')
-          : null,
+      bandProblem: bandProblemFor(bandStatus, scaleCoverage, scaleDefects),
     }
   })
 
@@ -967,12 +1396,24 @@ export function computeAcademicSummary(
  * result). The badge therefore takes the school's own colour and this decides
  * only whether the text on top of it is dark or light.
  *
- * Relative luminance per WCAG 2.x, computed on the sRGB channels. Unparseable
- * input falls back to dark text, which is the safe default on the light report
- * card.
+ * Relative luminance per WCAG 2.x, computed on the sRGB channels.
+ *
+ * Total on purpose. It is the function a bad colour is supposed to survive, so a
+ * value that is not a string at all is a fallback like any other unparseable one:
+ * `GradingLevel.color` is `NOT NULL` today, so `contrastTextColor(null)` is
+ * unreachable from a stored row, but the call that crashed on it was inside a
+ * render — the one place that cannot afford a `TypeError` — and this is the
+ * documented safe fallback for input it cannot parse, so it must be.
+ *
+ * Unparseable input falls back to dark text, which is the safe default on the
+ * light report card. The boundary is what makes that fallback rare rather than
+ * routine: `GradingLevel.color` is constrained to `#rrggbb` on create and on
+ * update, so a named colour that would render at 4.26:1 on dark text ('red') or
+ * as a colourless badge ('transparent') cannot be stored in the first place.
  */
-export function contrastTextColor(hex: string): '#0f172a' | '#ffffff' {
-  const match = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(hex.trim())
+export function contrastTextColor(hex: string | null | undefined): '#0f172a' | '#ffffff' {
+  const match =
+    typeof hex === 'string' ? /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(hex.trim()) : null
   if (!match) return '#0f172a'
   const body = match[1]!
   const full =

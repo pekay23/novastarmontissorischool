@@ -64,6 +64,10 @@ const ToastViewport = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTML
   ({ className, ...props }, ref) => (
     <div
       ref={ref}
+      // The live region. Without it a toast appears silently for anyone who
+      // cannot see it, which is most of the failure feedback on this app.
+      role="status"
+      aria-live="polite"
       className={cn('fixed top-0 z-1000 flex flex-col gap-2 p-4', className)}
       {...props}
     />

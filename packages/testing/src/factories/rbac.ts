@@ -82,6 +82,12 @@ export interface BuildDelegationOverrides {
 }
 
 export function buildDelegation(overrides: BuildDelegationOverrides = {}): Record<string, unknown> {
+  // Resolved once so the fixture cannot hand back a row that contradicts itself.
+  // The previous `isActive: overrides.isActive ?? true` paired an active flag with
+  // `requiresApproval: true` by default, so a "pending approval" delegation came
+  // back usable — the same fail-open shape `createDelegation` had in production.
+  const requiresApproval = overrides.requiresApproval ?? true
+
   return {
     id: overrides.id ?? nextId('test_delegation'),
     tenantId: overrides.tenantId ?? nextId('test_tenant'),
@@ -89,10 +95,10 @@ export function buildDelegation(overrides: BuildDelegationOverrides = {}): Recor
     fromUserId: overrides.fromUserId ?? nextId('test_user'),
     toUserId: overrides.toUserId ?? nextId('test_user_2'),
     permissions: overrides.permissions ?? ['student:read', 'student:create'],
-    requiresApproval: overrides.requiresApproval ?? true,
+    requiresApproval,
     context: overrides.context ?? null,
     expiresAt: overrides.expiresAt ?? null,
-    isActive: overrides.isActive ?? true,
+    isActive: overrides.isActive ?? !requiresApproval,
     approvedById: overrides.approvedById ?? null,
     approvedAt: overrides.approvedAt ?? null,
     createdAt: overrides.createdAt ?? now(),

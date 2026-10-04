@@ -65,7 +65,15 @@ export type EntityApiConfig = {
   allowedSortFields: string[]
   /** Whether the entity has a schoolId column (false = tenant-only) */
   schoolScoped: boolean
-  /** Whether the entity supports soft-delete via isActive flag */
+  /**
+   * Whether the entity's model carries an `isActive` column.
+   *
+   * True makes the [id] route filter on `isActive: true` and make DELETE write
+   * `isActive = false`, so it is only true for a model that HAS the column. False
+   * means DELETE hard-deletes — the honest behaviour for a model that predates the
+   * flag, until retirement is designed for it properly rather than inferred from a
+   * column that does not exist.
+   */
   softDelete: boolean
   /**
    * Set when a single write to this entity cannot be valid on its own — the row
@@ -93,24 +101,22 @@ export const TENANT_ONLY_ENTITY_TYPES = new Set([
  * Models with status enums (staff, student, parent) or `isSystem`/`status` fields
  * (role, news, event) are excluded — they have dedicated lifecycle management.
  *
- * A model with no `isActive` column must NOT appear here. Membership adds
- * `isActive: true` to the generic route's where clause, so a member without the
- * column 500s on every read, update and delete.
+ * A model with no `isActive` column must NOT appear here, and must not carry
+ * `softDelete: true` either — the flag is what the [id] route reads, and it pushes
+ * `isActive: true` into the where clause of every findFirst/update/delete, so a
+ * model without the column 500s on every read, update and delete of that row.
+ *
+ * Reconciled against `schema.prisma` on 2026-10-03: three of the fourteen models
+ * registered as soft-deletable actually have the column. The other eleven did not,
+ * which is why a school could create a grading scale and then never read, edit or
+ * retire one. Adding an `isActive` column to eleven pre-existing models is a
+ * migration and a design question about what retiring a row should do to the
+ * reports that reference it, so those entities hard-delete instead and say so on
+ * their own entry. Verified by `softDeleteAudit.test.ts`.
  */
 export const SOFT_DELETE_ENTITY_TYPES = new Set([
-  'academic_year',
-  'term',
-  'class_level',
-  'subject',
-  'grading_scale',
-  'fee_category',
-  'fee_structure',
-  'payment_method',
   'assessment_type',
-  'branding',
-  'department',
-  'house',
-  'class',
+  'fee_structure',
   'attendance_taker',
 ])
 
@@ -134,7 +140,10 @@ export const ENTITY_CONFIG_MAP: Record<string, EntityApiConfig> = {
     }),
     allowedSortFields: ['name', 'startDate', 'endDate', 'isCurrent', 'createdAt'],
     schoolScoped: true,
-    softDelete: true,
+    // `AcademicYear` has no `isActive` column. `isCurrent` is its lifecycle flag
+    // and it is a different question — which year reports default to — so it is
+    // not read as "deleted". DELETE removes the row.
+    softDelete: false,
   },
 
   term: {
@@ -155,7 +164,10 @@ export const ENTITY_CONFIG_MAP: Record<string, EntityApiConfig> = {
     }),
     allowedSortFields: ['name', 'startDate', 'endDate', 'isCurrent', 'status', 'createdAt'],
     schoolScoped: true,
-    softDelete: true,
+    // `Term` has no `isActive` column. It carries a `status` enum (PLANNING,
+    // ACTIVE, …), which is the lifecycle a term actually has and is edited through
+    // the field below. DELETE removes the row, and its `Term` rows cascade with it.
+    softDelete: false,
   },
 
   class_level: {
@@ -175,7 +187,10 @@ export const ENTITY_CONFIG_MAP: Record<string, EntityApiConfig> = {
     }),
     allowedSortFields: ['code', 'name', 'phase', 'order', 'ageMin', 'ageMax', 'createdAt'],
     schoolScoped: true,
-    softDelete: true,
+    // `ClassLevel` has no `isActive` column. A level is referenced by name and code
+    // rather than soft-referenced, so retiring one by deletion is what the schema
+    // already does everywhere else it is used.
+    softDelete: false,
   },
 
   subject: {
@@ -196,9 +211,24 @@ export const ENTITY_CONFIG_MAP: Record<string, EntityApiConfig> = {
     }),
     allowedSortFields: ['code', 'name', 'category', 'isCore', 'createdAt'],
     schoolScoped: true,
-    softDelete: true,
+    // `Subject` has no `isActive` column. `isCore` says whether a subject is part of
+    // the curriculum, not whether the row is still wanted, so it is not read as
+    // "deleted". DELETE removes the row.
+    softDelete: false,
   },
 
+  // A scale names the bands a percentage is labelled under. `softDelete` is false
+  // because `GradingScale` has no `isActive` column, and declaring it soft-deletable
+  // made the [id] route push `isActive: true` into the where clause of its
+  // findFirst, update and delete — so a school could create a grading scale and
+  // could then never read, edit or retire one: every GET, PATCH and DELETE of the
+  // row it had just made returned 500. POST was unaffected, which is why the failure
+  // looked like "saving works" from the Settings dialog.
+  //
+  // Hard-deleting is the honest behaviour here rather than a guess: `Score.grade`
+  // and `Score.gradingScaleId` reference the scale, and the report resolves the band
+  // from the score's percentage against the school's current scale rather than from
+  // the frozen key, so a retired scale degrades the same way a deleted one does.
   grading_scale: {
     type: 'grading_scale',
     model: 'gradingScale',
@@ -214,7 +244,8 @@ export const ENTITY_CONFIG_MAP: Record<string, EntityApiConfig> = {
     }),
     allowedSortFields: ['name', 'isDefault', 'createdAt'],
     schoolScoped: true,
-    softDelete: true,
+    // No `isActive` column on `GradingScale` — see the comment above the entry.
+    softDelete: false,
   },
 
   fee_category: {
@@ -233,7 +264,10 @@ export const ENTITY_CONFIG_MAP: Record<string, EntityApiConfig> = {
     }),
     allowedSortFields: ['code', 'name', 'sortOrder', 'createdAt'],
     schoolScoped: true,
-    softDelete: true,
+    // `FeeCategory` has no `isActive` column. `isRecurring` and `defaultMandatory`
+    // describe the fee, not the row's lifecycle. DELETE removes the row; the
+    // invoices that reference it keep their stored amounts.
+    softDelete: false,
   },
 
   payment_method: {
@@ -253,7 +287,10 @@ export const ENTITY_CONFIG_MAP: Record<string, EntityApiConfig> = {
     }),
     allowedSortFields: ['code', 'name', 'sortOrder', 'isEnabled', 'createdAt'],
     schoolScoped: true,
-    softDelete: true,
+    // `PaymentMethodConfig` has no `isActive` column. `isEnabled` IS its lifecycle
+    // flag and the field the school edits to stop offering a method, so a method a
+    // school has turned off is already out of the way; DELETE removes the row.
+    softDelete: false,
   },
 
   // Privilege-management fields (permissions, inheritsFrom, isSystem) are
@@ -266,8 +303,6 @@ export const ENTITY_CONFIG_MAP: Record<string, EntityApiConfig> = {
     createSchema: z.object({
       name: z.string().min(1),
       description: z.string().nullable().optional(),
-      permissions: z.array(z.string()).default([]),
-      inheritsFrom: z.array(z.string()).default([]),
     }),
     updateSchema: z.object({
       name: z.string().optional(),
@@ -302,9 +337,21 @@ export const ENTITY_CONFIG_MAP: Record<string, EntityApiConfig> = {
       code: z.string().optional(),
       name: z.string().optional(),
       description: z.string().nullable().optional(),
-      // Relative weight, not a share: 0..1 per row, and the set is normalised at
-      // composition time rather than required to sum to 1.
-      defaultWeight: z.number().min(0).max(1).optional(),
+      // Relative weight, not a share: the report normalises the weights it finds, so
+      // the set is neither required to sum to 1 nor capped at 1 per row. Bounded to
+      // match the column (`Decimal(3,2)` → 9.99) and to refuse a bare 0, which the
+      // arithmetic would read as "unset" rather than as "excluded" — see
+      // `AssessmentTypeConfigSchema` for the full reasoning.
+      defaultWeight: z.number().positive({
+        error:
+          'Weight must be greater than 0. A weight of 0 cannot exclude a component: the ' +
+          'report divides by the sum of the weights it finds, so a zero weight is ignored ' +
+          'rather than excluded.',
+      }).max(9.99, {
+        error:
+          'Weight must be at most 9.99 — that is the largest value the column stores ' +
+          '(2 decimal places, 1 whole digit). Weight is relative, so 3 against 1 is fine.',
+      }).optional(),
       maxScore: z.number().int().positive().optional(),
       isActive: z.boolean().optional(),
       appliesToLevels: z.array(z.string()).optional(),
@@ -470,7 +517,9 @@ export const ENTITY_CONFIG_MAP: Record<string, EntityApiConfig> = {
     }),
     allowedSortFields: ['createdAt'],
     schoolScoped: true,
-    softDelete: true,
+    // `Branding` has no `isActive` column. A school has one branding row, so there
+    // is no lifecycle to keep: DELETE removes the row.
+    softDelete: false,
   },
 
   news: {
@@ -553,7 +602,9 @@ export const ENTITY_CONFIG_MAP: Record<string, EntityApiConfig> = {
     }),
     allowedSortFields: ['name', 'code', 'createdAt'],
     schoolScoped: true,
-    softDelete: true,
+    // `Department` has no `isActive` column. DELETE removes the row; the staff rows
+    // that name it set `departmentId` to null.
+    softDelete: false,
   },
 
   house: {
@@ -572,7 +623,9 @@ export const ENTITY_CONFIG_MAP: Record<string, EntityApiConfig> = {
     }),
     allowedSortFields: ['name', 'createdAt'],
     schoolScoped: true,
-    softDelete: true,
+    // `House` has no `isActive` column. DELETE removes the row; students keep their
+    // marks with `houseId` null.
+    softDelete: false,
   },
 
   class: {
@@ -593,7 +646,11 @@ export const ENTITY_CONFIG_MAP: Record<string, EntityApiConfig> = {
     }),
     allowedSortFields: ['name', 'levelId', 'createdAt'],
     schoolScoped: true,
-    softDelete: true,
+    // `Class` has no `isActive` column, so a class cannot be soft-deleted even where
+    // its lifecycle is real: `promotions-route` reads `ClassTerm.isActive`, a
+    // different row, because that is the promotion state rather than the class's
+    // existence. DELETE removes the class row.
+    softDelete: false,
   },
 
   subject_level: {
@@ -614,7 +671,9 @@ export const ENTITY_CONFIG_MAP: Record<string, EntityApiConfig> = {
     }),
     allowedSortFields: ['subjectId', 'classLevelId', 'createdAt'],
     schoolScoped: false,
-    softDelete: true,
+    // `SubjectLevel` has no `isActive` column. `isRequired` says whether a school
+    // teaches the subject at the level, not whether the row is still wanted.
+    softDelete: false,
   },
 
   fee_structure: {
@@ -660,7 +719,10 @@ export const ENTITY_CONFIG_MAP: Record<string, EntityApiConfig> = {
     }),
     allowedSortFields: ['sortOrder', 'amount', 'createdAt'],
     schoolScoped: false,
-    softDelete: true,
+    // `FeeLineItem` has no `isActive` column. `isMandatory` and `sortOrder` order
+    // and qualify the line, they do not retire it. DELETE removes the line from its
+    // structure; invoices already raised keep their stored amounts.
+    softDelete: false,
   },
 
   staff: {
