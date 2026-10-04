@@ -72,6 +72,8 @@
 // number, so a mistake here is reported rather than silently ignored.
 // =============================================================================
 
+version = "2026.2"
+
 import jetbrains.buildServer.configs.kotlin.v2019_2.BuildType
 import jetbrains.buildServer.configs.kotlin.v2019_2.AbsoluteId
 import jetbrains.buildServer.configs.kotlin.v2019_2.ReuseBuilds
@@ -80,43 +82,40 @@ import jetbrains.buildServer.configs.kotlin.v2019_2.buildSteps.script
 import jetbrains.buildServer.configs.kotlin.v2019_2.triggers.finishBuildTrigger
 import jetbrains.buildServer.configs.kotlin.v2019_2.triggers.vcs
 
-// There is deliberately no `version = "..."` line.
+// The `version = "2026.2"` line above is required, not decorative.
 //
-// Declaring one makes TeamCity resolve org.jetbrains.teamcity:configs-dsl-kotlin
-// at that version through Maven before it compiles this file. That artifact is in
-// no local repository on this server, so every attempt started a cold resolution
-// and none finished inside the generator's 120 second ceiling:
+// Without it -- and without a pom.xml beside this file -- KotlinRunner logs
+//   "Unable to determine DSL API packages type, .../pom.xml is not a file"
+// on every run, cannot classify the API, and injects no default imports. That
+// warning was present even on the runs that compiled cleanly, and those runs
+// produced zero build configurations.
 //
-//   Failed to generate updated settings for revision <sha>:
+// A previous revision deleted this line to dodge a Maven resolution, citing
 //   ConfigGenerationException: Configs generator runs longer than 120 seconds
-//   (enable debug to see stacktrace)          [teamcity-versioned-settings.log]
+// That diagnosis was wrong. 120 was simply the server default for
+// teamcity.versionedSettings.configsGeneratorTimeoutSeconds, and it had never
+// been overridden on this host, so it killed runs that were otherwise making
+// progress. It is now 600 via TEAMCITY_SERVER_OPTS on the TeamCity service.
 //
-// Nothing was ever cached, so nothing got faster: caches\dslDependenciesMaven,
-// caches\kotlinDslData and caches\maven were all still empty afterwards. Omitting
-// the line makes TeamCity use the DSL API it already ships in
-// webapps\ROOT\WEB-INF\plugins\.unpacked\configs-dsl\server, which needs no
-// network access at all.
+// The Maven coordinate and the Kotlin package are independent axes: the
+// coordinate is org.jetbrains.teamcity:configs-dsl-kotlin:2026.2, while the
+// newest package that DSL ships is v2019_2. That is why version = "2026.2"
+// above sits naturally with v2019_2 imports below.
 //
-// The API that ships is 2026.2. Its Kotlin packages stop at v2019_2, which is why
-// the imports above say v2019_2. Those are independent axes -- the artifact version
-// names the Maven coordinate, the package name is the API generation -- which is
-// why pinning "2026.2" while importing v2019_2 was never the contradiction it
-// looked like.
+// Only the versioned and .ui wildcards are injected, so every TOP-LEVEL
+// function is imported by hand: project (EntryPointKt), plus the generated
+// plugin extension packages buildSteps.script, triggers.vcs and
+// triggers.finishBuildTrigger. A bare wildcard would not reach those, because
+// they live in subpackages.
 //
-// Members reached through a receiver need no import: the params {} block,
-// Dependencies.snapshot, ParametrizedWithType's param/password/text,
-// BuildTypeSettings' vcs/dependencies/triggers/steps/features, and
-// VcsSettings' root/cleanCheckout.
-//
-// Everything that is a TOP-LEVEL function does need one, including the entry
-// points. project {} and buildType {} live in EntryPointKt and id() in IdsKt,
-// all in the v2019_2 package, and they are NOT injected here: with no version
-// line and no pom.xml, KotlinRunner logs "Unable to determine DSL API packages
-// type, .../pom.xml is not a file" and supplies no default imports, so
-// settings.kts[110] failed with "Unresolved reference: project".
-//
-// A wildcard import would not help either -- it does not reach subpackages,
-// which is why buildSteps.script and the two triggers.* are named explicitly.
+// Members reached through a receiver need no import: params {},
+// Dependencies.snapshot, ParametrizedWithType's param/password,
+// BuildTypeSettings' vcs/steps/triggers/dependencies, and VcsSettings'
+// root/cleanCheckout. Two of those members have non-obvious shapes:
+// ParametrizedWithType.password is (name, value), so a password parameter is
+// declared as password("name", "value") and never wrapped in param(); and
+// VcsSettings.root takes an Id rather than a String, so the existing
+// server-side root is referenced as root(AbsoluteId("...")).
 
 project {
     // No id() and no name= here on purpose.
