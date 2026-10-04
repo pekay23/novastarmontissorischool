@@ -89,6 +89,27 @@ function describeProviderError(error: unknown): string {
 
 // --- Email ---
 
+/**
+ * Resolution order for the sending address:
+ * 1. Per-send override via `options.from`
+ * 2. Environment variable `MAIL_FROM`
+ * 3. Documented fallback constant `DEFAULT_FROM`
+ *
+ * The fallback uses a domain this project does not own (novastarmontessori.com).
+ * Any provider will refuse it until the domain is verified. Set `MAIL_FROM` to
+ * a verified domain address (e.g. "Novastar Montessori <noreply@your-domain.example>")
+ * or, for Resend sandbox testing only, use "onboarding@resend.dev" — which only
+ * delivers to the account's own email address and is not a delivery system.
+ */
+const DEFAULT_FROM = 'Novastar Montessori <noreply@novastarmontessori.com>'
+
+function resolveFrom(override?: string): string {
+  if (override && override.trim().length > 0) return override
+  const envFrom = process.env.MAIL_FROM
+  if (envFrom && envFrom.trim().length > 0) return envFrom.trim()
+  return DEFAULT_FROM
+}
+
 export interface EmailOptions {
   to: string | string[]
   subject: string
@@ -114,7 +135,7 @@ export async function sendEmail(options: EmailOptions): Promise<{ id: string }> 
   let result: Awaited<ReturnType<Resend['emails']['send']>>
   try {
     result = await resend.emails.send({
-      from: options.from || 'Novastar Montessori <noreply@novastarmontessori.com>',
+      from: resolveFrom(options.from),
       to: options.to,
       subject: options.subject,
       html: options.html,
