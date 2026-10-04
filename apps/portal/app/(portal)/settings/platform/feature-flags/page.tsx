@@ -60,6 +60,14 @@ export default function FeatureFlagsPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState<Record<string, boolean>>({})
   const [config, setConfig] = useState<ConfigResponse | null>(null)
+  /**
+   * Why `config` is still null after a fetch finished. Null while loading or once
+   * config has arrived; a message otherwise. Without this the page rendered its
+   * skeleton for `loading || !config`, so a failed fetch left a spinner running
+   * forever and the Refresh control — which lives in the branch that never
+   * rendered — with no way to retry.
+   */
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [localFlags, setLocalFlags] = useState<Record<string, unknown>>({})
 
   /**
@@ -81,11 +89,15 @@ export default function FeatureFlagsPage() {
       if (!res.ok) {
         if (res.status === 403) {
           toast.error({ title: 'Access denied', description: 'You must be Head of School to view platform settings.' })
+          setLoadError('You must be Head of School to view platform settings.')
+        } else {
+          setLoadError(`The server returned ${res.status}. Check your connection and try again.`)
         }
         return
       }
       const data: ConfigResponse = await res.json()
       setConfig(data)
+      setLoadError(null)
       const initial: Record<string, unknown> = {}
       data.flags.forEach((f) => {
         initial[f.key] = f.value
@@ -93,6 +105,7 @@ export default function FeatureFlagsPage() {
       setLocalFlags(initial)
     } catch {
       toast.error({ title: 'Error', description: 'Failed to load feature flags.' })
+      setLoadError('Could not reach the server. Check your connection and try again.')
     } finally {
       setLoading(false)
     }
@@ -242,13 +255,35 @@ export default function FeatureFlagsPage() {
     void persistFlag(key, { reset: true })
   }
 
-  if (loading || !config) {
+  if (loading) {
     return (
       <div className="space-y-6 p-6">
         <div className="flex items-center justify-between">
           <h1 className="text-3xl font-heading font-bold">Feature Flags</h1>
         </div>
         <Skeleton className="h-[400px] w-full" />
+      </div>
+    )
+  }
+
+  // A fetch that finished without producing a config has nothing to render, and
+  // must not fall through to the skeleton above: the user would watch it forever
+  // with no way to retry.
+  if (!config) {
+    return (
+      <div className="space-y-6 p-6">
+        <h1 className="text-3xl font-heading font-bold">Feature Flags</h1>
+        <Card>
+          <CardContent className="pt-6 flex flex-col items-start gap-4">
+            <p className="text-muted-foreground">
+              {loadError ?? 'Feature flag data is not available.'}
+            </p>
+            <Button variant="outline" size="sm" onClick={() => void fetchConfig()}>
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Try Again
+            </Button>
+          </CardContent>
+        </Card>
       </div>
     )
   }

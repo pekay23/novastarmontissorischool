@@ -276,17 +276,26 @@ describe('a custom school scale works with no code change', () => {
     expect(labelFor(inverted, 95)).toBe('Bronze')
   })
 
-  it('clamps a score above the whole scale to the nearest band beneath it', () => {
+  it('reports a score above the whole scale as ungraded, not as the top band', () => {
     const narrow: GradeBand[] = [
       { key: 'low', label: 'Low', minScore: 0, maxScore: 49, color: '#dc2626', order: 1 },
       { key: 'high', label: 'High', minScore: 50, maxScore: 69, color: '#059669', order: 2 },
     ]
     expect(labelFor(narrow, 60)).toBe('High')
-    // 85 is past the top band, so nothing contains it. `High` is the last label
-    // the school defined before the score ran out of scale, and reporting it is
-    // honest; inventing a better band would not be.
-    expect(labelFor(narrow, 85)).toBe('High')
-    expect(labelFor(narrow, 1000)).toBe('High')
+    // Past the top band nothing contains the value. It used to be handed to
+    // 'High' as "the last label the school defined", which is how a teacher who
+    // typed 150 for a child who scored 15 on a 100-mark assessment recorded the
+    // child as Excellent. Out of 0-100 is out of range whatever the scale spans,
+    // so the honest answer is no band.
+    expect(labelFor(narrow, 70)).toBeNull()
+    expect(labelFor(narrow, 85)).toBeNull()
+    expect(labelFor(narrow, 100)).toBeNull()
+    expect(labelFor(narrow, 1000)).toBeNull()
+    // A school that reports nothing above 69 is still owed nothing at 85, and is
+    // not penalised anywhere inside its own span.
+    for (let percentage = 0; percentage <= 69; percentage += 1) {
+      expect(labelFor(narrow, percentage)).not.toBeNull()
+    }
   })
 
   it('leaves a score below the whole scale ungraded, because nothing lies beneath it', () => {

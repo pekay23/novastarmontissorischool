@@ -3,7 +3,12 @@ import { prisma } from '@/lib/prisma'
 import { ENTITY_CONFIG_MAP, type EntityApiConfig } from '@novastar/shared-types'
 import {
   gradingScaleBandWriteRule,
+  gradingScaleParentScopeWriteRule,
+  gradingScaleScopeWhere,
+  type CallerScope,
   type CrossRowWriteRule,
+  type CrossRowWriteTarget,
+  type ParentScopeWriteRule,
 } from '@novastar/shared-utils'
 import { hasPermission } from '@novastar/auth'
 import { getTenantContext } from '@/lib/tenant'
@@ -24,16 +29,106 @@ const CROSS_ROW_WRITE_RULES: Record<
 }
 
 /**
- * The one database read a cross-row rule needs: every band stored for a scale.
- * Supplied here so the rule stays a pure function in @novastar/shared-utils,
- * beside the validator the seed calls.
+ * Which row a write hangs from, and the predicate that proves it is the caller's
+ * own. Dispatched by the same kind as the rule above, so registering a cross-row
+ * entity without stating its parent is a compile error.
+ *
+ * `findParent` is the one piece this module cannot own: shared-utils holds no
+ * database client, so the read arrives here, from the route.
  */
-const readScaleBands: Parameters<CrossRowWriteRule>[0]['readScaleBands'] =
-  async (gradingScaleId) =>
-    prisma.gradingLevel.findMany({
-      where: { gradingScaleId },
+type ParentScopeCheck<Where = Record<string, unknown>> = ParentScopeWriteRule<Where> & {
+  findParent: (where: Where) => Promise<unknown>
+}
+
+const PARENT_SCOPE_CHECKS: Record<
+  NonNullable<EntityApiConfig['writeValidation']>['kind'],
+  ParentScopeCheck<ReturnType<typeof gradingScaleScopeWhere>>
+> = {
+  grading_scale_bands: {
+    ...gradingScaleParentScopeWriteRule,
+    findParent: (where) => prisma.gradingScale.findFirst({ where }),
+  },
+}
+
+/** The reads one request's cross-row checks need, bound to that request's caller. */
+interface CrossRowReads {
+  /** A parent row, read under this caller's scope; null when not the caller's. */
+  readParent: (id: string) => Promise<unknown>
+  readScaleBands: Parameters<CrossRowWriteRule>[0]['readScaleBands']
+}
+
+/**
+ * The database reads a cross-row check needs, scoped to the caller making them.
+ *
+ * Scoping is not an optimisation here. The read of a scale's bands is what turns
+ * an overlap into a 400 that names the bands involved, so an unscoped read both
+ * refuses this school's write for a conflict on another school's scale and prints
+ * that school's band keys in the refusal.
+ *
+ * The parent lookup is memoised per id because one write asks it twice — once to
+ * prove the parent it names is the caller's, and once again here, while judging
+ * the row against its siblings — and the answer cannot change between them.
+ */
+function crossRowReads(entityConfig: EntityApiConfig, scope: CallerScope): CrossRowReads {
+  const kind = entityConfig.writeValidation?.kind
+  const parents = new Map<string, Promise<unknown>>()
+  const readParent = (id: string): Promise<unknown> => {
+    if (kind === undefined) return Promise.resolve(null)
+    const cached = parents.get(id)
+    if (cached) return cached
+    const check = PARENT_SCOPE_CHECKS[kind]
+    const found = check.findParent(check.scopeWhere({ ...scope, id }))
+    parents.set(id, found)
+    return found
+  }
+  const readScaleBands: CrossRowReads['readScaleBands'] = async (gradingScaleId) => {
+    // A scale the caller cannot see reads as an empty scale. The rule then has
+    // nothing to judge against, which accepts the write — the safe direction,
+    // since the alternative is answering from another school's bands. A delete
+    // reaches this too, and is the case that matters most: the row is already the
+    // caller's, and removing it is the safe direction whatever it hung from.
+    if ((await readParent(gradingScaleId)) === null) return []
+    return prisma.gradingLevel.findMany({
+      where: { gradingScaleId, tenantId: scope.tenantId },
       select: { id: true, key: true, minScore: true, maxScore: true },
     })
+  }
+  return { readParent, readScaleBands }
+}
+
+/**
+ * The refusal an edit earns by naming a parent that is not the caller's.
+ *
+ * A band row has no `schoolId` of its own — the model is tenant-scoped — so the
+ * school a band belongs to is the school of its scale, and proving the row is the
+ * caller's proves nothing about the school that grades a child against it. On an
+ * edit the parent is whichever scale this patch names, falling back to the one
+ * the stored row already hangs from, which is what closes the second half of the
+ * hole: a patch that moves a band onto a sibling school's scale is refused here
+ * exactly as a create attaching to one is.
+ *
+ * 404, and the same 404 whether the scale is missing or simply belongs to another
+ * school — telling those apart would confirm that another school's row exists.
+ * A patch naming no resolvable parent at all is refused the same way: an unproven
+ * parent is a foreign one.
+ *
+ * Never applied to a delete. The row being deleted is already proved to be the
+ * caller's, and refusing to remove a band precisely because its scale turned out
+ * to be somebody else's would strand the very rows this hole created.
+ */
+async function parentWriteRefusal(
+  entityConfig: EntityApiConfig,
+  context: CrossRowWriteTarget,
+  reads: Pick<CrossRowReads, 'readParent'>,
+): Promise<NextResponse | null> {
+  const kind = entityConfig.writeValidation?.kind
+  if (kind === undefined) return null
+  const parentId = PARENT_SCOPE_CHECKS[kind].parentId(context)
+  if (parentId === null || (await reads.readParent(parentId)) === null) {
+    return NextResponse.json({ error: 'Parent not found' }, { status: 404 })
+  }
+  return null
+}
 
 /**
  * The problems a write would leave behind, judged against its siblings. Empty for
@@ -48,6 +143,7 @@ async function crossRowWriteProblems(
     write: Record<string, unknown>
     existing: Record<string, unknown> | null
   },
+  reads: Pick<CrossRowReads, 'readScaleBands'>,
 ): Promise<string[]> {
   const kind = entityConfig.writeValidation?.kind
   if (kind === undefined) return []
@@ -55,7 +151,7 @@ async function crossRowWriteProblems(
   if (rule === undefined) {
     throw new Error(`No cross-row write rule is registered for "${kind}"`)
   }
-  return rule({ ...context, readScaleBands })
+  return rule({ ...context, readScaleBands: reads.readScaleBands })
 }
 
 /**
@@ -187,14 +283,37 @@ export async function PATCH(
       return NextResponse.json({ error: 'Entity not found' }, { status: 404 })
     }
 
+    // Both reads are bound to this caller, not to the module.
+    const reads = crossRowReads(entityConfig, { tenantId, schoolId })
+
+    // The row is proved to be the caller's. The row it hangs from is not, and an
+    // edit can change which one that is — so it is resolved and proved before the
+    // patch is judged, never assumed from the stored row.
+    const parentRefusal = await parentWriteRefusal(
+      entityConfig,
+      {
+        operation: 'update',
+        write: validated.data as Record<string, unknown>,
+        existing: existing as Record<string, unknown>,
+      },
+      reads,
+    )
+    if (parentRefusal) {
+      return parentRefusal
+    }
+
     // Judged against the row as it would be stored — the patch merged over what
     // is there now — so a partial patch that leaves this row's siblings unable to
     // grade between them is refused instead of persisted.
-    const siblingProblems = await crossRowWriteProblems(entityConfig, {
-      operation: 'update',
-      write: validated.data as Record<string, unknown>,
-      existing: existing as Record<string, unknown>,
-    })
+    const siblingProblems = await crossRowWriteProblems(
+      entityConfig,
+      {
+        operation: 'update',
+        write: validated.data as Record<string, unknown>,
+        existing: existing as Record<string, unknown>,
+      },
+      reads,
+    )
     if (siblingProblems.length > 0) {
       return NextResponse.json({ error: 'Validation failed', issues: siblingProblems }, { status: 400 })
     }
@@ -266,12 +385,18 @@ export async function DELETE(
     // A delete is a write too, and for a scale's bands it is the destructive one:
     // removing a middle band opens a hole that would silently hand every child in
     // that range the band below it. Refused here, with the range named, so an
-    // admin widens a neighbour first.
-    const siblingProblems = await crossRowWriteProblems(entityConfig, {
-      operation: 'delete',
-      write: {},
-      existing: entityRecord,
-    })
+    // admin widens a neighbour first. The row is already the caller's, so this is
+    // the one write that does not also prove the scale it hangs from — see
+    // `parentWriteRefusal`.
+    const siblingProblems = await crossRowWriteProblems(
+      entityConfig,
+      {
+        operation: 'delete',
+        write: {},
+        existing: entityRecord,
+      },
+      crossRowReads(entityConfig, { tenantId, schoolId }),
+    )
     if (siblingProblems.length > 0) {
       return NextResponse.json({ error: 'Validation failed', issues: siblingProblems }, { status: 400 })
     }

@@ -17,6 +17,14 @@ export default function HealthPage() {
   const { data: session } = useSession()
   const { toast } = useToast()
   const [loading, setLoading] = useState(true)
+  /**
+   * Why `health` is still null after a fetch finished. Null while loading or once
+   * health has arrived; a message otherwise. Without this the page rendered its
+   * skeleton for `loading || !health`, so a failed fetch left a spinner running
+   * forever and the Refresh control — which lives in the branch that never
+   * rendered — with no way to retry.
+   */
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [health, setHealth] = useState<HealthStatus | null>(null)
 
   const role = (session?.user as { role?: string })?.role
@@ -28,13 +36,18 @@ export default function HealthPage() {
       if (!res.ok) {
         if (res.status === 403) {
           toast.error({ title: 'Access denied', description: 'Only Head of School can view system health.' })
+          setLoadError('Only Head of School can view system health.')
+        } else {
+          setLoadError(`The server returned ${res.status}. Check your connection and try again.`)
         }
         return
       }
       const data = await res.json()
       setHealth(data)
+      setLoadError(null)
     } catch {
       toast.error({ title: 'Error', description: 'Failed to load system health.' })
+      setLoadError('Could not reach the server. Check your connection and try again.')
     } finally {
       setLoading(false)
     }
@@ -84,7 +97,7 @@ export default function HealthPage() {
     return `${size.toFixed(1)} ${units[unitIndex]}`
   }
 
-  if (loading || !health) {
+  if (loading) {
     return (
       <div className="space-y-6 p-6">
         <div className="flex items-center justify-between">
@@ -95,6 +108,28 @@ export default function HealthPage() {
           <Skeleton className="h-32 w-full" />
           <Skeleton className="h-32 w-full" />
         </div>
+      </div>
+    )
+  }
+
+  // A fetch that finished without producing a health payload has nothing to
+  // render, and must not fall through to the skeleton above: the user would
+  // watch it forever with no way to retry.
+  if (!health) {
+    return (
+      <div className="space-y-6 p-6">
+        <h1 className="text-3xl font-heading font-bold">System Health</h1>
+        <Card>
+          <CardContent className="pt-6 flex flex-col items-start gap-4">
+            <p className="text-muted-foreground">
+              {loadError ?? 'System health data is not available.'}
+            </p>
+            <Button variant="outline" size="sm" onClick={() => void fetchHealth()}>
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Try Again
+            </Button>
+          </CardContent>
+        </Card>
       </div>
     )
   }

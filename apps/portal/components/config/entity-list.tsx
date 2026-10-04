@@ -43,6 +43,52 @@ interface EntityListItem {
   [key: string]: unknown
 }
 
+/**
+ * A rejected field, flattened out of the shape Zod's `format()` returns.
+ *
+ * The config routes answer a refused write with `{ error, issues }`, where `issues`
+ * is a Zod field tree for a per-field problem and a plain list of sentences for a
+ * cross-row one. `prefix` carries the field path down so a nested object reads as
+ * `scale.bands.0.minScore` rather than as one anonymous message, and `_errors` is
+ * the key Zod puts a field's own messages under, so it contributes the path as the
+ * prefix instead of replacing it.
+ */
+function issueLines(issues: unknown, prefix = ''): string[] {
+  if (Array.isArray(issues)) {
+    return issues
+      .filter((issue): issue is string => typeof issue === 'string')
+      .map((message) => (prefix ? `${prefix}: ${message}` : message))
+  }
+  if (issues === null || typeof issues !== 'object') return []
+  const lines: string[] = []
+  for (const [key, value] of Object.entries(issues as Record<string, unknown>)) {
+    const label = key === '_errors' ? prefix : prefix ? `${prefix}.${key}` : key
+    lines.push(...issueLines(value, label))
+  }
+  return lines
+}
+
+/**
+ * The server's own words for why a write failed, as one line a teacher can act on.
+ *
+ * This exists because nothing used to read them. `handleFormSubmit` closed the
+ * dialog only on `res.ok` and said nothing otherwise, so a refusal — a rejected
+ * `defaultWeight`, or the 500 every grading-scale GET, PATCH and DELETE used to
+ * return — left the dialog sitting open looking like it was still saving.
+ */
+async function describeFailure(res: Response): Promise<string> {
+  let payload: { error?: unknown; issues?: unknown } | null = null
+  try {
+    payload = (await res.json()) as { error?: unknown; issues?: unknown }
+  } catch {
+    payload = null
+  }
+  const summary =
+    typeof payload?.error === 'string' ? payload.error : `Request failed (${res.status})`
+  const issues = issueLines(payload?.issues)
+  return issues.length > 0 ? `${summary}: ${issues.join('; ')}` : summary
+}
+
 export function EntityList({ entityType }: EntityListProps) {
   const registry = DEFAULT_ENTITY_REGISTRY.find(e => e.type === entityType)
   const [data, setData] = useState<EntityListItem[]>([])
@@ -61,6 +107,7 @@ export function EntityList({ entityType }: EntityListProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [showForm, setShowForm] = useState(false)
   const [editMode, setEditMode] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const confirm = useConfirm()
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -78,9 +125,13 @@ export function EntityList({ entityType }: EntityListProps) {
         const json = await res.json()
         setData(json.data)
         setMeta(json.meta)
+        setError(null)
+      } else {
+        setError(await describeFailure(res))
       }
-    } catch (error) {
-      console.error('Fetch error:', error)
+    } catch (caught) {
+      console.error('Fetch error:', caught)
+      setError('Could not reach the server. Check your connection and try again.')
     } finally {
       setLoading(false)
     }
@@ -105,18 +156,21 @@ export function EntityList({ entityType }: EntityListProps) {
   const handleCreate = () => {
     setSelectedId(null)
     setEditMode(false)
+    setError(null)
     setShowForm(true)
   }
 
   const handleEdit = (item: EntityListItem) => {
     setSelectedId(item.id)
     setEditMode(true)
+    setError(null)
     setShowForm(true)
   }
 
   const handleView = (item: EntityListItem) => {
     setSelectedId(item.id)
     setEditMode(false)
+    setError(null)
     setShowForm(true)
   }
 
@@ -130,10 +184,14 @@ export function EntityList({ entityType }: EntityListProps) {
     try {
       const res = await fetch(`/api/config/${entityType}/${id}`, { method: 'DELETE' })
       if (res.ok) {
+        setError(null)
         fetchData()
+      } else {
+        setError(await describeFailure(res))
       }
-    } catch (error) {
-      console.error('Delete error:', error)
+    } catch (caught) {
+      console.error('Delete error:', caught)
+      setError('Could not reach the server. Check your connection and try again.')
     }
   }
 
@@ -141,33 +199,35 @@ export function EntityList({ entityType }: EntityListProps) {
     setShowForm(false)
     setSelectedId(null)
     setEditMode(false)
+    setError(null)
   }
 
   const handleFormSubmit = async (formData: Record<string, unknown>) => {
     try {
-      if (editMode && selectedId) {
-        const res = await fetch(`/api/config/${entityType}/${selectedId}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(formData),
-        })
-        if (res.ok) {
-          handleFormClose()
-          fetchData()
-        }
+      const res = editMode && selectedId
+        ? await fetch(`/api/config/${entityType}/${selectedId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(formData),
+          })
+        : await fetch(`/api/config/${entityType}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(formData),
+          })
+
+      if (res.ok) {
+        handleFormClose()
+        fetchData()
       } else {
-        const res = await fetch(`/api/config/${entityType}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(formData),
-        })
-        if (res.ok) {
-          handleFormClose()
-          fetchData()
-        }
+        // The dialog stays open with the reason on it. Closing it, or swallowing
+        // the refusal, is what let a head teacher save a grading scale and be told
+        // nothing when the write never happened.
+        setError(await describeFailure(res))
       }
-    } catch (error) {
-      console.error('Submit error:', error)
+    } catch (caught) {
+      console.error('Submit error:', caught)
+      setError('Could not reach the server. Check your connection and try again.')
     }
   }
 
@@ -194,6 +254,12 @@ export function EntityList({ entityType }: EntityListProps) {
       </CardHeader>
 
       <CardContent>
+        {error && !showForm && (
+          <p role="alert" className="mb-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            {error}
+          </p>
+        )}
+
         {/* Search and filters */}
         <div className="flex flex-col sm:flex-row gap-4 mb-4">
           <div className="relative flex-1">
@@ -342,6 +408,11 @@ export function EntityList({ entityType }: EntityListProps) {
                   : `Add a new ${registry?.name.toLowerCase()}`}
               </DialogDescription>
             </DialogHeader>
+            {error && (
+              <p role="alert" className="mb-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                {error}
+              </p>
+            )}
             <EntityForm
               entityType={entityType}
               initialData={editMode && selectedId ? data.find(d => d.id === selectedId) ?? null : null}

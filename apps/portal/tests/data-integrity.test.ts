@@ -264,7 +264,21 @@ let assessmentRow: Record<string, unknown> | null = null
 let gradingScales: Array<Record<string, unknown>> = []
 
 const assessmentFindFirst = mock(async () => assessmentRow)
-const gradingScaleFindMany = mock(async () => gradingScales)
+/**
+ * The `orderBy` this read is handed is recorded, because it is load-bearing.
+ *
+ * `resolveApplicableGradingScale` takes the FIRST scale that claims the level, and
+ * both callers used to pass no ordering at all — so with two scales claiming `B9`
+ * the winning scale, and therefore every child's band, was whatever order the
+ * database returned rows in. A routine VACUUM was enough to change it. The rows the
+ * mock returns are unchanged so every existing assertion here holds; what is new is
+ * that the clause is now observable.
+ */
+const gradingScaleQueryArgs: Array<Record<string, unknown>> = []
+const gradingScaleFindMany = mock(async (args: Record<string, unknown>) => {
+  gradingScaleQueryArgs.push(args)
+  return gradingScales
+})
 const scoreUpsert = mock(async (args: UpsertArgs) => {
   steps.push('score.upsert')
   return { id: 'score-1', ...args.create }
@@ -276,7 +290,9 @@ let currentTerm: { id: string; startDate: Date; endDate: Date } | null = null
 let requestedTerm: { id: string; startDate: Date; endDate: Date } | null = null
 let termEnrollment: {
   classId: string
-  class: { name: string; level: { name: string } }
+  // `code` is carried because the route matches the grading scale on the level
+  // code first and its name second, exactly as the gradebook write does.
+  class: { name: string; level: { name: string; code?: string } }
 } | null = null
 let reportAssessments: Array<Record<string, unknown>> = []
 
@@ -463,6 +479,7 @@ beforeEach(() => {
   requestedTerm = null
   termEnrollment = null
   reportAssessments = []
+  gradingScaleQueryArgs.length = 0
 
   for (const m of [
     getTenantContext,
@@ -1089,6 +1106,271 @@ describe('POST /api/assessments/[id]/scores — grade bands are applied', () => 
   })
 })
 
+/**
+ * Which scale a class is graded against was decided by the row order the database
+ * returned, so a routine VACUUM was enough to move a cohort of children from one band
+ * to another — silently, and with no error on any card.
+ *
+ * `resolveApplicableGradingScale` takes the first scale that claims the level, and
+ * neither caller passed an `orderBy`, so the two claims below were decided by
+ * whichever row the engine happened to emit first. The fix is two-sided: the query
+ * now asks for a total order (default first, then oldest first, then id), and the
+ * gradebook calls the one shared resolver instead of its own copy of the rule, so the
+ * band it stores and the band the report prints cannot come from two different
+ * implementations.
+ */
+describe('the grading-scale read is ordered, so the same rows always grade the same way', () => {
+  /** Both claim B1 and both are marked default: the ambiguous configuration. */
+  const AMBIGUOUS = [
+    {
+      id: 'scale-copy',
+      name: 'Ghana Primary 2026',
+      isDefault: true,
+      appliesToLevels: ['B1'],
+      createdAt: '2026-06-01T00:00:00Z',
+      levels: [{ key: 'NEW', label: 'New', minScore: 0, maxScore: 100 }],
+    },
+    {
+      id: 'scale-original',
+      name: 'Ghana Primary (GES 6-level)',
+      isDefault: true,
+      appliesToLevels: ['B1'],
+      createdAt: '2026-01-01T00:00:00Z',
+      levels: [{ key: 'A', label: 'A', minScore: 80, maxScore: 100 }],
+    },
+  ]
+
+  it('asks Prisma for a total order, rather than accepting whatever rows arrive', async () => {
+    assessmentRow = ASSESSMENT_WITH_LEVEL
+    gradingScales = []
+
+    await POST_SCORES(
+      jsonRequest('POST', '/api/assessments/assess-1/scores', {
+        studentId: 'student-1',
+        rawScore: 90,
+      }),
+      { params: Promise.resolve({ id: 'assess-1' }) },
+    )
+
+    // Asserted on the arguments the mocked call received, not on the response: the
+    // defect was entirely inside the query.
+    expect(gradingScaleQueryArgs).toHaveLength(1)
+    expect(gradingScaleQueryArgs[0]!.orderBy).toEqual([
+      { isDefault: 'desc' },
+      { createdAt: 'asc' },
+      { id: 'asc' },
+    ])
+  })
+
+  it('stores the older scale\'s band whatever order the two scales come back in', async () => {
+    assessmentRow = ASSESSMENT_WITH_LEVEL
+
+    gradingScales = AMBIGUOUS
+    await POST_SCORES(
+      jsonRequest('POST', '/api/assessments/assess-1/scores', {
+        studentId: 'student-1',
+        rawScore: 90,
+      }),
+      { params: Promise.resolve({ id: 'assess-1' }) },
+    )
+    const forwards = objectAt(callAt(scoreUpsert, 0), 'update')
+
+    gradingScales = [...AMBIGUOUS].reverse()
+    await POST_SCORES(
+      jsonRequest('POST', '/api/assessments/assess-1/scores', {
+        studentId: 'student-1',
+        rawScore: 90,
+      }),
+      { params: Promise.resolve({ id: 'assess-1' }) },
+    )
+    const backwards = objectAt(callAt(scoreUpsert, 1), 'update')
+
+    // The original, not the later copy of it: the school has been reporting against
+    // it all along. A duplicate scale must not silently re-label a cohort.
+    expect(forwards.gradingScaleId).toBe('scale-original')
+    expect(backwards.gradingScaleId).toBe('scale-original')
+    expect(forwards.grade).toBe('A')
+    expect(backwards.grade).toBe('A')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// DEFECT 4b — a mark outside its assessment's range
+// ---------------------------------------------------------------------------
+
+/**
+ * `rawScore` bounded by the assessment's own maximum.
+ *
+ * The defect: `SaveScoreSchema.rawScore` was `z.number().min(0).max(9999)` and
+ * nothing related it to `Assessment.maxScore`, so a teacher who typed `150` for
+ * a child who scored `15` on a 100-mark assessment produced 150%, which
+ * `determineGrade` labelled `level_6` — and `score.upsert` persisted it as the
+ * gradebook's audit record. The same gap made `9999` against a `maxScore` of 1 a
+ * 500 from the `Decimal(5,2)` column rather than a message to the teacher.
+ *
+ * These drive the real handler, so what is asserted is the HTTP answer a
+ * teacher gets and whether the row was written at all — never the helper alone.
+ */
+describe('POST /api/assessments/[id]/scores — a mark is bounded by the assessment', () => {
+  /** Ghana Primary, so "level_6" here means the Excellent band under test. */
+  const ghanaPrimary = [
+    {
+      id: 'scale-primary',
+      isDefault: true,
+      appliesToLevels: ['B1'],
+      levels: [
+        { key: 'level_6', label: 'Level 6', minScore: 85, maxScore: 100 },
+        { key: 'level_5', label: 'Level 5', minScore: 70, maxScore: 84 },
+        { key: 'level_1', label: 'Level 1', minScore: 0, maxScore: 39 },
+      ],
+    },
+  ]
+
+  const postMark = (body: Record<string, unknown>) =>
+    POST_SCORES(
+      jsonRequest('POST', '/api/assessments/assess-1/scores', body),
+      { params: Promise.resolve({ id: 'assess-1' }) },
+    )
+
+  /** A raw JSON body, so a payload JSON can express but a number literal cannot. */
+  const postRawMark = (body: string) =>
+    POST_SCORES(
+      new NextRequest('http://localhost/api/assessments/assess-1/scores', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body,
+      }),
+      { params: Promise.resolve({ id: 'assess-1' }) },
+    )
+
+  /** The refusal body, read once — a `Response` body is a one-shot stream. */
+  const refusal = async (res: Response): Promise<{ error: string; details: string }> => {
+    const body = (await res.json()) as { error?: string; details?: unknown }
+    return {
+      error: body.error ?? '',
+      details: JSON.stringify(body.details ?? []),
+    }
+  }
+
+  it('stores 15 out of 100 as level_1, the mark the teacher actually entered', async () => {
+    assessmentRow = ASSESSMENT_WITH_LEVEL
+    gradingScales = ghanaPrimary
+
+    const res = await postMark({ studentId: 'student-1', rawScore: 15 })
+
+    expect(res.status).toBe(200)
+    // 15% is 15/100, and 15% is Level 1. Nothing is clamped up to Excellent.
+    expect(singleCall(scoreUpsert).update).toMatchObject({
+      rawScore: 15,
+      percentage: 15,
+      grade: 'level_1',
+    })
+  })
+
+  it('refuses 150 out of 100 as a validation error, and writes nothing', async () => {
+    assessmentRow = ASSESSMENT_WITH_LEVEL
+    gradingScales = ghanaPrimary
+
+    const res = await postMark({ studentId: 'student-1', rawScore: 150 })
+
+    // THE DEFECT: this used to be a 200 storing percentage 150 and grade
+    // 'level_6' — a child recorded as Excellent on a paper they scored 15 on.
+    expect(res.status).toBe(400)
+    expect(scoreUpsert).toHaveBeenCalledTimes(0)
+    const body = await refusal(res)
+    expect(body.error).toBe('Invalid input')
+    // The refusal names the assessment's own bound and the offending field, so
+    // the teacher is told what the assessment is out of rather than that some
+    // number was too big.
+    expect(body.details).toContain('100')
+    expect(body.details).toContain('rawScore')
+  })
+
+  it('refuses every out-of-range value, above the ceiling and below the floor', async () => {
+    assessmentRow = ASSESSMENT_WITH_LEVEL
+    gradingScales = ghanaPrimary
+
+    for (const rawScore of [100.5, 120, 150, 300, 850, 999.99, 9999, -1, -0.01]) {
+      const res = await postMark({ studentId: 'student-1', rawScore })
+      expect(res.status).toBe(400)
+      expect(scoreUpsert).toHaveBeenCalledTimes(0)
+    }
+    // The boundaries themselves are marks, not attempts at one.
+    for (const rawScore of [0, 100]) {
+      const res = await postMark({ studentId: 'student-1', rawScore })
+      expect(res.status).toBe(200)
+    }
+  })
+
+  it('refuses a mark that overflows Decimal(5,2) rather than failing as a 500', async () => {
+    // 9999/1 = 999900, which cannot be stored in `Score.percentage`. Before the
+    // bound this reached the database and came back as a 500 from Prisma.
+    assessmentRow = { ...ASSESSMENT_WITH_LEVEL, maxScore: 1 }
+    gradingScales = ghanaPrimary
+
+    const res = await postMark({ studentId: 'student-1', rawScore: 9999 })
+
+    expect(res.status).toBe(400)
+    expect(scoreUpsert).toHaveBeenCalledTimes(0)
+  })
+
+  it('refuses a non-finite mark carried by the payload', async () => {
+    assessmentRow = ASSESSMENT_WITH_LEVEL
+    gradingScales = ghanaPrimary
+
+    // `1e999` is valid JSON and parses to Infinity, so this reaches the schema
+    // as a real Infinity rather than as a string.
+    const infinite = await postRawMark('{"studentId":"student-1","rawScore":1e999}')
+    expect(infinite.status).toBe(400)
+    expect(scoreUpsert).toHaveBeenCalledTimes(0)
+
+    // NaN is what a client actually sends for a mark it could not parse: JSON
+    // has no NaN, so `JSON.stringify({ rawScore: NaN })` emits `null`.
+    const notANumber = await postRawMark('{"studentId":"student-1","rawScore":null}')
+    expect(notANumber.status).toBe(400)
+    expect(scoreUpsert).toHaveBeenCalledTimes(0)
+  })
+
+  it('never reads a maxScore from the request body', async () => {
+    assessmentRow = ASSESSMENT_WITH_LEVEL
+    gradingScales = ghanaPrimary
+
+    // A client that sent its own maximum could otherwise choose the denominator
+    // that makes its mark correct. `Zod` strips the unknown key and the bound
+    // comes from the assessment row.
+    const widened = await postMark({
+      studentId: 'student-1',
+      rawScore: 150,
+      maxScore: 1000,
+    })
+    expect(widened.status).toBe(400)
+    expect(scoreUpsert).toHaveBeenCalledTimes(0)
+
+    // And a client cannot narrow it either: 30 is out of range on a 20-mark
+    // assessment even if the body claims a maximum of 100.
+    assessmentRow = { ...ASSESSMENT_WITH_LEVEL, maxScore: 20 }
+    const narrowed = await postMark({
+      studentId: 'student-1',
+      rawScore: 30,
+      maxScore: 100,
+    })
+    expect(narrowed.status).toBe(400)
+    expect(scoreUpsert).toHaveBeenCalledTimes(0)
+  })
+
+  it('refuses a mark on an assessment whose own maximum cannot carry one', async () => {
+    // A zero maximum admits no mark at all, rather than every mark or a 0% that
+    // the child never earned.
+    assessmentRow = { ...ASSESSMENT_WITH_LEVEL, maxScore: 0 }
+    gradingScales = ghanaPrimary
+
+    const res = await postMark({ studentId: 'student-1', rawScore: 10 })
+
+    expect(res.status).toBe(400)
+    expect(scoreUpsert).toHaveBeenCalledTimes(0)
+  })
+})
+
 // ---------------------------------------------------------------------------
 // DEFECT 5 — academic reports after promotion
 // ---------------------------------------------------------------------------
@@ -1275,5 +1557,213 @@ describe('GET /api/reports/academic/[studentId] — term-scoped joins', () => {
     // 2 of 3 present, via calculateAttendancePercentage.
     expect(markedSummary.attendanceRate).toBe(67)
     expect(markedSummary.presentDays).toBe(2)
+  })
+
+  /**
+   * A stored percentage outside 0-100 is re-checked on read.
+   *
+   * The write path refuses to store one, so these rows predate that guard. The
+   * report still has to be honest about them: printing 150% beside a withheld
+   * band would show a mark no child earned, and the same value would be averaged
+   * into `weightedPercentage` and `subjects[].percentage`.
+   */
+  it('reports an out-of-range stored percentage as no percentage at all', async () => {
+    studentRow = STUDENT_ROW
+    currentTerm = { id: 'term-1', ...TERM_DATE }
+    termEnrollment = {
+      classId: 'class-term-1',
+      class: { name: 'Term 1 Class', level: { name: 'Basic 5', code: 'B5' } },
+    }
+    gradingScales = [
+      {
+        id: 'scale-primary',
+        isDefault: true,
+        appliesToLevels: ['B5'],
+        levels: [
+          { key: 'level_6', label: 'Level 6', minScore: 85, maxScore: 100 },
+          { key: 'level_5', label: 'Level 5', minScore: 70, maxScore: 84 },
+          { key: 'level_1', label: 'Level 1', minScore: 0, maxScore: 39 },
+        ],
+      },
+    ]
+    attendanceList = []
+    reportAssessments = [
+      {
+        id: 'assess-typo',
+        name: 'End of Term',
+        maxScore: 100,
+        weight: 1,
+        assessmentDate: new Date('2026-02-01'),
+        classSubject: { subjectId: 'subj-1', subject: { name: 'Maths', code: 'MAT' } },
+        type: { name: 'Test', code: 'TEST', defaultWeight: 1 },
+        term: { name: 'Term 1', academicYear: { name: '2026' } },
+        // 15 out of 100 stored as 150, and graded 'level_6' at the time.
+        scores: [{ rawScore: 15, percentage: 150, grade: 'level_6' }],
+      },
+    ]
+
+    const res = await GET_ACADEMIC_REPORT(
+      request('GET', '/api/reports/academic/student-1'),
+      { params: Promise.resolve({ studentId: 'student-1' }) },
+    )
+
+    expect(res.status).toBe(200)
+    const body = await readJson(res)
+    const assessment = (body.assessments as Array<Record<string, unknown>>)[0]!
+    // The out-of-range percentage is not reported, and no band is claimed for it.
+    expect(assessment.percentage).toBeNull()
+    expect(assessment.band).toBeNull()
+    // The raw score still travels, so the discrepancy is visible rather than
+    // hidden — and the stale `level_6` key is not what the report displays.
+    expect(assessment.score).toBe(15)
+    expect(assessment.grade).toBe('level_6')
+    // And it contributes nothing to the summary.
+    const summary = objectAt(body, 'summary')
+    expect(summary.totalAssessments).toBe(1)
+    expect(summary.gradedAssessments).toBe(0)
+    expect(summary.subjectCount).toBe(0)
+    expect(summary.weightedPercentage).toBeNull()
+    expect(summary.overallPercentage).toBeNull()
+    expect(body.subjects).toEqual([])
+  })
+
+  it('still reports a real percentage, band and all', async () => {
+    studentRow = STUDENT_ROW
+    currentTerm = { id: 'term-1', ...TERM_DATE }
+    termEnrollment = {
+      classId: 'class-term-1',
+      class: { name: 'Term 1 Class', level: { name: 'Basic 5', code: 'B5' } },
+    }
+    gradingScales = [
+      {
+        id: 'scale-primary',
+        isDefault: true,
+        appliesToLevels: ['B5'],
+        levels: [
+          { key: 'level_6', label: 'Level 6', minScore: 85, maxScore: 100 },
+          { key: 'level_5', label: 'Level 5', minScore: 70, maxScore: 84 },
+          { key: 'level_1', label: 'Level 1', minScore: 0, maxScore: 39 },
+        ],
+      },
+    ]
+    attendanceList = []
+    reportAssessments = [
+      {
+        id: 'assess-ok',
+        name: 'End of Term',
+        maxScore: 100,
+        weight: 1,
+        assessmentDate: new Date('2026-02-01'),
+        classSubject: { subjectId: 'subj-1', subject: { name: 'Maths', code: 'MAT' } },
+        type: { name: 'Test', code: 'TEST', defaultWeight: 1 },
+        term: { name: 'Term 1', academicYear: { name: '2026' } },
+        scores: [{ rawScore: 88, percentage: 88, grade: 'level_6' }],
+      },
+    ]
+
+    const res = await GET_ACADEMIC_REPORT(
+      request('GET', '/api/reports/academic/student-1'),
+      { params: Promise.resolve({ studentId: 'student-1' }) },
+    )
+
+    expect(res.status).toBe(200)
+    const body = await readJson(res)
+    const assessment = (body.assessments as Array<Record<string, unknown>>)[0]!
+    expect(assessment.percentage).toBe(88)
+    expect(objectAt(assessment, 'band').key).toBe('level_6')
+    const summary = objectAt(body, 'summary')
+    expect(summary.gradedAssessments).toBe(1)
+    expect(summary.weightedPercentage).toBe(88)
+  })
+
+  /**
+   * The report reader had no `orderBy` on its scale query, and it is the reader that
+   * decides the band printed on a report card. With two scales claiming one level —
+   * which nothing prevented — the card was a function of the row order the engine
+   * emitted, so a routine VACUUM could move a whole cohort from one band to another
+   * with no error anywhere.
+   */
+  it('orders the grading-scale read, so a card cannot depend on the row order', async () => {
+    studentRow = STUDENT_ROW
+    currentTerm = { id: 'term-1', ...TERM_DATE }
+    termEnrollment = {
+      classId: 'class-term-1',
+      class: { name: 'Term 1 Class', level: { name: 'Basic 5', code: 'B5' } },
+    }
+    reportAssessments = []
+    attendanceList = []
+
+    const res = await GET_ACADEMIC_REPORT(
+      request('GET', '/api/reports/academic/student-1'),
+      { params: Promise.resolve({ studentId: 'student-1' }) },
+    )
+
+    expect(res.status).toBe(200)
+    // Asserted on the arguments the mocked call received: the defect was inside the
+    // query, and the response body is identical either way.
+    expect(gradingScaleQueryArgs).toHaveLength(1)
+    expect(gradingScaleQueryArgs[0]!.orderBy).toEqual([
+      { isDefault: 'desc' },
+      { createdAt: 'asc' },
+      { id: 'asc' },
+    ])
+  })
+
+  it('labels the same percentage the same way whichever order two claiming scales arrive in', async () => {
+    const twoScales = [
+      {
+        id: 'scale-copy',
+        isDefault: true,
+        appliesToLevels: ['B5'],
+        createdAt: '2026-06-01T00:00:00Z',
+        levels: [{ key: 'COPY', label: 'Copy', minScore: 0, maxScore: 100 }],
+      },
+      {
+        id: 'scale-original',
+        isDefault: true,
+        appliesToLevels: ['B5'],
+        createdAt: '2026-01-01T00:00:00Z',
+        levels: [{ key: 'level_6', label: 'Level 6', minScore: 85, maxScore: 100 }],
+      },
+    ]
+    const gradedReport = async () => {
+      studentRow = STUDENT_ROW
+      currentTerm = { id: 'term-1', ...TERM_DATE }
+      termEnrollment = {
+        classId: 'class-term-1',
+        class: { name: 'Term 1 Class', level: { name: 'Basic 5', code: 'B5' } },
+      }
+      attendanceList = []
+      reportAssessments = [
+        {
+          id: 'assess-ok',
+          name: 'End of Term',
+          maxScore: 100,
+          weight: 1,
+          assessmentDate: new Date('2026-02-01'),
+          classSubject: { subjectId: 'subj-1', subject: { name: 'Maths', code: 'MAT' } },
+          type: { name: 'Test', code: 'TEST', defaultWeight: 1 },
+          term: { name: 'Term 1', academicYear: { name: '2026' } },
+          scores: [{ rawScore: 88, percentage: 88, grade: 'level_6' }],
+        },
+      ]
+      const res = await GET_ACADEMIC_REPORT(
+        request('GET', '/api/reports/academic/student-1'),
+        { params: Promise.resolve({ studentId: 'student-1' }) },
+      )
+      const body = await readJson(res)
+      const assessment = (body.assessments as Array<Record<string, unknown>>)[0]!
+      return objectAt(assessment, 'band').key
+    }
+
+    gradingScales = twoScales
+    const forwards = await gradedReport()
+    gradingScales = [...twoScales].reverse()
+    const backwards = await gradedReport()
+
+    // The original scale's band, from an 88%, both times. The copy's 0-100 band
+    // would have labelled the same 88% as something else entirely.
+    expect(forwards).toBe('level_6')
+    expect(backwards).toBe('level_6')
   })
 })

@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   computeAcademicSummary,
+  findGradingScaleApplicabilityProblems,
   resolveApplicableGradingScale,
   resolveAssessmentWeight,
   type ReportableAssessment,
@@ -466,5 +467,142 @@ describe('resolveApplicableGradingScale - one rule, shared with the gradebook', 
     const noDefault = [{ id: 'scale-b1', appliesToLevels: ['B1'], isDefault: false }]
     expect(resolveApplicableGradingScale(noDefault, ['B4'])).toBeNull()
     expect(resolveApplicableGradingScale([], ['B1'])).toBeNull()
+  })
+})
+
+/**
+ * Two scales claiming one level used to be decided by the row order the database
+ * returned. `Array.find` takes the first match, so `([C, B], ['B9'])` resolved to
+ * `C` and `([B, C], ['B9'])` to `B` with both marked default — and a routine VACUUM
+ * was enough to move a cohort of children from one band to another, with no error
+ * on any card. These cases pin the answer to the configuration instead of the array.
+ */
+describe('resolveApplicableGradingScale - the same answer whatever order the rows arrive in', () => {
+  const ambiguous = [
+    { id: 'b', name: 'Ghana Primary (GES 6-level)', appliesToLevels: ['B9'], isDefault: true, createdAt: '2026-01-01T00:00:00Z' },
+    { id: 'c', name: 'Ghana Primary 2026', appliesToLevels: ['B9'], isDefault: true, createdAt: '2026-06-01T00:00:00Z' },
+  ]
+
+  it('resolves both permutations to the same scale, and to the OLDER one', () => {
+    // A copy of a scale must never displace the original it was copied from: the
+    // older scale is the one the school has been reporting against.
+    expect(resolveApplicableGradingScale([ambiguous[0]!, ambiguous[1]!], ['B9'])?.id).toBe('b')
+    expect(resolveApplicableGradingScale([ambiguous[1]!, ambiguous[0]!], ['B9'])?.id).toBe('b')
+  })
+
+  it('does not mutate the caller\'s array while sorting', () => {
+    const input = [...ambiguous].reverse()
+    resolveApplicableGradingScale(input, ['B9'])
+    expect(input.map((scale) => scale.id)).toEqual(['c', 'b'])
+  })
+
+  it('prefers a default that claims the level over one that does not', () => {
+    const scales = [
+      { id: 'plain', appliesToLevels: ['B9'], isDefault: false, createdAt: '2020-01-01T00:00:00Z' },
+      { id: 'default', appliesToLevels: [], isDefault: true, createdAt: '2026-01-01T00:00:00Z' },
+    ]
+    expect(resolveApplicableGradingScale(scales, ['B9'])?.id).toBe('plain')
+    expect(resolveApplicableGradingScale([...scales].reverse(), ['B9'])?.id).toBe('plain')
+  })
+
+  it('resolves the default fallback deterministically when several are marked default', () => {
+    const scales = [
+      { id: 'newer', appliesToLevels: [], isDefault: true, createdAt: '2026-06-01T00:00:00Z' },
+      { id: 'older', appliesToLevels: [], isDefault: true, createdAt: '2026-01-01T00:00:00Z' },
+    ]
+    expect(resolveApplicableGradingScale(scales, ['KG1'])?.id).toBe('older')
+    expect(resolveApplicableGradingScale([...scales].reverse(), ['KG1'])?.id).toBe('older')
+  })
+
+  it('falls back to the id when createdAt cannot separate two scales', () => {
+    // `createdAt` is a timestamp, not a unique key. Without the id as a last key
+    // the order would still not be a total one.
+    const sameInstant = '2026-01-01T00:00:00Z'
+    const scales = [
+      { id: 'z', appliesToLevels: [], isDefault: true, createdAt: sameInstant },
+      { id: 'a', appliesToLevels: [], isDefault: true, createdAt: sameInstant },
+    ]
+    expect(resolveApplicableGradingScale(scales, ['KG1'])?.id).toBe('a')
+    expect(resolveApplicableGradingScale([...scales].reverse(), ['KG1'])?.id).toBe('a')
+  })
+
+  it('orders a scale with no timestamp after every scale that has one', () => {
+    // A real row read through Prisma always carries `createdAt`; this only decides
+    // the hand-built fixtures, and it must not throw or compare NaN.
+    const scales = [
+      { id: 'undated', appliesToLevels: [], isDefault: true },
+      { id: 'dated', appliesToLevels: [], isDefault: true, createdAt: '2026-01-01T00:00:00Z' },
+    ]
+    expect(resolveApplicableGradingScale(scales, ['KG1'])?.id).toBe('dated')
+    expect(resolveApplicableGradingScale([...scales].reverse(), ['KG1'])?.id).toBe('dated')
+  })
+
+  it('resolves the seeded split unchanged', () => {
+    const seeded = [
+      { id: 'primary', appliesToLevels: ['B1', 'B2', 'B3', 'B4', 'B5', 'B6'], isDefault: true, createdAt: '2026-01-01T00:00:00Z' },
+      { id: 'jhs', appliesToLevels: ['B7', 'B8', 'B9'], isDefault: false, createdAt: '2026-01-01T00:00:00Z' },
+    ]
+    expect(resolveApplicableGradingScale(seeded, ['B4', 'Basic 4'])?.id).toBe('primary')
+    expect(resolveApplicableGradingScale([...seeded].reverse(), ['B7', 'JHS 1'])?.id).toBe('jhs')
+  })
+})
+
+describe('findGradingScaleApplicabilityProblems - naming the configuration that makes resolution arbitrary', () => {
+  const scale = (
+    id: string,
+    name: string,
+    appliesToLevels: string[],
+    isDefault = false,
+  ) => ({ id, name, appliesToLevels, isDefault })
+
+  it('accepts the seeded primary/JHS split', () => {
+    expect(
+      findGradingScaleApplicabilityProblems([
+        scale('primary', 'Ghana Primary (GES 6-level)', ['B1', 'B2', 'B3', 'B4', 'B5', 'B6'], true),
+        scale('jhs', 'Ghana JHS (BECE 1-9)', ['B7', 'B8', 'B9']),
+      ]),
+    ).toEqual([])
+  })
+
+  it('names two scales claiming one level, which is the duplicate-name case @@unique cannot stop', () => {
+    // `@@unique([tenantId, schoolId, name])` stops two scales sharing a NAME, so a
+    // copied scale is a legal row that claims the same levels.
+    const problems = findGradingScaleApplicabilityProblems([
+      scale('a', 'Ghana Primary (GES 6-level)', ['B1', 'B2', 'B3', 'B4', 'B5', 'B6'], true),
+      scale('b', 'Ghana Primary 2026', ['B1', 'B2', 'B3', 'B4', 'B5', 'B6']),
+    ])
+    expect(problems).toHaveLength(6)
+    expect(problems[0]).toContain('level B1 is claimed by 2 scales')
+    expect(problems[0]).toContain('"Ghana Primary (GES 6-level)"')
+    expect(problems[0]).toContain('"Ghana Primary 2026"')
+  })
+
+  it('names two scales marked default, which decides every level no scale names', () => {
+    const problems = findGradingScaleApplicabilityProblems([
+      scale('a', 'Primary', ['B1'], true),
+      scale('b', 'Primary copy', ['B2'], true),
+    ])
+    expect(problems).toHaveLength(1)
+    expect(problems[0]).toContain('2 scales are marked the default')
+  })
+
+  it('reports both defects when a copy is also marked default', () => {
+    const problems = findGradingScaleApplicabilityProblems([
+      scale('a', 'Primary', ['B1'], true),
+      scale('b', 'Primary copy', ['B1'], true),
+    ])
+    expect(problems).toHaveLength(2)
+  })
+
+  it('ignores empty level codes rather than reporting every scale as clashing', () => {
+    expect(findGradingScaleApplicabilityProblems([scale('a', 'A', ['']), scale('b', 'B', ['', ''])])).toEqual([])
+  })
+
+  it('falls back to the id when a scale has no name', () => {
+    const problems = findGradingScaleApplicabilityProblems([
+      { id: 'scale-1', appliesToLevels: ['B1'], isDefault: true },
+      { id: 'scale-2', appliesToLevels: ['B1'], isDefault: true },
+    ])
+    expect(problems[0]).toContain('scale scale-1')
   })
 })

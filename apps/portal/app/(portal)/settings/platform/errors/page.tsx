@@ -170,7 +170,7 @@ export default function ErrorsPage() {
   // mounted, so the search input keeps focus while results update.
   if (loading) {
     return (
-      <div className="space-y-6 p-6">
+      <div className="space-y-6 p-6" aria-busy="true">
         <div className="flex items-center justify-between">
           <h1 className="text-3xl font-heading font-bold">System Errors</h1>
         </div>
@@ -238,17 +238,18 @@ export default function ErrorsPage() {
       {/* Filters */}
       <div className="flex flex-col sm:flex-row gap-4 items-end">
         <div className="flex-1">
-          <label className="block text-sm font-medium mb-1">Search by Error Type</label>
+          <label htmlFor="errorTypeFilter" className="block text-sm font-medium mb-1">Search by Error Type</label>
           <Input
+            id="errorTypeFilter"
             placeholder="e.g. ValidationError, DatabaseError"
             value={errorTypeFilter}
             onChange={(e) => setErrorTypeFilter(e.target.value)}
           />
         </div>
         <div className="w-48">
-          <label className="block text-sm font-medium mb-1">Severity</label>
+          <label htmlFor="severity" className="block text-sm font-medium mb-1">Severity</label>
           <Select value={selectedSeverity || 'all'} onValueChange={(v) => setSelectedSeverity(v === 'all' ? '' : v)}>
-            <SelectTrigger>
+            <SelectTrigger id="severity">
               <SelectValue placeholder="All severities" />
             </SelectTrigger>
             <SelectContent>
@@ -261,9 +262,9 @@ export default function ErrorsPage() {
           </Select>
         </div>
         <div className="w-48">
-          <label className="block text-sm font-medium mb-1">Status</label>
+          <label htmlFor="resolvedFilter" className="block text-sm font-medium mb-1">Status</label>
           <Select value={resolvedFilter || 'all'} onValueChange={(v) => setResolvedFilter(v === 'all' ? '' : v)}>
-            <SelectTrigger>
+            <SelectTrigger id="resolvedFilter">
               <SelectValue placeholder="All statuses" />
             </SelectTrigger>
             <SelectContent>
@@ -348,6 +349,7 @@ export default function ErrorsPage() {
                             size="sm"
                             variant="ghost"
                             onClick={() => handleResolve(error.id, true)}
+                            aria-label={`Mark ${error.errorType} error as resolved`}
                           >
                             <CheckCircle className="h-4 w-4" />
                           </Button>

@@ -105,7 +105,12 @@ class MockServerConfigError extends Error {
   }
 }
 
-const tenantContext = {
+/**
+ * The caller's scope. `schoolId` is nullable because a tenant-level admin has
+ * none, and the tests below need to be one — the ownership predicate has to
+ * behave differently for that caller, not merely refuse everything.
+ */
+const tenantContext: { tenantId: string; schoolId: string | null; userId: string } = {
   tenantId: 'tenant-1',
   schoolId: 'school-1',
   userId: 'user-1',
@@ -138,11 +143,60 @@ const deleted: Array<Record<string, unknown>> = []
 /** How many times the route read a scale's bands. */
 let bandReads = 0
 
+/** A scale as the parent lookup sees it: a tenant, and the school that owns it. */
+type ScaleRow = { id: string; tenantId: string; schoolId: string | null }
+
+/**
+ * One tenant with two schools, plus one scale belonging to another tenant.
+ *
+ * `scale-shared` has no school of its own (`schoolId` null), which is what a
+ * tenant-wide scale looks like and is why "the caller's school OR shared" is the
+ * predicate a band write needs rather than a plain equality on school.
+ */
+const TENANT_SCALES: ScaleRow[] = [
+  { id: 'scale-primary', tenantId: 'tenant-1', schoolId: 'school-1' },
+  { id: 'scale-other-school', tenantId: 'tenant-1', schoolId: 'school-2' },
+  { id: 'scale-shared', tenantId: 'tenant-1', schoolId: null },
+  { id: 'scale-other-tenant', tenantId: 'tenant-2', schoolId: 'school-1' },
+]
+
+let visibleScales: ScaleRow[] = []
+/** Every where-clause the parent lookup was asked with, in order. */
+const scaleLookups: Array<Record<string, unknown>> = []
+
 const gradingLevelFindMany = mock(async () => {
   bandReads += 1
   return storedBands
 })
 const gradingLevelFindFirst = mock(async () => storedRow)
+
+/**
+ * The parent lookup, answered from the clause the route built rather than from
+ * the id it asked for: the scale must match by id, by tenant, and by one of the
+ * school values the clause allows.
+ *
+ * Answering from the clause is the point. A route that asked by id alone, or
+ * dropped the tenant, or dropped the school clause, gets a different answer here
+ * than it deserves — and gets `null` for a foreign scale it should never have
+ * been asked about, which is the leak this suite exists to close.
+ */
+const gradingScaleFindFirst = mock(
+  async (args: {
+    where: { id: string; tenantId: string; OR: Array<{ schoolId: string | null }> }
+  }) => {
+    scaleLookups.push(args.where)
+    const { id, tenantId, OR } = args.where
+    return (
+      visibleScales.find(
+        (scale) =>
+          scale.id === id &&
+          scale.tenantId === tenantId &&
+          OR.some((clause) => clause.schoolId === scale.schoolId),
+      ) ?? null
+    )
+  },
+)
+
 const gradingLevelCreate = mock(async (args: { data: Record<string, unknown> }) => {
   created.push(args.data)
   return args.data
@@ -169,6 +223,7 @@ mock.module('@/lib/prisma', () => ({
       update: gradingLevelUpdate,
       delete: gradingLevelDelete,
     },
+    gradingScale: { findFirst: gradingScaleFindFirst },
     feeCategory: { create: feeCategoryCreate },
   },
 }))
@@ -189,6 +244,12 @@ beforeEach(() => {
   updated.length = 0
   deleted.length = 0
   bandReads = 0
+  visibleScales = TENANT_SCALES.map((scale) => ({ ...scale }))
+  scaleLookups.length = 0
+  // A test that moves the caller moves it back here, so one case cannot hand the
+  // next one a caller with no school.
+  tenantContext.tenantId = 'tenant-1'
+  tenantContext.schoolId = 'school-1'
 })
 
 function request(method: string, body: unknown, path = '/api/config/grading_level') {
@@ -261,6 +322,72 @@ describe('findGradeBandDefects - what makes a scale mis-grade a child', () => {
     expect(findGradeBandDefects([{ key: 'half', minScore: 50, maxScore: 100 }])).toEqual([])
     expect(findGradeBandDefects([{ key: 'one', minScore: 20, maxScore: 39 }])).toEqual([])
     expect(findGradeBandDefects([])).toEqual([])
+  })
+
+  it('reports no hole for a range an earlier band already claims', () => {
+    // The false defect. `c 30-45` sits inside `a 0-49`, so 46-49 is claimed by `a`
+    // and no percentage there is ungraded. Comparing each band against the PREVIOUS
+    // row alone compared `b 50-100` against `c`, whose own end (45) is not the
+    // scale's, and named 46-49% as matching no band.
+    const nested: NamedGradeBand[] = [
+      { key: 'a', minScore: 0, maxScore: 49 },
+      { key: 'c', minScore: 30, maxScore: 45 },
+      { key: 'b', minScore: 50, maxScore: 100 },
+    ]
+    // The overlap is a real defect and is still reported — 30-45 belongs to two
+    // bands, so `resolveGradeBand` refuses it rather than picking by row order.
+    expect(findGradeBandDefects(nested)).toEqual([
+      'a (0-49) and c (30-45) both claim 30-45',
+    ])
+    expect(findGradeBandDefects(nested).some((problem) => problem.includes('matches no band'))).toBe(
+      false,
+    )
+    // 46 is claimed by `a`, so the range the old algorithm named was not a hole.
+    expect(resolveGradeBand(46, nested)?.key).toBe('a')
+    expect(resolveGradeBand(30, nested)).toBeNull()
+  })
+
+  it('names the true unclaimed range, not one extended by a nested band', () => {
+    // With `b` moved to 55-100 the scale has a real gap as well, and it is
+    // 50-54. The old comparison measured it from `c`'s end instead and reported
+    // "46-54%", which named two percentages that `a` claims as ungraded and so
+    // pointed a head teacher at the wrong boundary.
+    const nested: NamedGradeBand[] = [
+      { key: 'a', minScore: 0, maxScore: 49 },
+      { key: 'c', minScore: 30, maxScore: 45 },
+      { key: 'b', minScore: 55, maxScore: 100 },
+    ]
+    expect(findGradeBandDefects(nested)).toContain(
+      '50-54% falls between c and b and matches no band',
+    )
+    expect(findGradeBandDefects(nested).join('; ')).not.toContain('46-54%')
+    expect(resolveGradeBand(46, nested)?.key).toBe('a')
+    expect(resolveGradeBand(52, nested)).toBeNull()
+    // 50-54 is exactly the set of percentages nothing claims, boundaries included.
+    const unclaimed = [50, 51, 52, 53, 54].every((p) => resolveGradeBand(p, nested) === null)
+    expect(unclaimed).toBe(true)
+    expect(resolveGradeBand(49, nested)?.key).toBe('a')
+    expect(resolveGradeBand(55, nested)?.key).toBe('b')
+  })
+
+  it('still finds an ordinary gap between two bands', () => {
+    // A band reaching further than the row before it is necessarily an overlap —
+    // there is no way to nest two bands without doubling up a percentage — so the
+    // plain two-band gap is the case that must keep working unchanged. Here the
+    // coverage above the gap ends at `b`'s own 55, not at `a`'s 49.
+    const withHole: NamedGradeBand[] = [
+      { key: 'a', minScore: 0, maxScore: 49 },
+      { key: 'b', minScore: 40, maxScore: 55 },
+      { key: 'd', minScore: 60, maxScore: 100 },
+    ]
+    expect(findGradeBandDefects(withHole)).toContain(
+      '56-59% falls between b and d and matches no band',
+    )
+    expect(resolveGradeBand(57, withHole)).toBeNull()
+    // 20 is claimed by `a` alone, even though `b` starts at 40; 49 is claimed by
+    // both, so it is the overlap defect rather than a band.
+    expect(resolveGradeBand(20, withHole)?.key).toBe('a')
+    expect(resolveGradeBand(49, withHole)).toBeNull()
   })
 })
 
@@ -595,6 +722,247 @@ describe('DELETE /api/config/grading_level/[id] - removing a middle band', () =>
   })
 })
 
+/**
+ * The row a band hangs from, which is not the row being written.
+ *
+ * A band row has no `schoolId` of its own, so the school that grades a child
+ * against it is the school of its SCALE. Proving the row is the caller's
+ * therefore proves nothing about the school whose grading the row changes — and
+ * the generic config route used to stop there.
+ *
+ * THE EXPLOIT, in a tenant with two schools: a headmaster of School A holding
+ * `config:write` posts a band whose `gradingScaleId` is School B's scale. The
+ * write passes every check that existed, the row persists with the caller's own
+ * `tenantId`, and from then on B's report and gradebook grade children against a
+ * band A wrote. B cannot see it — the list endpoint filters on `tenantId`, so B
+ * does not see A's rows — and B's own PATCH/DELETE of it 404s, because those
+ * require `tenantId = B`. A has no endpoint that removes it. There was no way
+ * out of this through the API at all.
+ */
+describe('a band can only be written against a scale the caller owns', () => {
+  /** A band that fits the hole between 40-49 and 50-59 of the seeded scale. */
+  const bandForScale = (gradingScaleId: string, key = 'level_extra') => ({
+    gradingScaleId,
+    key,
+    label: 'Extra',
+    minScore: 40,
+    maxScore: 49,
+    color: '#047857',
+    order: 42,
+  })
+
+  const schoolBScale = 'scale-other-school'
+
+  it('refuses to attach a band to another school\'s scale, and writes nothing', async () => {
+    const res = await post(bandForScale(schoolBScale))
+
+    expect(res.status).toBe(404)
+    expect(created).toEqual([])
+  })
+
+  it('asks the database whether the scale is the caller\'s, under a scoped clause', async () => {
+    await post(bandForScale(schoolBScale))
+
+    // The predicate, asserted on the argument the mocked delegate received rather
+    // than on the answer: a 404 alone would be equally consistent with a route
+    // that scoped, one that refused everything, and one that never looked.
+    expect(scaleLookups).toHaveLength(1)
+    expect(scaleLookups[0]).toEqual({
+      id: schoolBScale,
+      tenantId: 'tenant-1',
+      OR: [{ schoolId: 'school-1' }, { schoolId: null }],
+    })
+  })
+
+  it('answers a foreign scale and a missing one identically, so neither is confirmed', async () => {
+    const foreign = await post(bandForScale(schoolBScale))
+    const missing = await post(bandForScale('scale-does-not-exist'))
+
+    // Telling them apart would confirm that another school's scale is real, and
+    // that is the only thing a caller probing for one wants to learn.
+    expect(foreign.status).toBe(404)
+    expect(missing.status).toBe(404)
+    expect(await missing.json()).toEqual(await foreign.json())
+    expect(created).toEqual([])
+  })
+
+  it('refuses a scale from another tenant, which the tenant clause is there for', async () => {
+    const res = await post(bandForScale('scale-other-tenant'))
+
+    expect(res.status).toBe(404)
+    expect(scaleLookups[0]).toMatchObject({ tenantId: 'tenant-1' })
+    expect(created).toEqual([])
+  })
+
+  it('never reads another school\'s bands, so none of them can reach the 400', async () => {
+    // The seeded bands belong to `scale-primary`; a foreign scale in this fake
+    // read would return them anyway, so the assertion is on the read not
+    // happening at all. A 400 body naming B's band keys is a disclosure of B's
+    // grading configuration, whatever status it arrives with.
+    const res = await post({ ...bandForScale(schoolBScale), minScore: 60, maxScore: 69 })
+
+    expect(res.status).toBe(404)
+    expect(bandReads).toBe(0)
+    expect(JSON.stringify(await res.json())).not.toMatch(/level_3|level_4|level_5/)
+  })
+
+  it('accepts a tenant-wide scale, which every school in the tenant shares', async () => {
+    storedBands = []
+    const res = await post(bandForScale('scale-shared'))
+
+    // `schoolId: null` is not "nobody's": it is a scale the tenant owns outright,
+    // and refusing it would refuse every band a school writes against the shared
+    // scale the seed creates.
+    expect(res.status).toBe(201)
+    expect(created).toHaveLength(1)
+    expect(created[0]).toMatchObject({ gradingScaleId: 'scale-shared', tenantId: 'tenant-1' })
+  })
+
+  it('gives a caller with no school only the tenant-wide scales', async () => {
+    tenantContext.schoolId = null
+    storedBands = []
+
+    const shared = await post(bandForScale('scale-shared', 'shared_band'))
+    expect(shared.status).toBe(201)
+
+    const ownSchool = await post(bandForScale('scale-primary', 'school_a_band'))
+    // The predicate still carries both school values, one of which is null, so a
+    // caller with no school reaches a scale belonging to School A by neither.
+    expect(ownSchool.status).toBe(404)
+    expect(scaleLookups[1]).toEqual({
+      id: 'scale-primary',
+      tenantId: 'tenant-1',
+      OR: [{ schoolId: null }, { schoolId: null }],
+    })
+    expect(created).toHaveLength(1)
+    expect(created[0]).toMatchObject({ key: 'shared_band' })
+  })
+
+  it('asks the parent question once per write, and judges the band under that answer', async () => {
+    storedBands = []
+    const res = await post(bandForScale('scale-primary'))
+
+    expect(res.status).toBe(201)
+    // Two reads would mean the route proved the parent and then read the sibling
+    // bands on a different answer to the same question.
+    expect(scaleLookups).toHaveLength(1)
+    expect(bandReads).toBe(1)
+  })
+
+  it('still judges the band against the bands of a scale the caller does own', async () => {
+    // The ownership check must not have replaced the conflict check: 55-69 makes
+    // 55-59 belong to two bands at once, on the caller's own scale.
+    const res = await post({
+      gradingScaleId: 'scale-primary',
+      key: 'level_4b',
+      label: 'Level 4',
+      minScore: 55,
+      maxScore: 69,
+      color: '#65a30d',
+      order: 14,
+    })
+
+    expect(res.status).toBe(400)
+    expect(await issuesOf(res)).toEqual([
+      'level_3 (50-59) and level_4b (55-69) both claim 55-59',
+      'level_4b (55-69) and level_4 (60-69) both claim 60-69',
+    ])
+    expect(created).toEqual([])
+  })
+
+  describe('an edit cannot move a band onto a foreign scale', () => {
+    const storedBand = {
+      id: 'b4',
+      tenantId: 'tenant-1',
+      gradingScaleId: 'scale-primary',
+      key: 'level_4',
+      label: 'Level 4 — Adequate',
+      minScore: 60,
+      maxScore: 69,
+      color: '#65a30d',
+      order: 4,
+    }
+
+    it('refuses the move and leaves the row alone', async () => {
+      storedRow = { ...storedBand }
+
+      const res = await patch('b4', { gradingScaleId: schoolBScale })
+
+      // The update schema keeps `gradingScaleId` because the one client of this
+      // endpoint submits the whole field set on every edit, so the value that
+      // arrives here is usually the row's own scale. That is why the route has
+      // to resolve whatever value it is given and prove it, rather than assume
+      // it is a no-op.
+      expect(res.status).toBe(404)
+      expect(updated).toEqual([])
+      expect(scaleLookups[0]).toEqual({
+        id: schoolBScale,
+        tenantId: 'tenant-1',
+        OR: [{ schoolId: 'school-1' }, { schoolId: null }],
+      })
+    })
+
+    it('refuses the move even when the band also arrives valid', async () => {
+      storedRow = { ...storedBand }
+      storedBands = []
+
+      const res = await patch('b4', { gradingScaleId: schoolBScale, minScore: 60, maxScore: 69 })
+
+      // No band to conflict with, so every range check passes. Ownership is the
+      // only thing standing between this write and another school's gradebook.
+      expect(res.status).toBe(404)
+      expect(updated).toEqual([])
+    })
+
+    it('accepts the edit the settings form actually sends', async () => {
+      storedRow = { ...storedBand }
+
+      // The generic settings form is built from the entity registry, which lists
+      // `gradingScaleId` as a required select, so every edit a school admin makes
+      // in the UI carries the band's own scale whether or not they touched it.
+      const res = await patch('b4', { gradingScaleId: 'scale-primary', minScore: 60, maxScore: 64 })
+
+      expect(res.status).toBe(200)
+      expect(updated).toHaveLength(1)
+      expect(scaleLookups[0]).toMatchObject({ id: 'scale-primary', tenantId: 'tenant-1' })
+    })
+
+    it('still resolves the stored scale when the patch names none', async () => {
+      storedRow = { ...storedBand, gradingScaleId: schoolBScale }
+
+      // A patch that never mentions the scale is not exempt: the row it edits
+      // already hangs from a scale that is not the caller's, and editing it
+      // would keep a foreign band in place rather than repair anything.
+      const res = await patch('b4', { label: 'Level 4 — Adequate (retitled)' })
+
+      expect(res.status).toBe(404)
+      expect(scaleLookups[0]).toMatchObject({ id: schoolBScale })
+      expect(updated).toEqual([])
+    })
+  })
+
+  it('lets the owner delete a band whose scale turned out to be somebody else\'s', async () => {
+    // The row is the caller's, so removing it is the safe direction — and refusing
+    // would strand exactly the rows this hole created, with no other way out.
+    storedRow = {
+      id: 'b4',
+      tenantId: 'tenant-1',
+      gradingScaleId: schoolBScale,
+      key: 'level_4',
+      label: 'Level 4',
+      minScore: 60,
+      maxScore: 69,
+      color: '#65a30d',
+      order: 4,
+    }
+
+    const res = await remove('b4')
+
+    expect(res.status).toBe(200)
+    expect(deleted).toHaveLength(1)
+  })
+});
+
 describe('the invariant travels with the entity, and the route never names it', () => {
   it('is declared by the grading_level registry entry', () => {
     expect(ENTITY_CONFIG_MAP.grading_level?.writeValidation?.kind).toBe(
@@ -623,6 +991,10 @@ describe('the invariant travels with the entity, and the route never names it', 
       expect(src).toContain('CROSS_ROW_WRITE_RULES[kind]')
       // Fail closed on a wiring fault rather than writing an unvalidated row.
       expect(src).toContain('No cross-row write rule is registered for')
+      // The parent check rides the same kind: a cross-row entity declares which
+      // row it hangs from, and the route proves that row before it writes.
+      expect(src).toContain('PARENT_SCOPE_CHECKS[kind]')
+      expect(src).toContain('parentWriteRefusal')
     }
     // PATCH and DELETE are both writes and both go through the check.
     expect(idSrc.match(/crossRowWriteProblems\(/g)?.length).toBe(3)
@@ -636,6 +1008,21 @@ describe('the invariant travels with the entity, and the route never names it', 
     expect(idSrc.indexOf("operation: 'delete'")).toBeLessThan(
       idSrc.indexOf('model.delete('),
     )
+    // The parent is proved before the write, not after it and not only in the
+    // conflict check: an ordering that ran it second would already have written
+    // a row this suite asserts was never written.
+    for (const [src, write] of [
+      [routeSrc, 'model.create('],
+      [idSrc, 'model.update('],
+    ] as const) {
+      expect(src.indexOf('parentWriteRefusal(')).toBeLessThan(src.indexOf(write))
+    }
+    // DELETE is the one write that does not prove the parent: the row it removes
+    // is already the caller's, and refusing it for a foreign scale would strand
+    // the very rows this check exists to prevent. Two call sites per route —
+    // the definition, and the one write that attaches — is what says so.
+    expect(idSrc.match(/parentWriteRefusal\(/g)?.length).toBe(2)
+    expect(routeSrc.match(/parentWriteRefusal\(/g)?.length).toBe(2)
   })
 })
 
@@ -682,16 +1069,32 @@ describe('resolveGradeBand - a malformed scale cannot silently mis-grade a child
     expect(keyFor(overlapping, 60)).toBe('level_4')
   })
 
-  it('still clamps a score above the top band, which is off the scale and not a hole', () => {
+  it('refuses a percentage above 100, whatever the scale spans, instead of the top band', () => {
+    // THE DEFECT. Before: 85 matched nothing on this scale and fell through to
+    // "the band with the highest minScore", so a child scoring 85% was recorded
+    // as 'high'. On a full 0-100 scale the same escape hatch turned 150 — which
+    // on a 100-mark assessment is almost always a 15 with a stray zero — into
+    // level_6, 'Excellent'.
     const narrow: TestBand[] = [
       band('low', 0, 49, 'Low'),
       band('high', 50, 69, 'High'),
     ]
-    expect(keyFor(narrow, 85)).toBe('high')
-    expect(keyFor(narrow, 1000)).toBe('high')
-    // A scale that does not reach 100 has a ceiling, and crossing it is not a hole:
-    // nothing beneath it is missing, the score has run off the end of the school's
-    // scale and the top band is the last label the school defined.
+    expect(keyFor(narrow, 69)).toBe('high')
+    expect(keyFor(narrow, 70)).toBeNull()
+    expect(keyFor(narrow, 85)).toBeNull()
+    expect(keyFor(narrow, 100)).toBeNull()
+    // Every value the review listed yields no band.
+    for (const percentage of [100.5, 120, 150, 300, 850, 999.99, 1000]) {
+      expect(keyFor(narrow, percentage)).toBeNull()
+      expect(keyFor(PRIMARY, percentage)).toBeNull()
+    }
+    expect(keyFor(PRIMARY, -1)).toBeNull()
+    // The scale's own extent is not the rule, so a school reporting nothing above
+    // 69 is owed nothing at 85 — and is not penalised anywhere else: all of
+    // 0-69 still grades.
+    for (let percentage = 0; percentage <= 69; percentage += 1) {
+      expect(keyFor(narrow, percentage)).not.toBeNull()
+    }
   })
 
   it('leaves a score below the whole scale ungraded, because nothing lies beneath it', () => {
@@ -778,5 +1181,189 @@ describe('resolveGradeBand - a malformed scale cannot silently mis-grade a child
     )
     expect(graded.subjects[0]?.band?.key).toBe('level_5')
     expect(graded.subjects[0]?.bandProblem).toBeNull()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// The report's own account of a band it could not show
+// ---------------------------------------------------------------------------
+
+/**
+ * `band === null` was one answer to six questions, and the report card drew every
+ * one of them as a bare "-". These cases fix what each of those six now says, with
+ * the percentages a child actually earns.
+ *
+ * The verified failure is the empty scale: a school restructures its scale through
+ * `/api/config/grading_level` — documented as legitimate — and deletes all but the
+ * top band. `gradeBandWriteProblems` accepts a delete that leaves fewer than two
+ * bands, so nothing refuses it, and `findGradeBandDefects` returns `[]` because it
+ * deliberately does not treat the edges of 0-100 as defects. Maths and english at
+ * 68% came back `{ percentage: 68, band: null, bandProblem: null }` beside a
+ * science band that graded, and the page printed a blank badge.
+ */
+describe('computeAcademicSummary - bandStatus says which of the six it is', () => {
+  /** The Ghana Primary scale with `level_4` mistyped from 60 to 66: 60-65% claims no band. */
+  const mistyped: TestBand[] = PRIMARY.map((b) =>
+    b.key === 'level_4' ? { ...b, minScore: 66 } : b,
+  )
+
+  /** The one subject of a one-subject summary, as the report card reads it. */
+  const subjectAt = (percentage: number, bands: readonly GradeBand[]) =>
+    computeAcademicSummary(
+      [
+        {
+          subjectId: 'maths',
+          percentage,
+          weight: 1,
+          assessmentType: 'Classwork',
+          assessmentTypeCode: 'CLASSWORK',
+        },
+      ],
+      bands,
+    ).subjects[0]
+
+  it('names every state a healthy scale can produce, and `ok` is the only one with a band', () => {
+    for (let percentage = 0; percentage <= 100; percentage += 1) {
+      const subject = subjectAt(percentage, PRIMARY)
+      expect(subject?.bandStatus).toBe('ok')
+      expect(subject?.band).not.toBeNull()
+      expect(subject?.bandProblem).toBeNull()
+    }
+    expect(subjectAt(65, PRIMARY)?.band?.key).toBe('level_4')
+  })
+
+  it('reports `no-scale` when the school has no scale, and claims no fault', () => {
+    const subject = subjectAt(65, [])
+    expect(subject?.bandStatus).toBe('no-scale')
+    expect(subject?.band).toBeNull()
+    // "the scale has no bands" would be a statement about a scale that need not
+    // exist, so nothing is claimed; `no-scale` is the whole report.
+    expect(subject?.bandProblem).toBeNull()
+    expect(subject?.percentage).toBe(65)
+  })
+
+  it('reports `no-bands` when every band on the scale cannot claim a percentage', () => {
+    // `gradeBandWriteProblems` refuses both of these rows, so they can only reach
+    // here from an older database or a direct write. They are still a scale.
+    const unusable: TestBand[] = [
+      band('backwards', 90, 10, 'Backwards'),
+      band('past_the_top', 150, 200, 'Past the top'),
+    ]
+    const subject = subjectAt(65, unusable)
+    expect(subject?.bandStatus).toBe('no-bands')
+    expect(subject?.band).toBeNull()
+    expect(subject?.bandProblem).toContain('runs backwards')
+  })
+
+  it('reports `below-scale` with the range, for a child under the scale\'s floor', () => {
+    // A school that reports nothing below 50 has decided that; the child at 45 is
+    // still owed the truth about why they have no band.
+    const upperHalf: TestBand[] = [band('level_4', 50, 100, 'Level 4')]
+    const subject = subjectAt(45, upperHalf)
+    expect(subject?.bandStatus).toBe('below-scale')
+    expect(subject?.band).toBeNull()
+    expect(subject?.bandProblem).toBe('no band covers 0-49%')
+    expect(subjectAt(50, upperHalf)?.bandStatus).toBe('ok')
+  })
+
+  it('reports `above-scale` with the range, for a child over the scale\'s ceiling', () => {
+    const lowerHalf: TestBand[] = [band('level_1', 0, 69, 'Level 1')]
+    const subject = subjectAt(85, lowerHalf)
+    expect(subject?.bandStatus).toBe('above-scale')
+    expect(subject?.band).toBeNull()
+    expect(subject?.bandProblem).toBe('no band covers 70-100%')
+    // Not the top band, and not a hole either: it is above the whole scale.
+    expect(resolveGradeBand(85, lowerHalf)).toBeNull()
+  })
+
+  it('reports `hole` with the exact range, and `ambiguous` with both bands', () => {
+    const holed = subjectAt(62, mistyped)
+    expect(holed?.bandStatus).toBe('hole')
+    expect(holed?.band).toBeNull()
+    expect(holed?.bandProblem).toBe('60-65% falls between level_3 and level_4 and matches no band')
+    // Just outside the hole grades, so the hole is a range and not a subject.
+    expect(subjectAt(59, mistyped)?.bandStatus).toBe('ok')
+    expect(subjectAt(66, mistyped)?.bandStatus).toBe('ok')
+
+    // `level_4` moved to 55-69, so 55-59 belongs to `level_3` and `level_4` at once.
+    const overlapping = PRIMARY.map((b) => (b.key === 'level_4' ? { ...b, minScore: 55 } : b))
+    const ambiguous = subjectAt(57, overlapping)
+    expect(ambiguous?.bandStatus).toBe('ambiguous')
+    expect(ambiguous?.band).toBeNull()
+    expect(ambiguous?.bandProblem).toContain('both claim')
+    // 60 is outside the overlap and grades normally on the same broken scale.
+    expect(subjectAt(60, overlapping)?.bandStatus).toBe('ok')
+  })
+
+  it('gives the emptied scale a name, across a whole class', () => {
+    // THE VERIFIED FAILURE. Only the top band survives, so 68% is under a scale
+    // that starts at 85 and 90% is the one subject that still grades. Before, all
+    // three came back as `band: null, bandProblem: null` and the card drew a blank
+    // badge beside two correctly graded neighbours.
+    const emptied: TestBand[] = [band('level_6', 85, 100, 'Level 6')]
+    const summary = computeAcademicSummary(
+      [
+        {
+          subjectId: 'maths',
+          percentage: 68,
+          weight: 1,
+          assessmentType: 'Classwork',
+          assessmentTypeCode: 'CLASSWORK',
+        },
+        {
+          subjectId: 'english',
+          percentage: 68,
+          weight: 1,
+          assessmentType: 'Classwork',
+          assessmentTypeCode: 'CLASSWORK',
+        },
+        {
+          subjectId: 'science',
+          percentage: 90,
+          weight: 1,
+          assessmentType: 'Classwork',
+          assessmentTypeCode: 'CLASSWORK',
+        },
+      ],
+      emptied,
+    )
+    const bySubject = new Map(summary.subjects.map((s) => [s.subjectId, s]))
+    for (const subjectId of ['maths', 'english']) {
+      const subject = bySubject.get(subjectId)
+      expect(subject?.percentage).toBe(68)
+      expect(subject?.band).toBeNull()
+      expect(subject?.bandStatus).toBe('below-scale')
+      expect(subject?.bandProblem).toBe('no band covers 0-84%')
+    }
+    // The subject that did grade keeps its band, and still names the scale's gap —
+    // a partly broken scale is a fact about the school, not about one child.
+    const science = bySubject.get('science')
+    expect(science?.band?.key).toBe('level_6')
+    expect(science?.bandStatus).toBe('ok')
+    expect(science?.bandProblem).toBe('no band covers 0-84%')
+  })
+
+  it('states an interior hole only where it lands, and a coverage gap everywhere', () => {
+    // Two different faults on two different terms, and the distinction is the
+    // point: a hole is a range, so only the children inside it are affected, while
+    // a scale that does not reach 0 is misconfigured in every subject it touches.
+    const holed = subjectAt(75, mistyped)
+    expect(holed?.band?.key).toBe('level_5')
+    expect(holed?.bandProblem).toBeNull()
+
+    const stopsAtFifty = subjectAt(72, [band('level_4', 50, 100, 'Level 4')])
+    expect(stopsAtFifty?.band?.key).toBe('level_4')
+    expect(stopsAtFifty?.bandProblem).toBe('no band covers 0-49%')
+  })
+
+  it('reports `no-percentage` for a subject with no percentage to band', () => {
+    // Unreachable through `computeAcademicSummary`: every subject on the payload
+    // holds at least one in-range mark and `resolveAssessmentWeight` never returns
+    // a weight of zero, so the mean cannot be uncomposable. Asserted so the
+    // discriminator stays total if that ever changes.
+    const summary = computeAcademicSummary([], PRIMARY)
+    expect(summary.subjects).toEqual([])
+    expect(computeAcademicSummary([{ subjectId: 'maths', percentage: null, weight: 1 }], PRIMARY)
+      .subjects).toEqual([])
   })
 })

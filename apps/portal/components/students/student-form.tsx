@@ -38,9 +38,13 @@ interface StudentForm {
   lastName: string
   otherNames: string
   dateOfBirth: string
+  gender: Gender | ''
   admissionNumber: string
   classId: string
 }
+
+/** The `Gender` enum from `packages/database/prisma/schema.prisma`. */
+type Gender = 'MALE' | 'FEMALE' | 'OTHER'
 
 export function StudentForm({ open, onOpenChange, editId, onSuccess }: StudentFormProps) {
   const { toast } = useToast()
@@ -50,6 +54,7 @@ export function StudentForm({ open, onOpenChange, editId, onSuccess }: StudentFo
     lastName: '',
     otherNames: '',
     dateOfBirth: '',
+    gender: '',
     admissionNumber: '',
     classId: '',
   })
@@ -84,6 +89,7 @@ export function StudentForm({ open, onOpenChange, editId, onSuccess }: StudentFo
             lastName: student.lastName || '',
             otherNames: student.otherNames || '',
             dateOfBirth: student.dateOfBirth ? new Date(student.dateOfBirth).toISOString().split('T')[0] : '',
+            gender: student.gender || '',
             admissionNumber: student.admissionNumber || '',
             classId: student.classId || '',
           })
@@ -97,6 +103,7 @@ export function StudentForm({ open, onOpenChange, editId, onSuccess }: StudentFo
           lastName: '',
           otherNames: '',
           dateOfBirth: '',
+          gender: '',
           admissionNumber: '',
           classId: '',
         })
@@ -111,6 +118,12 @@ export function StudentForm({ open, onOpenChange, editId, onSuccess }: StudentFo
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    // `POST /api/students` requires gender and PATCH accepts it, so an unset
+    // control has to be refused here rather than sent and bounced by the server.
+    if (form.gender !== 'MALE' && form.gender !== 'FEMALE' && form.gender !== 'OTHER') {
+      toast.error({ title: 'Error', description: 'Please select a gender.' })
+      return
+    }
     setLoading(true)
     try {
       const body = {
@@ -118,7 +131,7 @@ export function StudentForm({ open, onOpenChange, editId, onSuccess }: StudentFo
         firstName: form.firstName,
         lastName: form.lastName,
         otherNames: form.otherNames || undefined,
-        gender: 'OTHER' as const,
+        gender: form.gender,
         dateOfBirth: form.dateOfBirth,
         admissionNumber: form.admissionNumber || undefined,
         classId: form.classId || undefined,
@@ -221,7 +234,7 @@ export function StudentForm({ open, onOpenChange, editId, onSuccess }: StudentFo
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-3 gap-4">
               <div>
                 <Label htmlFor="dateOfBirth">Date of Birth *</Label>
                 <Input
@@ -231,6 +244,22 @@ export function StudentForm({ open, onOpenChange, editId, onSuccess }: StudentFo
                   onChange={e => handleChange('dateOfBirth', e.target.value)}
                   required
                 />
+              </div>
+              <div>
+                <Label htmlFor="gender">Gender *</Label>
+                <Select
+                  value={form.gender || undefined}
+                  onValueChange={v => handleChange('gender', v)}
+                >
+                  <SelectTrigger id="gender">
+                    <SelectValue placeholder="Select a gender" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="FEMALE">Female</SelectItem>
+                    <SelectItem value="MALE">Male</SelectItem>
+                    <SelectItem value="OTHER">Other</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
               <div>
                 <Label htmlFor="classId">Class</Label>

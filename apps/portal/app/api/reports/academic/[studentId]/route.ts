@@ -155,9 +155,22 @@ export async function GET(
     // is labelled under come from the school's own scale, and reading them per
     // assessment would be one round trip per row on the Neon adapter, which
     // speaks SQL over HTTP.
+    //
+    // `orderBy` is not cosmetic. `resolveApplicableGradingScale` takes the first
+    // scale that claims the level, so with two scales claiming `B9` the winner was
+    // the row order the database returned — and a routine VACUUM was enough to move
+    // a cohort of children from one band to another with no error on any card. The
+    // ordering is the one `GRADING_SCALE_RESOLUTION_ORDER` in shared-utils describes,
+    // which the gradebook's writer now passes too: default first, oldest first, then
+    // by id, so a later copy of a scale cannot displace the original.
     const gradingScales = await prisma.gradingScale.findMany({
       where: { tenantId, OR: [{ schoolId }, { schoolId: null }] },
       include: { levels: { orderBy: { order: 'asc' } } },
+      orderBy: [
+        { isDefault: 'desc' },
+        { createdAt: 'asc' },
+        { id: 'asc' },
+      ],
     })
 
     // The scale that applies to this class: one naming the level in
@@ -176,7 +189,23 @@ export async function GET(
       const score = a.scores[0]
       const maxScore = Number(a.maxScore)
       const rawScore = score ? Number(score.rawScore) : null
-      const percentage = score ? Number(score.percentage) : null
+      // `Score.percentage` is whatever was stored, and the write path refuses to
+      // store one outside 0-100 — but a report that printed 150% beside a
+      // withheld band would show a mark no child earned, and would feed 150 into
+      // the summary's means. So the range is re-applied on read, and a stored
+      // percentage that fails it is reported as no percentage at all. The raw
+      // score still travels in the payload, so the discrepancy is visible rather
+      // than hidden, and `band` below resolves to null through the one shared
+      // implementation that refuses an out-of-range value.
+      const storedPercentage =
+        score && score.percentage !== null ? Number(score.percentage) : null
+      const percentage =
+        storedPercentage !== null &&
+        Number.isFinite(storedPercentage) &&
+        storedPercentage >= 0 &&
+        storedPercentage <= 100
+          ? storedPercentage
+          : null
       const hasScore = rawScore !== null && maxScore > 0
 
       // The weight this assessment actually contributes under, and where it came

@@ -142,7 +142,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'ClassSubject not found' }, { status: 404 })
     }
 
-    // Get default weight from the assessment type config
+    // The assessment type is checked to belong to this school/tenant, and that is
+    // all it is used for. Its `defaultWeight` is deliberately NOT copied onto the
+    // row: an assessment that carries its own weight outranks its type's, so the
+    // copy made every API-created assessment report `weightSource: 'assessment'`,
+    // made the report tooltip claim a weight the teacher set on the assessment, and
+    // made every later retune of the type (`0.30` to `0.40`) inert for rows nobody
+    // had pinned. NULL is the value that means "this assessment has no weight of its
+    // own", and it is what lets the school's configured weight apply and keep
+    // applying. See `resolveAssessmentWeight`.
     const typeConfig = await prisma.assessmentTypeConfig.findFirst({
       where: { id: typeId, tenantId, schoolId },
     })
@@ -168,7 +176,6 @@ export async function POST(req: NextRequest) {
         name,
         description: description || undefined,
         maxScore,
-        weight: Number(typeConfig.defaultWeight),
         assessmentDate: new Date(assessmentDate),
         dueDate: dueDate ? new Date(dueDate) : undefined,
         createdById: userId,
