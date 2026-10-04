@@ -73,9 +73,8 @@
 // =============================================================================
 
 import jetbrains.buildServer.configs.kotlin.v2019_2.BuildType
+import jetbrains.buildServer.configs.kotlin.v2019_2.AbsoluteId
 import jetbrains.buildServer.configs.kotlin.v2019_2.ReuseBuilds
-import jetbrains.buildServer.configs.kotlin.v2019_2.buildType
-import jetbrains.buildServer.configs.kotlin.v2019_2.id
 import jetbrains.buildServer.configs.kotlin.v2019_2.project
 import jetbrains.buildServer.configs.kotlin.v2019_2.buildSteps.script
 import jetbrains.buildServer.configs.kotlin.v2019_2.triggers.finishBuildTrigger
@@ -145,7 +144,7 @@ project {
     // The root is server-side configuration instead. It already exists as
     // NovastarMontessori_nmsGit, with the GitHub PAT, the URL, and
     // branch=refs/heads/main; each build type below references it by id via
-    // vcs { root("NovastarMontessori_nmsGit") }. Change it in
+    // vcs { root(AbsoluteId("NovastarMontessori_nmsGit")) }. Change it in
     // Administration -> Versioned Settings, not in this file.
 
     // -------------------------------------------------------------------------
@@ -161,14 +160,14 @@ project {
     // -------------------------------------------------------------------------
     params {
         // --- Build cache ---
-        param("env.TURBO_TOKEN", password("SET_IN_TEAMCITY"))
+        password("env.TURBO_TOKEN", "SET_IN_TEAMCITY")
         param("env.TURBO_TEAM", "pekay23")
 
         // --- Database (Neon. packages/database uses @prisma/adapter-neon, which
         //     speaks SQL-over-HTTP, so a local postgres container cannot serve it.) ---
-        param("env.DATABASE_URL", password("SET_IN_TEAMCITY"))
-        param("env.DIRECT_URL", password("SET_IN_TEAMCITY"))
-        param("env.SUPABASE_DATABASE_URL", password("SET_IN_TEAMCITY"))
+        password("env.DATABASE_URL", "SET_IN_TEAMCITY")
+        password("env.DIRECT_URL", "SET_IN_TEAMCITY")
+        password("env.SUPABASE_DATABASE_URL", "SET_IN_TEAMCITY")
 
         // --- Auth ---
         // NEXTAUTH_SECRET signs the portal's sessions; PLATFORM_SESSION_SECRET
@@ -178,28 +177,28 @@ project {
         // strips undeclared variables from every task environment -- and a
         // stripped variable is indistinguishable from an unset one, which for
         // this one means adminAuthConfigured() silently reports false.
-        param("env.NEXTAUTH_SECRET", password("SET_IN_TEAMCITY"))
+        password("env.NEXTAUTH_SECRET", "SET_IN_TEAMCITY")
         param("env.NEXTAUTH_URL", "http://localhost:3000")
-        param("env.PLATFORM_SESSION_SECRET", password("SET_IN_TEAMCITY"))
+        password("env.PLATFORM_SESSION_SECRET", "SET_IN_TEAMCITY")
 
         // --- Public, inlined into the client bundle at build time ---
         param("env.NEXT_PUBLIC_ORIGIN", "http://localhost:3000")
         param("env.NEXT_PUBLIC_DOMAIN", "localhost:3000")
 
         // --- Integrations ---
-        param("env.UPSTASH_REDIS_REST_URL", password("SET_IN_TEAMCITY"))
-        param("env.UPSTASH_REDIS_REST_TOKEN", password("SET_IN_TEAMCITY"))
-        param("env.RESEND_API_KEY", password("SET_IN_TEAMCITY"))
-        param("env.MTN_MERCHANT_ID", password("SET_IN_TEAMCITY"))
-        param("env.SCHOOL_BANK_NAME", password("SET_IN_TEAMCITY"))
-        param("env.SCHOOL_BANK_ACCOUNT", password("SET_IN_TEAMCITY"))
-        param("env.S3_BUCKET", password("SET_IN_TEAMCITY"))
-        param("env.SUPABASE_URL", password("SET_IN_TEAMCITY"))
-        param("env.DEFAULT_SCHOOL_CODE", password("SET_IN_TEAMCITY"))
+        password("env.UPSTASH_REDIS_REST_URL", "SET_IN_TEAMCITY")
+        password("env.UPSTASH_REDIS_REST_TOKEN", "SET_IN_TEAMCITY")
+        password("env.RESEND_API_KEY", "SET_IN_TEAMCITY")
+        password("env.MTN_MERCHANT_ID", "SET_IN_TEAMCITY")
+        password("env.SCHOOL_BANK_NAME", "SET_IN_TEAMCITY")
+        password("env.SCHOOL_BANK_ACCOUNT", "SET_IN_TEAMCITY")
+        password("env.S3_BUCKET", "SET_IN_TEAMCITY")
+        password("env.SUPABASE_URL", "SET_IN_TEAMCITY")
+        password("env.DEFAULT_SCHOOL_CODE", "SET_IN_TEAMCITY")
         param("env.TRUSTED_PROXY_HOPS", "1")
 
         // --- Vercel ---
-        param("env.VERCEL_TOKEN", password("SET_IN_TEAMCITY"))
+        password("env.VERCEL_TOKEN", "SET_IN_TEAMCITY")
         param("env.VERCEL_ORG_ID", "SET_IN_TEAMCITY")
         param("env.VERCEL_PROJECT_ID_PORTAL", "SET_IN_TEAMCITY")
         param("env.VERCEL_PROJECT_ID_PUBLIC", "SET_IN_TEAMCITY")
@@ -209,8 +208,8 @@ project {
 
         // --- Container registry (only used when DOCKER_PUSH=true) ---
         param("env.DOCKER_REGISTRY", "ghcr.io")
-        param("env.DOCKER_USERNAME", password("SET_IN_TEAMCITY"))
-        param("env.DOCKER_PASSWORD", password("SET_IN_TEAMCITY"))
+        password("env.DOCKER_USERNAME", "SET_IN_TEAMCITY")
+        password("env.DOCKER_PASSWORD", "SET_IN_TEAMCITY")
         param("env.DOCKER_TAG", "local")
     }
 
@@ -235,7 +234,7 @@ object Install : BuildType({
     description = "Install workspace dependencies and generate the Prisma client"
 
     vcs {
-        root("NovastarMontessori_nmsGit")
+        root(AbsoluteId("NovastarMontessori_nmsGit"))
         // Keeping the work dir is what preserves the dependency and .turbo
         // caches between builds.
         cleanCheckout = false
@@ -261,7 +260,7 @@ object Verify : BuildType({
     description = "Lint, typecheck and unit tests"
 
     vcs {
-        root("NovastarMontessori_nmsGit")
+        root(AbsoluteId("NovastarMontessori_nmsGit"))
         cleanCheckout = false
     }
 
@@ -282,7 +281,7 @@ object Verify : BuildType({
 
     triggers {
         finishBuildTrigger {
-            buildType = Install
+            buildType = "NovastarMontessori_Install"
             successfulOnly = true
             branchFilter = "+:refs/heads/main"
         }
@@ -295,7 +294,7 @@ object E2ETest : BuildType({
     description = "Playwright suite (chromium, firefox, webkit) against the portal"
 
     vcs {
-        root("NovastarMontessori_nmsGit")
+        root(AbsoluteId("NovastarMontessori_nmsGit"))
         cleanCheckout = false
     }
 
@@ -329,7 +328,7 @@ object E2ETest : BuildType({
 
     triggers {
         finishBuildTrigger {
-            buildType = Verify
+            buildType = "NovastarMontessori_Verify"
             successfulOnly = true
             branchFilter = "+:refs/heads/main"
         }
@@ -342,7 +341,7 @@ object DockerBuild : BuildType({
     description = "Build both container images with BuildKit layer caching"
 
     vcs {
-        root("NovastarMontessori_nmsGit")
+        root(AbsoluteId("NovastarMontessori_nmsGit"))
         cleanCheckout = false
     }
 
@@ -361,7 +360,7 @@ object DockerBuild : BuildType({
 
     triggers {
         finishBuildTrigger {
-            buildType = E2ETest
+            buildType = "NovastarMontessori_E2ETest"
             successfulOnly = true
             branchFilter = "+:refs/heads/main"
         }
@@ -374,7 +373,7 @@ object DeployLocal : BuildType({
     description = "Run the freshly built images in docker compose on this agent"
 
     vcs {
-        root("NovastarMontessori_nmsGit")
+        root(AbsoluteId("NovastarMontessori_nmsGit"))
         cleanCheckout = false
     }
 
@@ -396,7 +395,7 @@ object DeployLocal : BuildType({
 
     triggers {
         finishBuildTrigger {
-            buildType = DockerBuild
+            buildType = "NovastarMontessori_DockerBuild"
             successfulOnly = true
             branchFilter = "+:refs/heads/main"
         }
@@ -409,7 +408,7 @@ object DeployVercelPreview : BuildType({
     description = "Publish a Vercel preview deployment for review"
 
     vcs {
-        root("NovastarMontessori_nmsGit")
+        root(AbsoluteId("NovastarMontessori_nmsGit"))
         cleanCheckout = false
     }
 
@@ -432,7 +431,7 @@ object DeployVercelPreview : BuildType({
 
     triggers {
         finishBuildTrigger {
-            buildType = E2ETest
+            buildType = "NovastarMontessori_E2ETest"
             successfulOnly = true
             branchFilter = "+:refs/heads/main"
         }
@@ -452,7 +451,7 @@ object DeployVercelProduction : BuildType({
     // Do not add runAlways = true to get it: runAlways fires on agent-idle, so it
     // would queue a production deploy nobody asked for, on every idle event.
     vcs {
-        root("NovastarMontessori_nmsGit")
+        root(AbsoluteId("NovastarMontessori_nmsGit"))
         cleanCheckout = false
     }
 
