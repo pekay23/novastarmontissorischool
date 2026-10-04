@@ -228,7 +228,7 @@ project {
 // -----------------------------------------------------------------------------
 
 object Install : BuildType({
-    id("NovastarMontessori_Install")
+    id("Install")
     name = "Install"
     description = "Install workspace dependencies and generate the Prisma client"
 
@@ -254,7 +254,7 @@ object Install : BuildType({
 })
 
 object Verify : BuildType({
-    id("NovastarMontessori_Verify")
+    id("Verify")
     name = "Verify"
     description = "Lint, typecheck and unit tests"
 
@@ -288,7 +288,7 @@ object Verify : BuildType({
 })
 
 object E2ETest : BuildType({
-    id("NovastarMontessori_E2ETest")
+    id("E2ETest")
     name = "E2E Tests"
     description = "Playwright suite (chromium, firefox, webkit) against the portal"
 
@@ -335,7 +335,7 @@ object E2ETest : BuildType({
 })
 
 object DockerBuild : BuildType({
-    id("NovastarMontessori_DockerBuild")
+    id("DockerBuild")
     name = "Docker Build"
     description = "Build both container images with BuildKit layer caching"
 
@@ -367,7 +367,7 @@ object DockerBuild : BuildType({
 })
 
 object DeployLocal : BuildType({
-    id("NovastarMontessori_DeployLocal")
+    id("DeployLocal")
     name = "Deploy (Docker Compose)"
     description = "Run the freshly built images in docker compose on this agent"
 
@@ -402,7 +402,7 @@ object DeployLocal : BuildType({
 })
 
 object DeployVercelPreview : BuildType({
-    id("NovastarMontessori_DeployVercelPreview")
+    id("DeployVercelPreview")
     name = "Deploy Preview (Vercel)"
     description = "Publish a Vercel preview deployment for review"
 
@@ -438,7 +438,7 @@ object DeployVercelPreview : BuildType({
 })
 
 object DeployVercelProduction : BuildType({
-    id("NovastarMontessori_DeployVercelProduction")
+    id("DeployVercelProduction")
     name = "Deploy Production (Vercel)"
     description = "Publish to Vercel production. Started manually from the TeamCity UI."
 
