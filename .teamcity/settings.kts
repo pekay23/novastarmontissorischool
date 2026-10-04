@@ -72,8 +72,6 @@
 // number, so a mistake here is reported rather than silently ignored.
 // =============================================================================
 
-version = "2026.2"
-
 import jetbrains.buildServer.configs.kotlin.v2019_2.BuildType
 import jetbrains.buildServer.configs.kotlin.v2019_2.AbsoluteId
 import jetbrains.buildServer.configs.kotlin.v2019_2.ReuseBuilds
@@ -82,25 +80,43 @@ import jetbrains.buildServer.configs.kotlin.v2019_2.buildSteps.script
 import jetbrains.buildServer.configs.kotlin.v2019_2.triggers.finishBuildTrigger
 import jetbrains.buildServer.configs.kotlin.v2019_2.triggers.vcs
 
-// The `version = "2026.2"` line above is required, not decorative.
+// There is deliberately NO `version = "..."` declaration in this file, and
+// earlier attempts to add one caused the only hard failure this project has
+// produced. The record, because the next reader will otherwise re-add it:
 //
-// Without it -- and without a pom.xml beside this file -- KotlinRunner logs
-//   "Unable to determine DSL API packages type, .../pom.xml is not a file"
-// on every run, cannot classify the API, and injects no default imports. That
-// warning was present even on the runs that compiled cleanly, and those runs
-// produced zero build configurations.
+// Revision 7d4b6ed put it above the imports. Kotlin requires every import
+// directive to precede any statement in a script, so the parser read
+// `import jetbrains` as a truncated import name and failed on the `.`:
 //
-// A previous revision deleted this line to dodge a Maven resolution, citing
-//   ConfigGenerationException: Configs generator runs longer than 120 seconds
-// That diagnosis was wrong. 120 was simply the server default for
-// teamcity.versionedSettings.configsGeneratorTimeoutSeconds, and it had never
-// been overridden on this host, so it killed runs that were otherwise making
-// progress. It is now 600 via TEAMCITY_SERVER_OPTS on the TeamCity service.
+//   Compilation error settings.kts[77:17]: Expecting an element
+//   and 242 more errors
 //
-// The Maven coordinate and the Kotlin package are independent axes: the
-// coordinate is org.jetbrains.teamcity:configs-dsl-kotlin:2026.2, while the
-// newest package that DSL ships is v2019_2. That is why version = "2026.2"
-// above sits naturally with v2019_2 imports below.
+// The trailing count is cascade noise from that one parse failure, not 243 real
+// defects. The 17:10 run on f8b680d produced zero build configurations for
+// exactly that reason. Moving the declaration below the imports fixes the parse
+// error, but the declaration then needs a `version` symbol that TeamCity
+// supplies through its own compilation setup and no bare Kotlin compiler can
+// resolve, so a line nobody can verify offline is worse than no line.
+//
+// The version is not actually at risk. Every logged generator run on this host
+// compiles against configs-dsl-kotlin-2026.2.jar regardless of the file, and
+// the v2019_2 imports below pin the DSL surface that matters explicitly, which
+// is what fails loudly if JetBrains moves it.
+//
+// Two further diagnoses about this line were wrong, and are recorded so they are
+// not repeated:
+//
+//  1. That the pom.xml warning below was caused by a missing version
+//     declaration. It is not. KotlinRunner logs
+//       Unable to determine DSL API packages type, .../pom.xml is not a file
+//     on every run in incremental mode, including runs that compiled cleanly.
+//     It is benign and unrelated to whether configurations get generated.
+//  2. That deleting the line fixed a Maven resolution hang, citing
+//       ConfigGenerationException: Configs generator runs longer than 120 seconds
+//     120 was simply the server default for
+//     teamcity.versionedSettings.configsGeneratorTimeoutSeconds, never
+//     overridden on this host, so it killed runs that were otherwise making
+//     progress. It is now 600 via TEAMCITY_SERVER_OPTS on the TeamCity service.
 //
 // Only the versioned and .ui wildcards are injected, so every TOP-LEVEL
 // function is imported by hand: project (EntryPointKt), plus the generated
