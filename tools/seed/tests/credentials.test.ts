@@ -1,14 +1,18 @@
 /**
- * Tests for the seed's credential refusal.
+ * Tests for the seed's credential refusal and its credential write paths.
  *
  * Pure logic only: no database, no Prisma client, no network. That is the whole
- * point of the module living in its own file — the previous shape could only be
- * observed by seeding a real school's database, so it had no test at all.
+ * point of the credential module living in its own file — the previous shape could
+ * only be observed by seeding a real school's database, so it had no test at all.
  *
- * The ordering test at the bottom reads `index.ts` as text. That is deliberate:
- * "no write can precede the refusal" is an ordering claim about the file, and a
- * behavioural test for it would have to run the seed. Same technique, and the
- * same reasoning, as `apps/portal/tests/repair-attendance-duplicates.test.ts`.
+ * The two suites below read `index.ts` as text. That is deliberate: "no write can
+ * precede the refusal" is an ordering claim about the file, and so is "the update
+ * branch of the admin upsert touches no credential" — both are claims about which
+ * keys sit inside an object literal, and a behavioural test for either would have to
+ * run the seed against a live database. Same technique, and the same reasoning, as
+ * `apps/portal/tests/repair-attendance-duplicates.test.ts`. The upsert slices are
+ * parsed by brace-matching rather than by regex over the whole file, so a `//` or a
+ * `{` inside a string literal cannot make an assertion pass for the wrong reason.
  */
 import { describe, expect, it } from 'bun:test'
 import {
@@ -25,11 +29,72 @@ const STRONG = 'Chosen-By-An-Operator!42'
 const LOCAL_URL = 'postgresql://postgres:postgres@localhost:5432/novastar'
 const REMOTE_URL = 'postgresql://u:p@ep-tiny-firefly-abc.us-east-2.aws.neon.tech/neondb'
 
+const HEADMASTER_EMAIL = 'headmaster@novastarmontessori.com'
+const PORTAL_ADMIN_EMAIL = 'admin@novastarmontessori.com'
+
 /** Read once, at module scope: `describe` callbacks are not async. */
 const seedSource = await Bun.file(new URL('../index.ts', import.meta.url)).text()
+const credentialsSource = await Bun.file(new URL('../credentials.ts', import.meta.url)).text()
 
 function env(overrides: Record<string, string | undefined>): NodeJS.ProcessEnv {
   return { DATABASE_URL: LOCAL_URL, ...overrides } as NodeJS.ProcessEnv
+}
+
+/** Drops `//` comments line by line, so an assertion cannot be satisfied by prose. */
+function withoutLineComments(source: string): string {
+  return source
+    .split('\n')
+    .map((line) => line.replace(/\/\/.*$/, ''))
+    .join('\n')
+}
+
+/**
+ * Every `prisma.user.upsert({ ... })` call in the seed, in file order.
+ *
+ * Bounded by the line that closes the call at main()'s own indentation — `  })`.
+ * Nothing nested inside an upsert is indented that little, so the terminator is
+ * unambiguous without a full parser.
+ */
+function userUpserts(): string[] {
+  const MARKER = 'prisma.user.upsert({'
+  const found: string[] = []
+  let at = seedSource.indexOf(MARKER)
+  while (at >= 0) {
+    const end = seedSource.indexOf('\n  })', at)
+    expect(end).toBeGreaterThan(-1)
+    found.push(withoutLineComments(seedSource.slice(at, end)))
+    at = seedSource.indexOf(MARKER, at + MARKER.length)
+  }
+  return found
+}
+
+/** The upsert that provisions `email`, comments already stripped. */
+function upsertFor(email: string): string {
+  const match = userUpserts().find((call) => call.includes(`email: '${email}'`))
+  expect(match).toBeDefined()
+  return match as string
+}
+
+/**
+ * The body of the `key: { ... }` object in a slice, by brace counting.
+ *
+ * Fails rather than returning a partial match if the object does not close, so a
+ * future edit that changes the call's shape produces a broken test rather than a
+ * vacuous one.
+ */
+function objectBodyFor(source: string, key: string): string {
+  const at = source.indexOf(`${key}: {`)
+  expect(at).toBeGreaterThan(-1)
+  const open = source.indexOf('{', at)
+  let depth = 0
+  for (let i = open; i < source.length; i += 1) {
+    if (source[i] === '{') depth += 1
+    else if (source[i] === '}') {
+      depth -= 1
+      if (depth === 0) return source.slice(open + 1, i)
+    }
+  }
+  throw new Error(`the ${key} object in the upsert does not close`)
 }
 
 describe('a password the operator chose is used verbatim', () => {
@@ -177,7 +242,7 @@ describe('the opt-in needs both locks', () => {
       'app.localhost': 'postgresql://u:p@app.localhost/db',
       'host.docker.internal': 'postgresql://u:p@host.docker.internal/db',
     }
-    for (const [host, url] of Object.entries(cases)) {
+    for (const url of Object.values(cases)) {
       expect(() => resolveSeedCredentials(env({ [ALLOW_DEFAULT_PASSWORDS_VAR]: '1', DATABASE_URL: url }))).not.toThrow()
     }
   })
@@ -259,5 +324,110 @@ describe('the refusal happens before any write', () => {
   it('exits non-zero on a refusal without printing a stack trace', () => {
     expect(seedSource).toContain('process.exitCode = 1')
     expect(seedSource).toContain('if (e instanceof SeedCredentialsError) {')
+  })
+})
+
+describe('credentials are provisioned on create and never re-credentialed', () => {
+  it('seeds both passwords into the create branches', () => {
+    // Provisioning is the one half that is allowed to write a credential: an
+    // account that does not exist yet has no password and cannot sign in.
+    for (const email of [HEADMASTER_EMAIL, PORTAL_ADMIN_EMAIL]) {
+      expect(objectBodyFor(upsertFor(email), 'create')).toContain('passwordHash')
+    }
+  })
+
+  it('writes no credential into the admin update branch, only role and active', () => {
+    // The defect this file now guards. `passwordHash` in this branch meant every
+    // re-seed rotated a real account's password back to the seeded value, silently,
+    // which is a credential change nobody asked for and nobody was told about.
+    const update = objectBodyFor(upsertFor(PORTAL_ADMIN_EMAIL), 'update')
+    expect(update).not.toContain('passwordHash')
+    expect(update).not.toContain('passwordChangedAt')
+    // Still there on purpose: a role rename or a suspension must not go stale just
+    // because it is not a credential. Asserted so a future "simplification" that
+    // empties this branch to match the headmaster's is caught.
+    expect(update).toContain('roleId:')
+    expect(update).toContain('isActive: true')
+  })
+
+  it('leaves the headmaster update branch empty', () => {
+    expect(objectBodyFor(upsertFor(HEADMASTER_EMAIL), 'update').trim()).toBe('')
+  })
+
+  it('does not flag mustChangePassword before email delivery exists', () => {
+    // Every other credential writer sets it — `tools/tenant-cli/commands/user.ts`,
+    // `commands/operator.ts`, `packages/auth/invite.ts` — so this omission reads
+    // like an oversight and will be "fixed" by someone. It is a decision.
+    //
+    // `apps/portal/proxy.ts:182-184` redirects any flagged session to
+    // `/set-password`, which without a token renders "This page needs a setup
+    // link" and disables its submit button; `POST /api/auth/set-password` refuses
+    // with 409 `already-has-password` for an account that already holds a
+    // password, so an invitation cannot rescue it; and the documented way out,
+    // `/forgot-password`, needs `RESEND_API_KEY`, which is unset. An account
+    // flagged by this seed would sign in, reach no portal page, and have no
+    // recovery — worse than the silent rotation it would fix.
+    //
+    // When email delivery exists, delete this test and set the flag on both create
+    // branches. The dependency to watch is `RESEND_API_KEY` plus a verified
+    // sending domain, not a change of mind.
+    for (const email of [HEADMASTER_EMAIL, PORTAL_ADMIN_EMAIL]) {
+      const call = upsertFor(email)
+      expect(objectBodyFor(call, 'create')).not.toContain('mustChangePassword')
+      expect(objectBodyFor(call, 'update')).not.toContain('mustChangePassword')
+    }
+  })
+})
+
+describe('a developer who changed a password variable is told what happened', () => {
+  // The seed no longer applies `SEED_PORTAL_ADMIN_PASSWORD` to an existing account,
+  // so changing it and re-seeding leaves the old password working. That is correct
+  // — a re-run must not re-credential — but silently, it looks exactly like a seed
+  // bug, and it is the failure mode that gets filed as one. Both accounts say the
+  // same sentence, naming the command that does re-credential.
+  it('names the tenant-CLI rotate command, with the address, for both accounts', () => {
+    for (const email of [HEADMASTER_EMAIL, PORTAL_ADMIN_EMAIL]) {
+      expect(seedSource).toContain(`novastar-tenant user --email ${email} --rotate`)
+    }
+  })
+
+  it('states that the password was not applied, rather than only hinting at it', () => {
+    // Both log lines, not one: the asymmetry is what this suite exists to end, and
+    // an account that logs nothing is the account someone gets locked out of.
+    const notApplied = seedSource.match(/NOT applied/g) ?? []
+    expect(notApplied).toHaveLength(2)
+  })
+})
+
+describe('the committed fallbacks are unreachable, and the code says why', () => {
+  // Both locks have to open, and on this project the host half has no host to
+  // admit: the Prisma client is built with `@prisma/adapter-neon`, which speaks
+  // SQL-over-HTTP, so a local `postgres:16` container cannot serve the schema at
+  // all and the only usable database is Neon — remote by definition. A lock that
+  // cannot open is the desired outcome, reached by a property of the driver, but
+  // only while the code records it. Otherwise the next reader protects a guarantee
+  // that does not exist, or relaxes a host gate that is the only thing between a
+  // published password and production.
+  it('the refusal withdraws the opt-in instead of leaving the operator to retry', () => {
+    try {
+      resolveSeedCredentials(env({}))
+      throw new Error('expected a refusal')
+    } catch (e) {
+      const message = (e as Error).message
+      expect(message).toContain('cannot open')
+      expect(message).toContain('SQL-over-HTTP')
+      // The variable is still named, so an operator who already knows it is not
+      // left wondering which of the two locks failed.
+      expect(message).toContain(ALLOW_DEFAULT_PASSWORDS_VAR)
+    }
+  })
+
+  it('records the engine reason and the three honest ways out', () => {
+    expect(credentialsSource).toContain('@prisma/adapter-neon')
+    expect(credentialsSource).toContain('PostgreSQL wire protocol')
+    // The lock is not to be removed and not to be weakened; the comment has to
+    // name which of those is the bug.
+    expect(credentialsSource).toContain('Never by relaxing the host gate')
+    expect(credentialsSource).toContain('Delete the literals and the opt-in')
   })
 })

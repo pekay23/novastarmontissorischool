@@ -1,0 +1,27 @@
+{
+  "name": "@novastar/seed",
+  "version": "0.0.0",
+  "private": true,
+  "main": "index.ts",
+  "types": "index.ts",
+  "scripts": {
+    "seed": "bun index.ts",
+    "verify-admin": "bun verify-admin.ts",
+    "lint": "eslint . --ext .ts",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@novastar/shared-types": "workspace:*",
+    "@prisma/adapter-neon": "^7.10.0",
+    "@prisma/client": "^7.10.0",
+    "dotenv": "^17.2.3"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.2",
+    "@typescript-eslint/eslint-plugin": "^8.71.0",
+    "@typescript-eslint/parser": "^8.71.0",
+    "eslint": "^9.39.5",
+    "typescript": "npm:@typescript/typescript6@^6.0.2"
+  }
+}

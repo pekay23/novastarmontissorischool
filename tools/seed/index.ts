@@ -8,11 +8,13 @@
 //   SEED_PORTAL_ADMIN_PASSWORD — refused without it; there is no default
 // Optional: SEED_SKIP_DOTENV=1 ignores the repo root .env (as MIGRATE_SKIP_DOTENV
 // does for tools/migrate), and SEED_ALLOW_DEFAULT_PASSWORDS=1 opts into the
-// committed fallbacks against a LOCAL database only.
-// Both are listed in turbo.json's globalEnv, because turbo filters every other
-// variable out of a task's environment and a seed that silently reads a
-// published fallback instead of the value you exported is worse than no seed.
-// See ./credentials.ts for the refusal and the local-only opt-in.
+// committed fallbacks against a LOCAL database only — a pair of locks that cannot
+// currently both open, because this Prisma client speaks SQL-over-HTTP and no local
+// PostgreSQL server can serve it. Both variables are listed in turbo.json's
+// globalEnv, because turbo filters every other variable out of a task's
+// environment and a seed that silently reads a published fallback instead of the
+// value you exported is worse than no seed.
+// See ./credentials.ts for the refusal and why the fallbacks are unreachable.
 
 import { PrismaClient } from '@prisma/client'
 import { PrismaNeon } from '@prisma/adapter-neon'
@@ -45,6 +47,13 @@ import { resolveSeedCredentials, SeedCredentialsError } from './credentials'
 // so a `.env` naming a shared database wins over the developer's own
 // environment. An escape hatch is how a test run — or a CI step that meant to
 // exercise the refusal below — is prevented from pointing at production.
+//
+// It is deliberately NOT in `turbo.json`'s `globalEnv`, unlike the two password
+// variables. Turbo only forwards a variable it is told about, so leaving this one
+// out means the `bun run db:seed` path cannot skip `.env` at all. For a script
+// that installs credentials into a live database, that is the direction to err
+// in, and `db:seed` is `cache: false` anyway, so there is no cache key for it
+// to be missing from.
 if (process.env.SEED_SKIP_DOTENV !== '1') {
   const envPath = path.resolve(__dirname, '../../.env')
   if (fs.existsSync(envPath)) {
@@ -551,9 +560,17 @@ async function main() {
   // A gap or an overlap in a seeded scale mis-grades a child quietly: a gap
   // leaves a percentage with no label at all, and an overlap hands it to whichever
   // band sorts first. Both are off-by-one mistakes in data, so both are refused
-  // here rather than discovered on a report card. The check itself is the shared
-  // validator in @novastar/shared-utils, which the admin write path calls too —
-  // a scale built at Settings is held to the same rule as a seeded one.
+  // here rather than discovered on a report card.
+  //
+  // This is the STRICT check, and it is deliberately stricter than the admin write
+  // path. The seed asserts full 0-100 coverage; a hand-built scale at Settings is
+  // held only to `findGradeBandWriteConflicts` — no band backwards, none outside
+  // 0-100, none doubling up a percentage. Coverage is not enforceable there,
+  // because a two-row boundary retune necessarily passes through a state that is
+  // temporarily a hole, so refusing every hole would make every legitimate retune
+  // impossible. A hole a school creates is caught at grading time instead:
+  // `resolveGradeBand` returns null rather than guessing, and the report names the
+  // range on the card.
   for (const scale of [primaryScale, jhsScale]) {
     assertBandsCoverZeroToHundred(scale.name, scale.levels)
   }
@@ -632,12 +649,16 @@ async function main() {
   // and the type's configured weight applies; 1.00 means 1.00. No seed row needs
   // rewriting, because no seed row exists.
   //
-  // A school creates assessments through `POST /api/assessments`, which copies
-  // its type's `defaultWeight` into the row at creation time. Such a row already
-  // carries an explicit weight and resolves identically before and after this
-  // change; retuning the type later will not reach it, which is a property of that
-  // write path, not of this column. See the wave0 migration for the decision on
-  // rows that already hold 1.
+  // A school creates assessments through `POST /api/assessments`, which now
+  // leaves `Assessment.weight` NULL so the type's configured `defaultWeight`
+  // actually applies. It used to copy that default onto the row, which pinned
+  // every assessment at the weight its type happened to carry at creation and
+  // made a later retune of the type inert — the report said "weight set on this
+  // assessment" while the school believed it had changed the scheme.
+  //
+  // Rows created before that change still hold the copied weight, so a retune
+  // still will not reach them. Nulling them is a data migration and a decision
+  // for an owner, not something a seed should do behind their back.
 
   // ============ FEE CATEGORIES ============
   const feeCategories = [
@@ -909,6 +930,51 @@ async function main() {
   // the one place that no longer reads `process.env`.
   const passwordHash = await hashPassword(seedCredentials.headmasterPassword)
 
+  // ============ THE TWO PORTAL ACCOUNTS: PROVISION ONCE, NEVER RE-CREDENTIAL ============
+  // One rule, applied identically to both accounts below. The asymmetry was the
+  // defect: the headmaster upsert had `update: {}` while the admin upsert
+  // reassigned `passwordHash` on every run, so a single re-seed silently rotated
+  // the password of whichever of the two somebody was most likely to have open in
+  // a browser — with nothing in the output to say so. `roleId` and `isActive` stay
+  // in the admin's update branch, because those are not credentials and letting
+  // them go stale when a role is renamed or an account is suspended is its own
+  // bug; but nothing in an update branch may touch a credential.
+  //
+  // WHY `mustChangePassword` IS NOT SET HERE, EVEN THOUGH EVERY OTHER WRITER SETS IT
+  // `tools/tenant-cli/commands/user.ts:75,113`, `commands/operator.ts:208,236` and
+  // `packages/auth/invite.ts:449` all set it, and the seed is the outlier. It is
+  // deferred rather than rejected, because the flag is only safe on an account
+  // that can finish the change it forces — and today it cannot:
+  //
+  //   * `apps/portal/proxy.ts:182-184` redirects every flagged session to
+  //     `/set-password`. With no `token` in the query string that form renders
+  //     "This page needs a setup link" and disables its submit button
+  //     (`app/(auth)/set-password/set-password-form.tsx:119-126`).
+  //   * `POST /api/auth/set-password` refuses to overwrite, so an invitation link
+  //     would not rescue it either: an account that already holds a password gets
+  //     409 `already-has-password` (`app/api/auth/set-password/route.ts:87-95`).
+  //   * The documented way out is `/forgot-password`, which needs `RESEND_API_KEY`
+  //     (unset; `.env.example:105`). That route catches the send failure and
+  //     still answers 200 with "a reset link is on its way", so the operator is
+  //     told the recovery worked while nothing was delivered.
+  //
+  // Seeding the flag now would therefore produce an account that can sign in,
+  // cannot reach one page of the portal, and cannot recover — strictly worse than
+  // the silent rotation it would fix, and harder to undo because the fix is a
+  // direct column write. The dependency to watch is email delivery: once
+  // `RESEND_API_KEY` and a verified sending domain exist, `/forgot-password` can
+  // close the loop and this seed should set the flag on create, like the other
+  // four writers. `tests/credentials.test.ts` fails if it is added before then.
+  //
+  // The re-credential path named in both log lines below is `novastar-tenant user
+  // --rotate`. Worth knowing before using it on a deployment without email: that
+  // flag also sets `mustChangePassword` (`commands/user.ts:75`), which lands the
+  // account in exactly the state described above. With `RESEND_API_KEY` set the
+  // flow completes normally; without it, the rotation leaves an account that can
+  // sign in and then hits the redirect. The seed logs the command because it is
+  // the sanctioned way to change a credential — not because the seed can enforce
+  // the flag it needs, which is why the flag is absent here.
+
   // Only set password on create, never on update (re-seed should not reset credentials)
   const adminUser = await prisma.user.upsert({
     where: { tenantId_email: { tenantId: tenant.id, email: 'headmaster@novastarmontessori.com' } },
@@ -928,8 +994,12 @@ async function main() {
   const adminPasswordHash = await hashPassword(seedCredentials.portalAdminPassword)
   await prisma.user.upsert({
     where: { tenantId_email: { tenantId: tenant.id, email: 'admin@novastarmontessori.com' } },
+    // Credentials on create only, exactly as the headmaster above. This branch
+    // used to set `passwordHash: adminPasswordHash`, so every re-seed silently
+    // rotated the portal administrator's password back to the seeded value —
+    // locking out whoever had changed it, and quietly undoing a real credential
+    // change on a live environment.
     update: {
-      passwordHash: adminPasswordHash,
       roleId: headmasterRole.id,
       isActive: true,
     },
@@ -943,7 +1013,13 @@ async function main() {
       isActive: true,
     },
   })
-  console.log(`✅ Portal Admin user upserted (admin@novastarmontessori.com) | password from ${seedCredentials.portalAdminSource}`)
+  console.log(
+    `✅ Portal Admin user upserted (admin@novastarmontessori.com) | ` +
+      `password from ${seedCredentials.portalAdminSource}. This account's upsert writes only ` +
+      'roleId and isActive to a row that already exists, so the password above was NOT applied — ' +
+      'only provisioning uses it. Re-credential this account with: ' +
+      'novastar-tenant user --email admin@novastarmontessori.com --rotate',
+  )
 
   // Use transaction to ensure role FK is visible
   await prisma.$transaction(async (tx) => {
@@ -991,10 +1067,10 @@ async function main() {
 
   console.log(
     `✅ Headmaster user upserted (headmaster@novastarmontessori.com) | ` +
-      `password from ${seedCredentials.headmasterSource}. This upsert has update: {}, so on a ` +
-      'database where the account already exists the password above was NOT applied — only ' +
-      'provisioning uses it. To re-credential an existing headmaster, reset the password ' +
-      'through the portal instead.',
+      `password from ${seedCredentials.headmasterSource}. This account's upsert has update: {}, so ` +
+      'where the account already existed the password above was NOT applied — only provisioning uses ' +
+      'it. Re-credential this account with: ' +
+      'novastar-tenant user --email headmaster@novastarmontessori.com --rotate',
   )
 
   // ============ SAMPLE CLASSES ============

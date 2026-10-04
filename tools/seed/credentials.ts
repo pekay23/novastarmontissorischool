@@ -25,14 +25,44 @@
  * authorisation decision, so an absent one is a refusal rather than an empty
  * grant. Nobody is handed an account they did not choose the password for.
  *
- * The committed literals have not been deleted, because a first-run developer on
- * a clean checkout still needs *some* way in, and because `verify-admin.ts`
- * knows how to verify them. They are now reachable only through
- * `SEED_ALLOW_DEFAULT_PASSWORDS=1`, and only against a **local** database host —
- * two locks, both of which must open, exactly as `tools/migrate`'s `reset`
- * requires both `--dev-only` and a local address. A flag alone would leave a
- * published administrator password one `.env` entry away from production; the
- * second lock is what makes these literals test fixtures rather than credentials.
+ * The committed literals have not been deleted, because `verify-admin.ts` knows
+ * how to verify them and because deleting them is a separate decision from
+ * refusing to install them. They are reachable only through
+ * `SEED_ALLOW_DEFAULT_PASSWORDS=1` AND a **local** database host — two locks,
+ * both of which must open, exactly as `tools/migrate`'s `reset` requires both
+ * `--dev-only` and a local address. A flag alone would leave a published
+ * administrator password one `.env` entry away from production; the second lock
+ * is what makes these literals test fixtures rather than credentials.
+ *
+ * ## The second lock cannot open, and that is the invariant, not a bug
+ *
+ * It reads as protection and, against the only database this project can
+ * actually serve, it is inert. `.env.example:22-27` records why: the Prisma
+ * client is built with `@prisma/adapter-neon`, which speaks Neon's SQL-over-HTTP
+ * protocol and NOT the PostgreSQL wire protocol. A `postgres:16` container on
+ * tcp/5432 therefore cannot serve this schema through that adapter at all, so
+ * there is no local host this project can point `DATABASE_URL` at and seed
+ * successfully. The only usable database is Neon, whose hosts are remote by
+ * definition and can never satisfy `isLocalHost`. The two locks can never both
+ * be true, so `Novastar2026!` and `Admin@2026` are unreachable — permanently,
+ * not accidentally. That is the outcome the lock was written to produce, reached
+ * by a property of the driver rather than by anyone's discipline; the literals
+ * survive as greppable dead code so the shape outlives them.
+ *
+ * Stating it plainly matters more than the branch is worth. A lock whose gate
+ * cannot open reads as a safety mechanism to everyone who reads it and as a
+ * dead branch to nobody, so the next person to touch this file will preserve a
+ * guarantee that does not exist. What would make it meaningful again, best
+ * first:
+ *
+ *   1. Delete the literals and the opt-in. Then there is nothing to gate, no
+ *      inert branch, and `verify-admin.ts` reads variables like every other
+ *      credential check in the repository. Preferred end state.
+ *   2. Support a local engine — a second datasource with `@prisma/adapter-pg`
+ *      beside the Neon one — so `localhost` becomes genuinely seedable. Only
+ *      then does `isLocalHost` admit a host that exists.
+ *   3. Never by relaxing the host gate. Dropping it would publish two
+ *      administrator passwords; nothing in this repository should do that.
  *
  * The environment is a parameter, not a global read, so `tests/` never has to
  * mutate `process.env`.
@@ -48,14 +78,23 @@ export const PORTAL_ADMIN_PASSWORD_VAR = 'SEED_PORTAL_ADMIN_PASSWORD'
  * `SEED_`-prefixed to match the two variables it guards, and `=1` to match
  * `MIGRATE_SKIP_DOTENV` and `SKIP_PRODUCTION_GUARD`, the repository's existing
  * spelling for "a person turned this on deliberately".
+ *
+ * This gate cannot currently open: on a Neon-only deployment there is no local
+ * host for the host half of the pair to admit, so the fallbacks stay unreachable
+ * however deliberately this is set. See the module comment — the invariant is
+ * that the defaults are dead, and this is why. It is kept, and kept shut, because
+ * a lock that is gone cannot be re-closed if the adapter ever changes.
  */
 export const ALLOW_DEFAULT_PASSWORDS_VAR = 'SEED_ALLOW_DEFAULT_PASSWORDS'
 
 /**
  * The committed fallbacks. Published by construction — see the module comment.
- * Unreachable unless `SEED_ALLOW_DEFAULT_PASSWORDS=1` and the target host is
- * local. Kept as named exports so a test can assert the refusal does not hand
- * them out, and so the literals are greppable rather than buried at a call site.
+ * Kept as named exports so a test can assert the refusal does not hand them out,
+ * and so the literals are greppable rather than buried at a call site.
+ *
+ * They are unreachable: the opt-in above cannot open on a Neon-only deployment,
+ * because no local host can serve a schema through `@prisma/adapter-neon`. These
+ * names document the shape of the escape hatch and nothing more.
  */
 export const DEFAULT_HEADMASTER_PASSWORD = 'Novastar2026!'
 export const DEFAULT_PORTAL_ADMIN_PASSWORD = 'Admin@2026'
@@ -115,6 +154,10 @@ function hostOf(url: string | undefined): string | undefined {
  * `tools/seed` has no package.json of its own, resolves against the repo root,
  * and is meant to stay runnable on its own. Ten lines of duplication is a better
  * trade than a dependency from the seed into another tool's internals.
+ *
+ * (Which is also why this function currently admits nothing usable: the Prisma
+ * client speaks SQL-over-HTTP, so no local PostgreSQL server can be the seed's
+ * target. The rule is right and the input is empty. See the module comment.)
  */
 function isLocalHost(host: string | undefined): boolean {
   if (!host) return false
@@ -126,10 +169,16 @@ function isLocalHost(host: string | undefined): boolean {
 }
 
 /**
- * The refusal text. Every missing variable is named, and both routes to a seed
+ * The refusal text. Every missing variable is named, and the routes to a seed
  * that succeeds are spelled out, because the operator who hits this on a clean
  * checkout has no `.env` entry to read and a bare "missing variable" sends them
  * looking through a file that does not exist yet.
+ *
+ * The opt-in is named and then immediately withdrawn: an operator who knows the
+ * variable exists will try it, and a refusal that offered no explanation of why
+ * it did not work would send them to the shell instead of to the fix. Stating
+ * that the pair cannot open on a Neon-only deployment costs three lines and
+ * saves the round trip.
  *
  * The host is included even when the opt-in is irrelevant, because the most
  * common way to be standing here is having exported the passwords correctly and
@@ -158,6 +207,11 @@ function refusalMessage(missing: string[], env: NodeJS.ProcessEnv): string {
   lines.push(`    ${ALLOW_DEFAULT_PASSWORDS_VAR}=1`)
   lines.push('to use the committed fallbacks. Both locks must open — that variable AND')
   lines.push('a local DATABASE_URL host.')
+  lines.push('')
+  lines.push('On this project that pair cannot open. The Prisma client speaks Neon\'s')
+  lines.push('SQL-over-HTTP protocol, not the PostgreSQL wire protocol, so no local')
+  lines.push('PostgreSQL server can serve this schema and the committed fallbacks are')
+  lines.push('unreachable. Setting the password variables above is the way in.')
   if (host) {
     lines.push(
       `The target host is "${host}", which is ${
