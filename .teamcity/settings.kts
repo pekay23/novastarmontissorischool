@@ -34,6 +34,38 @@
 //    the checked-in init migration is bare CREATE TABLE statements that would
 //    fail partway and record a half-applied migration against a real database.
 //
+//  * There is still no SCHEMA STEP of any kind here, and that is a known gap
+//    rather than an oversight: nothing in the chain notices that the repository
+//    and the live schema have drifted apart. A read-only gate is cheap in
+//    principle -- `bun run db:migrate:verify` (live schema vs schema.prisma)
+//    writes nothing and needs no acknowledgement -- but it is NOT wired up on
+//    purpose, for reasons that will not be obvious to the next reader:
+//
+//      - `db:migrate:status` is the wrong gate today. It is red by design while
+//        the ledger is empty (four migrations pending, no _prisma_migrations),
+//        and baselining is a decision that has been deferred. `verify` is the
+//        one that goes green.
+//      - `verify` needs env.DATABASE_URL, which is declared above as a password
+//        parameter whose committed value is the literal "SET_IN_TEAMCITY"
+//        placeholder. Nothing in this chain needs the database today, so this
+//        would be a brand-new dependency on a production credential, and its
+//        first failure would be a red trunk: Verify gates E2ETest, which gates
+//        DockerBuild, DeployLocal and both Vercel deploys.
+//      - `verify` also inherits the provider. Measured on 2026-10-03: the
+//        pooler endpoint was answering P1001 while the direct endpoint was
+//        green, and `verify` resolves DATABASE_URL first. A gate whose colour
+//        tracks a provider's health rather than the repository's is a gate
+//        people learn to ignore.
+//      - Wiring it the way every other step here is wired means one
+//        `bun run ci:<task>` backed by a new scripts/ci/*.ts, because a
+//        conditional step cannot be expressed without shell syntax and this file
+//        deliberately uses none. See scripts/ci/verify.ts, which owns the three
+//        existing gates.
+//
+//    So: after the ledger is reconciled and a real DATABASE_URL is set in the
+//    UI, the change is to add `db:migrate:verify` to the task list in
+//    scripts/ci/verify.ts. Nothing in this file needs to move for it.
+//
 // To register this: Administration -> Project -> Versioned Settings -> Kotlin,
 // repository pekay23/novastarmontissorischool, branch main, settings directory
 // .teamcity. TeamCity compiles this file and reports any error with a line
@@ -51,7 +83,15 @@ import jetbrains.buildServer.configs.kotlin.v2019_2.parameters.*
 import jetbrains.buildServer.configs.kotlin.v2019_2.triggers.finishedBuild
 import jetbrains.buildServer.configs.kotlin.v2019_2.triggers.vcs
 
-version = "2019.2"
+// The DSL API artifact this server ships is org.jetbrains.teamcity:configs-dsl-kotlin
+// at 2026.2 -- that exact string is declared as ${teamcity.dsl.version} in
+// configs-dsl-kotlin-parent, which is what resolves the API below. Its Kotlin
+// packages stop at v2019_2, which is why the imports use v2019_2 while the
+// version says 2026.2. Pinning anything else (2024.07, 2019.2) makes Maven look
+// for an artifact that does not exist, and the generator dies on a ~2 minute
+// network timeout that surfaces as "synchronization with VCS has been stopped
+// due to: unknown reason".
+version = "2026.2"
 
 project {
     // No id() and no name= here on purpose.
@@ -71,7 +111,7 @@ project {
 
     // No vcsRoots { } block here on purpose.
     //
-    // The DSL API generation this server ships (v2019_2) has no `git { }` VCS-root
+    // The v2019_2 package of the 2026.2 DSL API has no `git { }` VCS-root
     // declaration function: the jetbrains.git DSL artifact contributes only the
     // GitVcsRoot model class, no builder. Declaring the root here would fail to
     // compile with "unresolved reference: git".
@@ -105,8 +145,16 @@ project {
         param("env.SUPABASE_DATABASE_URL", password("SET_IN_TEAMCITY"))
 
         // --- Auth ---
+        // NEXTAUTH_SECRET signs the portal's sessions; PLATFORM_SESSION_SECRET
+        // signs the super-admin console's (apps/super-admin/lib/admin-auth.ts).
+        // It is a password parameter rather than plain text so TeamCity masks it
+        // in build logs, and it is listed in turbo.json's globalEnv because turbo
+        // strips undeclared variables from every task environment -- and a
+        // stripped variable is indistinguishable from an unset one, which for
+        // this one means adminAuthConfigured() silently reports false.
         param("env.NEXTAUTH_SECRET", password("SET_IN_TEAMCITY"))
         param("env.NEXTAUTH_URL", "http://localhost:3000")
+        param("env.PLATFORM_SESSION_SECRET", password("SET_IN_TEAMCITY"))
 
         // --- Public, inlined into the client bundle at build time ---
         param("env.NEXT_PUBLIC_ORIGIN", "http://localhost:3000")
