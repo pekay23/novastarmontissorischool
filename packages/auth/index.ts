@@ -36,26 +36,37 @@ export async function getEffectivePermissions(
   }
 
   // 3. Add active delegations granted TO this user
-  const activeDelegations = await prisma.delegation.findMany({
-    where: {
-      toUserId: userId,
-      tenantId,
-      schoolId,
-      isActive: true,
-      OR: [
-        { expiresAt: null },
-        { expiresAt: { gt: new Date() } },
-      ],
-    },
-    select: { permissions: true },
-  })
+  //
+  // An absent `schoolId` means "no school in scope", not "any school". `Delegation.schoolId`
+  // is non-nullable, so every delegation names exactly one school and there is no
+  // tenant-wide delegation to widen into. Prisma DROPS an `undefined` filter, so the
+  // previous `schoolId` passed straight through matched delegations from every school in
+  // the tenant: a tenant-scoped check such as `hasPermission(user, 'config:write', tenantId)`
+  // could be answered by a delegation written for one school. Skipping the read outright is
+  // the fail-closed form of that — role permissions still resolve, delegated ones cannot
+  // leak in without a school to pin them to.
+  const activeDelegations = schoolId
+    ? await prisma.delegation.findMany({
+        where: {
+          toUserId: userId,
+          tenantId,
+          schoolId,
+          isActive: true,
+          OR: [
+            { expiresAt: null },
+            { expiresAt: { gt: new Date() } },
+          ],
+        },
+        select: { permissions: true },
+      })
+    : []
 
   for (const delegation of activeDelegations) {
-      delegation.permissions.forEach((p: string) => permissions.add(p))
-    }
-
-    return permissions
+    delegation.permissions.forEach((p: string) => permissions.add(p))
   }
+
+  return permissions
+}
 
 /**
  * Recursively resolve all permissions for a role, including inherited roles.
@@ -157,11 +168,39 @@ const MS_PER_DAY = 24 * 60 * 60 * 1000
  */
 export async function createDelegation(input: CreateDelegationInput): Promise<Delegation> {
   // Verify: fromUser has all delegated permissions
+  //
+  // Wildcard-aware for the same reason `hasPermission` is. `Set.has` compared the literal
+  // key, so a delegator holding `academic:*` could not delegate `academic:read` — which
+  // made `getDefaultDelegationRules`' HEADMASTER `['*']` entry unreachable and contradicted
+  // the policy check twenty lines below, which does honour wildcards. It failed closed, so
+  // this is over-refusal rather than escalation; it just made the feature inert for the one
+  // role it is written for.
   const fromUserPerms = await getEffectivePermissions(input.fromUserId, input.tenantId, input.schoolId)
   for (const perm of input.permissions) {
-    if (!fromUserPerms.has(perm)) {
+    const held = [...fromUserPerms].some((granted) => permissionMatches(granted, perm))
+    if (!held) {
       throw new Error(`Cannot delegate permission "${perm}" — you don't have it`)
     }
+  }
+
+  // Verify: the recipient is inside the scope this delegation will be written for.
+  //
+  // `input.tenantId` and `input.schoolId` are the CALLER's values, so without this check they
+  // were stamped onto an arbitrary `toUserId` and a row could hand one school's permissions
+  // to a user of another tenant entirely. `Delegation.schoolId` is non-nullable, so a
+  // delegation is always about one school; `User.schoolId` is nullable, so a tenant-level
+  // recipient sits inside that scope while a recipient of a different school does not.
+  const toUser = await prisma.user.findUnique({
+    where: { id: input.toUserId, tenantId: input.tenantId },
+    select: { id: true, schoolId: true },
+  })
+
+  if (!toUser) {
+    throw new Error('Recipient not found in this tenant')
+  }
+
+  if (toUser.schoolId !== null && toUser.schoolId !== input.schoolId) {
+    throw new Error('Recipient is not a member of this school')
   }
 
   // Check delegation rules for this role
@@ -404,21 +443,41 @@ export async function logAudit(input: AuditInput): Promise<void> {
 
 // --- Session Utils ---
 
-export async function getUserSession(userId: string, tenantId: string) {
+/**
+ * Assemble the session payload for a user.
+ *
+ * `schoolId` is threaded into BOTH the delegation count and the permission set. It used to
+ * be absent from both, and the two halves disagreed in opposite directions: the count
+ * required `expiresAt > now` so it dropped every open-ended delegation, while the
+ * permissions came from `getEffectivePermissions(userId, tenantId)` — no school, so it kept
+ * open-ended delegations from every school in the tenant. One row could therefore be absent
+ * from `delegations` and present in `permissions`. A session has no way to answer "what is
+ * this user scoped to" without being told, so both halves now take the same school.
+ */
+export async function getUserSession(userId: string, tenantId: string, schoolId?: string) {
   const user = await prisma.user.findUnique({
     where: { id: userId, tenantId },
     include: {
       role: true,
       delegationsFrom: true,
       delegationsTo: {
-        where: { isActive: true, expiresAt: { gt: new Date() } },
+        // The same definition of "active" as `getEffectivePermissions`, and the same school
+        // handling: a session asked for one school counts only that school's delegations.
+        where: {
+          isActive: true,
+          ...(schoolId ? { schoolId } : {}),
+          OR: [
+            { expiresAt: null },
+            { expiresAt: { gt: new Date() } },
+          ],
+        },
       },
     },
   })
 
   if (!user) return null
 
-  const permissions = await getEffectivePermissions(userId, tenantId)
+  const permissions = await getEffectivePermissions(userId, tenantId, schoolId)
 
   return {
     user: {

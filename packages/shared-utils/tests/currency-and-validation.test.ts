@@ -7,12 +7,13 @@
  * a loose "looks formatted" match. A currency helper that is nearly right is a
  * statement on a child's fee.
  *
- * Two tests here are pinned RED and say so. See `formatPhone` and
- * `validateGhanaPhone` below: a Ghanaian mobile is 10 digits (`0` + a 2-digit
- * network code + 7 digits), and these two functions agree only on the 9-digit
- * and 12-digit forms, which is the wrong pair. The one caller in the repo is
- * `apps/public-site/components/admissions-form.tsx`, which shows a parent their
- * own typed number back for review before submitting it.
+ * Three of these were wrong and are now pinned to the corrected behaviour:
+ * `formatPhone` and `validateGhanaPhone` gated the local arm on nine digits when
+ * a Ghanaian number is ten, and `slugify` deleted accented letters instead of
+ * transliterating them. `formatPhone` has one caller — the admissions review
+ * step in apps/public-site — so a parent was being shown a national number one
+ * digit short, for the nine-digit input, and no formatting at all for the ten
+ * digit one they are far more likely to type.
  */
 import { describe, expect, test } from "bun:test";
 import {
@@ -23,7 +24,6 @@ import {
   formatGHS,
   formatPhone,
   generateId,
-  generateId as generateIdAgain,
   generateInvoiceNumber,
   generateStudentId,
   parseAmount,
@@ -84,6 +84,16 @@ describe("parseAmount", () => {
 });
 
 describe("formatPhone", () => {
+  test("reformats the 10-digit local form into the international one", () => {
+    // Ten digits: `0` + a 2-digit network code + 7. This is the form a parent
+    // types, and the local form of `+233 55 441 6937`. It used to be returned
+    // unformatted, because the local arm was gated on `length === 9` and ten
+    // matched neither arm.
+    expect(formatPhone("0554416937")).toBe("+233 55 441 6937");
+    expect(formatPhone("0544166937")).toBe("+233 54 416 6937");
+    expect(formatPhone("020 123 4567")).toBe("+233 20 123 4567");
+  });
+
   test("reformats the 12-digit +233 international form into spaced groups", () => {
     expect(formatPhone("233554416937")).toBe("+233 55 441 6937");
     expect(formatPhone("+233 55 441 6937")).toBe("+233 55 441 6937");
@@ -91,44 +101,26 @@ describe("formatPhone", () => {
   });
 
   test("returns anything it does not recognise unchanged rather than mangling it", () => {
+    // A number this function cannot parse is one a human still has to read and
+    // correct, so it is never rewritten into something that merely looks
+    // formatted.
     expect(formatPhone("")).toBe("");
     expect(formatPhone("not a number")).toBe("not a number");
-  });
-
-  test("DEFECT: a 10-digit Ghanaian mobile is returned unformatted rather than reflowed", () => {
-    // A Ghanaian mobile number is TEN digits: `0` + a 2-digit network code + 7
-    // digits. `0554416937` is the form a parent types, and the local form of the
-    // target this function's own comment on line 32 gives (`+233 55 441 6937`).
-    //
-    // Neither branch of `formatPhone` accepts it. The 9-digit arm tests
-    // `cleaned.length === 9`, so 10 digits matches neither the 9- nor the 12-digit
-    // arm and falls through to `return phone`. THE EXPECTED VALUE HERE IS THE
-    // DEFECT: it should be "+233 55 441 6937". This test goes red when that is
-    // fixed.
-    //
-    // Reachable from apps/public-site/components/admissions-form.tsx:315, which
-    // shows a parent their own typed number back on the review step. Harmless on
-    // its own, and the reason the sibling defect below is easy to miss.
-    expect(formatPhone("0554416937")).toBe("0554416937");
-  });
-
-  test("DEFECT: the 9-digit arm produces a national number one digit short", () => {
-    // `054416937` matches `cleaned.length === 9 && startsWith('0')` and is sliced
-    // into `+233 <2> <3> <3>`, which is a NINE-digit national number. That is not
-    // a shorter way of writing a Ghanaian number, it is a different number that
-    // will not connect — a parent who reads the review screen and dials
-    // `+233 54 416 937` reaches nobody.
-    //
-    // The correct local form is `0544166937` (10 digits); stripping the leading
-    // `0` leaves `544166937`, still 9 and still short. So no input at all produces
-    // `+233 54 416 6937`. THE EXPECTED VALUE HERE IS THE DEFECT.
-    expect(formatPhone("054416937")).toBe("+233 54 416 937");
+    // Nine digits is not a Ghanaian number in any form, and reformatting it used
+    // to produce `+233 54 416 937` — a national number one digit short, which
+    // dials nobody.
+    expect(formatPhone("054416937")).toBe("054416937");
+    expect(formatPhone("4416937")).toBe("4416937");
   });
 });
 
 describe("validateGhanaPhone", () => {
-  test("accepts the 9-digit and 12-digit forms", () => {
-    expect(validateGhanaPhone("054416937")).toBe(true);
+  test("accepts the 10-digit local form and the 12-digit international one", () => {
+    // Agrees with `formatPhone` on both arms, which it did not: it used to accept
+    // the nine-digit `054416937` and reject the ten-digit `0554416937`, so a form
+    // validating against it refused the format Ghanaians actually write.
+    expect(validateGhanaPhone("0554416937")).toBe(true);
+    expect(validateGhanaPhone("0544166937")).toBe(true);
     expect(validateGhanaPhone("233554416937")).toBe(true);
     expect(validateGhanaPhone("+233 55 441 6937")).toBe(true);
   });
@@ -139,13 +131,29 @@ describe("validateGhanaPhone", () => {
     expect(validateGhanaPhone("12345")).toBe(false);
   });
 
-  test("DEFECT: the canonical 10-digit form is rejected", () => {
-    // `0554416937` is a complete, dialable Ghanaian mobile number, and this
-    // predicate returns false for it — so any form validating against it rejects
-    // the format Ghanaians actually write. It has no caller in the repo yet, so
-    // nothing is broken today, which is exactly why it is recorded here rather
-    // than left unstated. THE EXPECTED VALUE IS THE DEFECT: it should be `true`.
-    expect(validateGhanaPhone("0554416937")).toBe(false);
+  test("rejects a nine-digit number, which is not a Ghanaian number in any form", () => {
+    expect(validateGhanaPhone("054416937")).toBe(false);
+    expect(validateGhanaPhone("4416937")).toBe(false);
+  });
+
+  test("is a shape gate, not a proof of allocation", () => {
+    // It checks length and leading digit only, and does not consult the NCC's
+    // network-code list, so an unallocated-looking number passes. Deliberate: the
+    // question being answered is "did the parent type something shaped like a
+    // Ghanaian number", and a stricter check would refuse real numbers from
+    // ranges this code has no list of.
+    expect(validateGhanaPhone("0000000000")).toBe(true);
+    expect(validateGhanaPhone("0999999999")).toBe(true);
+  });
+
+  test("rejects a ten-digit number that does not start with 0", () => {
+    // Ten digits is the right LENGTH and the wrong shape: the trunk 0 is what
+    // makes it local rather than an unprefixed national number.
+    expect(validateGhanaPhone("5544169377")).toBe(false);
+  });
+
+  test("rejects a twelve-digit number that does not start with 233", () => {
+    expect(validateGhanaPhone("234554416937")).toBe(false);
   });
 });
 
@@ -309,16 +317,45 @@ describe("slugify", () => {
     expect(slugify("Kwabena Osei-Mensah")).toBe("kwabena-osei-mensah");
   });
 
-  test("DEFECT: accented letters are deleted rather than transliterated", () => {
-    // `[^\w\s-]` is not Unicode-aware without the `u` flag plus `\p{L}`, so
-    // every accented letter is DELETED. "Ünïcodé Ñame" becomes "ncod-ame" — two of
-    // eight characters gone, and the result is a different string rather than a
-    // mangled one, so a collision between two different names is silent.
-    //
-    // Ghanaian names are overwhelmingly ASCII so this is rare in practice, but the
-    // function is exported and any accented display name reaches it.
-    // THE EXPECTED VALUE IS THE DEFECT: it should be "unicode-name".
-    expect(slugify("Ünïcodé Ñame")).toBe("ncod-ame");
+  test("transliterates accented letters rather than deleting them", () => {
+    // `[^\w\s-]` without the `u` flag is ASCII-only, so every non-ASCII letter was
+    // removed outright and "Ünïcodé Ñame" became "ncod-ame" — a *different string*
+    // rather than a mangled one, so two different names could land on the same
+    // slug with nothing to tell them apart. NFD first and `\p{Diacritic}` second
+    // is what makes transliteration possible: an accented letter is only a base
+    // character plus a combining mark once decomposed.
+    expect(slugify("Ünïcodé Ñame")).toBe("unicode-name");
+    expect(slugify("Ångström")).toBe("angstrom");
+    expect(slugify("Café Münster")).toBe("cafe-munster");
+    expect(slugify("Ćwikła")).toBe("cwikła");
+  });
+
+  test("keeps letters and digits outside ASCII, transliterating only the accents", () => {
+    // `\p{L}`/`\p{N}` rather than `\w`. Under the ASCII class "Καλημέρα" collapsed
+    // to the empty string, which is a worse answer than one that keeps the letters
+    // and loses only the accent.
+    expect(slugify("Καλημέρα")).toBe("καλημερα");
+    expect(slugify("你好")).toBe("你好");
+    expect(slugify("Größe 42")).toBe("große-42");
+  });
+
+  test("preserves a letter Unicode cannot decompose, rather than guessing at it", () => {
+    // `ø`, `ł`, `ß`, `æ` and `đ` have no canonical decomposition, so there is
+    // nothing to transliterate and inventing `ø` -> `o` would be a guess about
+    // someone's name. The output is still a valid URL path segment once
+    // percent-encoded, and it is a *different* string per name rather than a
+    // collision.
+    expect(slugify("Bjørn")).toBe("bjørn");
+    expect(slugify("Łódź")).toBe("łodz");
+    expect(slugify("Ærø")).toBe("ærø");
+  });
+
+  test("the rule is what Unicode can decompose, not what looks like an ASCII letter", () => {
+    // `Größe` keeps its eszett because `ß` has no decomposition, while the `ö`
+    // beside it does have one. A rule that transliterated "whatever resembles
+    // ASCII" would have produced "grosse" here and been guessing.
+    expect(slugify("Größe")).toBe("große");
+    expect(slugify("Grosse")).toBe("grosse");
   });
 });
 
@@ -380,10 +417,5 @@ describe("id generation", () => {
     const ids = new Set<string>();
     for (let index = 0; index < 1000; index += 1) ids.add(generateId());
     expect(ids.size).toBe(1000);
-  });
-
-  test("generateId is the same function under either import name", () => {
-    // Present so a rename of one binding cannot silently diverge from the other.
-    expect(generateIdAgain).toBe(generateId);
   });
 });

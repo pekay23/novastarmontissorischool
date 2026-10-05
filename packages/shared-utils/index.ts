@@ -28,10 +28,33 @@ export function parseAmount(value: string): number | null {
   return isNaN(num) ? null : num
 }
 
+/**
+ * Readable form of a Ghanaian phone number: `+233 55 441 6937`.
+ *
+ * Both accepted lengths are counted the way the NCC counts them, which is the
+ * point of this function having been wrong:
+ *
+ * - the LOCAL form is TEN digits — `0` + a 2-digit network code + 7 digits, e.g.
+ *   `0554416937`. That is what a parent types, and it is the local form of the
+ *   example above;
+ * - the INTERNATIONAL form is TWELVE — `233` + the same ten — e.g.
+ *   `233554416937` or `+233 55 441 6937`.
+ *
+ * It used to gate the local arm on `length === 9`, which is off by one in the
+ * dangerous direction twice over. A 10-digit number matched neither arm and was
+ * returned unformatted, so the canonical form got no treatment at all; and a
+ * 9-digit input was accepted as local and sliced into `+233 <2> <3> <3>` — a
+ * NINE-digit national number, which is a different number rather than a shorter
+ * way of writing this one. A parent reading that off the admissions review
+ * screen and dialling it reaches nobody.
+ *
+ * Unrecognised input is returned unchanged. A number this function cannot parse
+ * is one a human still has to be able to read and correct, so it is never
+ * rewritten into something that merely looks formatted.
+ */
 export function formatPhone(phone: string): string {
-  // Ghana phone number formatting: +233 55 441 6937
   const cleaned = phone.replace(/\D/g, '')
-  if (cleaned.length === 9 && cleaned.startsWith('0')) {
+  if (cleaned.length === 10 && cleaned.startsWith('0')) {
     return `+233 ${cleaned.slice(1, 3)} ${cleaned.slice(3, 6)} ${cleaned.slice(6)}`
   }
   if (cleaned.length === 12 && cleaned.startsWith('233')) {
@@ -107,9 +130,25 @@ export function validateEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
 }
 
+/**
+ * Whether `phone` is a Ghanaian number this codebase is willing to accept.
+ *
+ * The two accepted forms and why they are ten and twelve digits are set out on
+ * `formatPhone`, and this predicate has to agree with it — a form that accepts
+ * what `formatPhone` cannot render, or refuses what it renders perfectly, is
+ * worse than having neither. It previously gated the local arm on nine digits,
+ * so `0554416937` — a complete, dialable number, and the form Ghanaians write —
+ * was rejected while the nine-digit `054416937` was accepted.
+ *
+ * Length and leading digit only. This is a shape gate, not a proof of
+ * allocation: it does not check the network code against the NCC's list, so it
+ * accepts `0000000000`. That is deliberate — the question this answers is
+ * "did the parent type something shaped like a Ghanaian number", and a stricter
+ * check would refuse real numbers from ranges this code has no list of.
+ */
 export function validateGhanaPhone(phone: string): boolean {
   const cleaned = phone.replace(/\D/g, '')
-  return (cleaned.length === 9 && cleaned.startsWith('0')) ||
+  return (cleaned.length === 10 && cleaned.startsWith('0')) ||
          (cleaned.length === 12 && cleaned.startsWith('233'))
 }
 
@@ -799,9 +838,14 @@ type OrderedGradingScale = {
  *
  * `Infinity` sorts a scale with no timestamp after every scale that has one, which
  * is the safe direction: a real row read through Prisma always carries `createdAt`,
- * so this only orders the hand-built fixtures and the degenerate caller. Returning a
- * number rather than a Date is what keeps `Infinity - Infinity` — `NaN`, and a
- * comparator that returns `NaN` is not a comparator — out of the comparison below.
+ * so this only orders the hand-built fixtures and the degenerate caller.
+ *
+ * Returning a number rather than a Date is what keeps the comparison below
+ * arithmetic, but it is NOT on its own what keeps a non-comparator out of it —
+ * two rows with no timestamp both produce `Infinity`, and `Infinity - Infinity` is
+ * `NaN`. `compareGradingScaleApplicability` is where that is handled, and the
+ * reason this function is happy to return `Infinity` at all is that the caller
+ * tests the two values for equality before subtracting.
  */
 function gradingScaleCreatedAtValue(scale: OrderedGradingScale): number {
   const createdAt = scale.createdAt
@@ -813,14 +857,35 @@ function gradingScaleCreatedAtValue(scale: OrderedGradingScale): number {
   return Number.POSITIVE_INFINITY
 }
 
-/** The total order `GRADING_SCALE_RESOLUTION_ORDER` describes, as a comparator. */
+/**
+ * The total order `GRADING_SCALE_RESOLUTION_ORDER` describes, as a comparator.
+ *
+ * The `createdAt` step compares the two values with `!==` and only then
+ * subtracts, and that ordering is load-bearing rather than incidental style:
+ * `gradingScaleCreatedAtValue` returns `Infinity` for a row with no timestamp,
+ * so two such rows give `Infinity - Infinity`, which is `NaN` — and the obvious
+ * guard `if (createdAt !== 0) return createdAt` does not catch it, because
+ * `NaN !== 0` is true. The comparator then returned `NaN`, and a comparator that
+ * returns `NaN` is not a comparator: `Array.prototype.sort` reads it as "no
+ * opinion" and leaves the rows where they were. The `id` tiebreaker below, the
+ * one step documented as making the order total, was unreachable in exactly the
+ * case it exists for, and the answer fell back to the caller's array order —
+ * the same defect `GRADING_SCALE_RESOLUTION_ORDER` was written to remove.
+ *
+ * Testing the values before subtracting is what fixes it. `Infinity !== Infinity`
+ * is false, so two undated rows fall through to `id` and the order is total for
+ * them too; `0 !== Infinity` is true, so one dated and one undated still sort
+ * with the undated one last, which is the safe direction `Infinity` was chosen
+ * for.
+ */
 function compareGradingScaleApplicability(
   a: OrderedGradingScale,
   b: OrderedGradingScale,
 ): number {
   if (a.isDefault !== b.isDefault) return a.isDefault ? -1 : 1
-  const createdAt = gradingScaleCreatedAtValue(a) - gradingScaleCreatedAtValue(b)
-  if (createdAt !== 0) return createdAt
+  const aCreatedAt = gradingScaleCreatedAtValue(a)
+  const bCreatedAt = gradingScaleCreatedAtValue(b)
+  if (aCreatedAt !== bCreatedAt) return aCreatedAt - bCreatedAt
   return (a.id ?? '').localeCompare(b.id ?? '')
 }
 
@@ -1596,10 +1661,42 @@ export function truncate(text: string, maxLength: number): string {
   return text.slice(0, maxLength) + '...'
 }
 
+/**
+ * A URL-safe slug: lowercase, hyphen-separated, no accents.
+ *
+ * Accents are TRANSLITERATED, not deleted, and the order of the two steps is what
+ * makes that possible. `\p{Diacritic}` can only match a combining mark, and an
+ * accented letter is only a base character plus one once the string has been
+ * decomposed — so NFD first, strip second. `Ünïcodé Ñame` becomes
+ * `unicode-name`, where it used to become `ncod-ame`.
+ *
+ * Deleting rather than transliterating was not cosmetic. `[^\w\s-]` without the
+ * `u` flag is ASCII-only, so every non-ASCII letter was removed outright, and the
+ * result was a *different string* rather than a mangled one: two different names
+ * could land on the same slug with nothing to tell them apart. Ghanaian names are
+ * overwhelmingly ASCII so this is rare in practice, but the function is exported
+ * and any accented display name reaches it.
+ *
+ * `\p{L}`/`\p{N}` in the stripping step rather than `\w`, so letters and digits
+ * outside ASCII survive instead of vanishing — "Καλημέρα" keeps its letters and
+ * loses only its accent, rather than collapsing to the empty string the ASCII
+ * class produced. `_` stays in the allowed set so the `[\s_-]+` collapse below
+ * still treats it as a separator; leaving it out turned `--a__b--` into `ab`.
+ *
+ * A handful of letters have no canonical decomposition — `ø`, `ł`, `ß`, `æ`, `đ`
+ * — so transliteration has nothing to decompose and they are preserved as
+ * themselves: `Bjørn` -> `bjørn`, `Łódź` -> `łodz`. Inventing `ø` -> `o` would be
+ * a guess about someone's name, and the output is still a valid URL path segment
+ * once percent-encoded. Note that `é` and `ü` ARE decomposed, so `Größe` becomes
+ * `große` and `Münster` becomes `munster`; the rule is what Unicode can decompose,
+ * and it is deliberately not "whatever looks like an ASCII letter".
+ */
 export function slugify(text: string): string {
   return text
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
     .toLowerCase()
-    .replace(/[^\w\s-]/g, '')
+    .replace(/[^\p{L}\p{N}\s_-]/gu, '')
     .replace(/[\s_-]+/g, '-')
     .replace(/^-+|-+$/g, '')
 }

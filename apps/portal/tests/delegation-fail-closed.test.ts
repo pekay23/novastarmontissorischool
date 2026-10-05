@@ -41,11 +41,20 @@ function roleAsRow(): Row {
   }
 }
 
-const userFindUnique = mock(async (): Promise<Row | null> => ({
-  id: 'user-delegator',
-  roleId: roleRow.id,
-  role: roleAsRow(),
-}))
+/**
+ * The delegator read and the recipient read are two different queries against `user`, so
+ * the double has to answer both. `createDelegation` verifies the recipient is inside the
+ * tenant and school the row is written for, which it does with `select: { id, schoolId }`
+ * about `toUserId`; returning the delegator's row to that query reported `schoolId:
+ * undefined`, which is outside `school-1`, and refused every delegation in this file for a
+ * reason none of these tests is about.
+ */
+const userFindUnique = mock(async (args: QueryArgs): Promise<Row | null> => {
+  if (args.select) {
+    return { id: String(args.where?.id ?? ''), schoolId: 'school-1' }
+  }
+  return { id: 'user-delegator', roleId: roleRow.id, role: roleAsRow() }
+})
 
 const roleFindUnique = mock(async (): Promise<Row | null> => roleAsRow())
 

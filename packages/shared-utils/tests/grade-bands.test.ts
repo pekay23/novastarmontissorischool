@@ -476,29 +476,40 @@ describe("resolveApplicableGradingScale", () => {
     expect(resolveApplicableGradingScale([undated, older], ["B1"])?.id).toBe("b");
   });
 
-  test("DEFECT: two scales with no createdAt are ordered by the array, not by id", () => {
-    // The `id` tiebreaker is documented as the step that makes the order total,
-    // and it is unreachable for the case the comment on `Infinity` names: "this
-    // only orders the hand-built fixtures and the degenerate caller".
+  test("two scales with no createdAt fall back to the id tiebreaker, not to array order", () => {
+    // `gradingScaleCreatedAtValue` returns Infinity for a row with no timestamp,
+    // and `Infinity - Infinity` is NaN — which the old guard `if (createdAt !== 0)`
+    // did not catch, because `NaN !== 0` is true. The comparator returned NaN, and
+    // a comparator that returns NaN is not a comparator: `sort` read it as "no
+    // opinion" and left the rows where they were. The `id` tiebreaker, the step
+    // documented as making the order total, was unreachable in exactly the case it
+    // exists for.
     //
-    // `gradingScaleCreatedAtValue` returns Infinity for a scale with no
-    // `createdAt`, and `Infinity - Infinity` is NaN — which the guard
-    // `if (createdAt !== 0)` does not catch, because `NaN !== 0` is true. The
-    // comparator therefore RETURNS NaN, and a comparator that returns NaN is not
-    // a comparator: `Array.prototype.sort` treats it as "no opinion" and leaves
-    // the rows where they were.
-    //
-    // These two assertions ARE the defect, and they are stated as one test
-    // because the defect is the disagreement between them: the same two scales
-    // resolve differently depending only on the order they were handed in. A
-    // documented total order would return "aaa" for both. Unreachable from
-    // Prisma, which always returns `createdAt`; reachable from the hand-built
-    // fixtures that decide how this behaves.
+    // Unreachable from Prisma, which always returns `createdAt`; reachable from the
+    // hand-built fixtures that decide how this behaves. Both orders now agree.
     const low = { id: "aaa", appliesToLevels: ["B1"], isDefault: false };
     const high = { id: "zzz", appliesToLevels: ["B1"], isDefault: false };
 
-    expect(resolveApplicableGradingScale([high, low], ["B1"])?.id).toBe("zzz");
+    expect(resolveApplicableGradingScale([high, low], ["B1"])?.id).toBe("aaa");
     expect(resolveApplicableGradingScale([low, high], ["B1"])?.id).toBe("aaa");
+  });
+
+  test("a dated scale still outranks an undated one, whatever the input order", () => {
+    // Infinity is chosen so the undated row sorts LAST: a scale with no timestamp
+    // is the one least likely to be the school's deliberate choice.
+    const undated = { id: "zzz", appliesToLevels: ["B1"], isDefault: false };
+    const dated = { id: "aaa", appliesToLevels: ["B1"], isDefault: false, createdAt: "2026-01-01" };
+
+    expect(resolveApplicableGradingScale([dated, undated], ["B1"])?.id).toBe("aaa");
+    expect(resolveApplicableGradingScale([undated, dated], ["B1"])?.id).toBe("aaa");
+  });
+
+  test("an unparseable createdAt string sorts as undated rather than poisoning the order", () => {
+    const broken = { id: "zzz", appliesToLevels: ["B1"], isDefault: false, createdAt: "not a date" };
+    const dated = { id: "aaa", appliesToLevels: ["B1"], isDefault: false, createdAt: "2026-01-01" };
+
+    expect(resolveApplicableGradingScale([broken, dated], ["B1"])?.id).toBe("aaa");
+    expect(resolveApplicableGradingScale([dated, broken], ["B1"])?.id).toBe("aaa");
   });
 });
 
