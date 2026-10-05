@@ -118,21 +118,7 @@ const hasPermission = mock(
   async (_userId: string, key: string): Promise<boolean> => grants.includes(key),
 )
 
-mock.module('server-only', () => ({}))
-mock.module('@novastar/auth', () => ({ hasPermission }))
-mock.module('@/lib/tenant', () => ({
-  UnauthorizedError,
-  ForbiddenError,
-  getTenantContext,
-  getTenantContextOrNull: async () => (sessionError ? null : session),
-}))
-mock.module('@/lib/auth/session-context', () => ({
-  getCachedSessionAndTenant: async () => {
-    if (sessionError) throw sessionError
-    return { ...session, roleName: session.role }
-  },
-  getTokenTenantId: async () => (sessionError ? null : TENANT_ID),
-}))
+// Registered with the rest further down, once the Prisma delegates they depend on exist.
 
 // --- Where-clause matching ---------------------------------------------------
 
@@ -324,35 +310,103 @@ const $transaction = mock(
 /** `logSystemError` writes through this when `toErrorResponse` persists a failure. */
 const systemErrorCreate = mock(async (_args: QueryArgs): Promise<Row> => ({ id: 'err-1' }))
 
-mock.module('@/lib/prisma', () => ({
-  prisma: {
-    staff: { findFirst: staffFindFirst },
-    parent: { findFirst: parentFindFirst },
-    class: {
-      findFirst: classFindFirst,
-      findMany: classFindMany,
-      create: classCreate,
-      update: classUpdate,
-    },
-    classSubject: {
-      findFirst: classSubjectFindFirst,
-      findMany: classSubjectFindMany,
-    },
-    classLevel: { findFirst: classLevelFindFirst },
-    attendanceStudent: {
-      findFirst: attendanceFindFirst,
-      update: attendanceUpdate,
-      delete: attendanceDelete,
-    },
-    attendanceTaker: { findFirst: attendanceTakerFindFirst },
-    event: { create: eventCreate, findFirst: eventFindFirst, update: eventUpdate },
-    term: { findFirst: termFindFirst },
-    syllabus: { create: syllabusCreate },
-    systemError: { create: systemErrorCreate },
-    auditLog: { findFirst: mock(async () => null) },
-    $transaction,
+// ---------------------------------------------------------------------------
+// Module-mock lifetime: snapshot before registering, restore after
+// ---------------------------------------------------------------------------
+// `mock.module` patches the LIVE namespace for the whole process and never reverts, so a
+// registration made at module scope is what every file loaded afterwards binds to. All five
+// boundaries are put back. `server-only` goes first and alone because the real
+// `@/lib/tenant` imports it and the package is not installed here, so nothing else is
+// capturable until that specifier resolves.
+//
+// The remaining snapshots are read HERE, before the first real registration. That is the
+// load-bearing part: a `beforeEach` capture would run after these registrations had
+// already overwritten the namespace, so it would record this file's own factory and hand
+// the double straight back to the next file.
+//
+// Every factory SPREADS the namespace it replaces and then overrides, making each fake
+// both a superset and a subset — which is what makes the restore complete, since
+// `mock.module` merges and an added key could never be removed again. The `@/lib/tenant`
+// spread is what makes this file work in ISOLATION: the real module also exports
+// `TenantSuspendedError`, which `@/lib/api-response` imports, and a factory listing only
+// four names left it absent for every import resolved after this one.
+mock.module('server-only', () => ({}))
+
+const previousNamespaces = new Map<string, Record<string, unknown>>()
+previousNamespaces.set('server-only', { ...(await import('server-only')) })
+previousNamespaces.set('@novastar/auth', { ...(await import('@novastar/auth')) })
+previousNamespaces.set('@/lib/tenant', { ...(await import('@/lib/tenant')) })
+previousNamespaces.set('@/lib/auth/session-context', {
+  ...(await import('@/lib/auth/session-context')),
+})
+previousNamespaces.set('@/lib/prisma', { ...(await import('@/lib/prisma')) })
+
+const base = (specifier: string): Record<string, unknown> =>
+  previousNamespaces.get(specifier) ?? {}
+
+const FAKES = [
+  { specifier: '@novastar/auth', factory: () => ({ ...base('@novastar/auth'), hasPermission }) },
+  {
+    specifier: '@/lib/tenant',
+    factory: () => ({
+      ...base('@/lib/tenant'),
+      UnauthorizedError,
+      ForbiddenError,
+      getTenantContext,
+      getTenantContextOrNull: async () => (sessionError ? null : session),
+    }),
   },
-}))
+  {
+    specifier: '@/lib/auth/session-context',
+    factory: () => ({
+      ...base('@/lib/auth/session-context'),
+      getCachedSessionAndTenant: async () => {
+        if (sessionError) throw sessionError
+        return { ...session, roleName: session.role }
+      },
+      getTokenTenantId: async () => (sessionError ? null : TENANT_ID),
+    }),
+  },
+  {
+    specifier: '@/lib/prisma',
+    factory: () => ({
+      ...base('@/lib/prisma'),
+      prisma: {
+        staff: { findFirst: staffFindFirst },
+        parent: { findFirst: parentFindFirst },
+        class: {
+          findFirst: classFindFirst,
+          findMany: classFindMany,
+          create: classCreate,
+          update: classUpdate,
+        },
+        classSubject: {
+          findFirst: classSubjectFindFirst,
+          findMany: classSubjectFindMany,
+        },
+        classLevel: { findFirst: classLevelFindFirst },
+        attendanceStudent: {
+          findFirst: attendanceFindFirst,
+          update: attendanceUpdate,
+          delete: attendanceDelete,
+        },
+        attendanceTaker: { findFirst: attendanceTakerFindFirst },
+        event: { create: eventCreate, findFirst: eventFindFirst, update: eventUpdate },
+        term: { findFirst: termFindFirst },
+        syllabus: { create: syllabusCreate },
+        systemError: { create: systemErrorCreate },
+        auditLog: { findFirst: mock(async () => null) },
+        $transaction,
+      },
+    }),
+  },
+] as const
+
+// Also registered at load time, so the route imports below resolve these specifiers
+// through the doubles and the file is correct in a run that never reaches `beforeEach`.
+for (const { specifier, factory } of FAKES) {
+  mock.module(specifier, factory)
+}
 
 const { PATCH: attendancePATCH, DELETE: attendanceDELETE } = await import(
   '@/app/api/attendance/[id]/route'
@@ -394,6 +448,9 @@ function andClauses(where: Row): Row[] {
 }
 
 beforeEach(() => {
+  for (const { specifier, factory } of FAKES) {
+    mock.module(specifier, factory)
+  }
   session = { ...TEACHER }
   sessionError = null
   grants = [

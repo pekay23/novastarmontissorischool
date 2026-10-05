@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, mock } from 'bun:test'
 import { DB_QUERY_TIMEOUT_MS } from '@novastar/database'
+import { PLATFORM_ADMIN_ROLES, PLATFORM_ROLES } from '@/lib/constants/platform-roles'
 import type { FeatureFlagKey } from '@/lib/system-config'
 
 /**
@@ -105,10 +106,47 @@ const $transaction = mock(
  * Only the methods the module actually calls are exposed, so an accidental new
  * database call fails loudly instead of silently returning undefined.
  */
-mock.module('@/lib/prisma', () => ({
-  prisma: { systemConfig: ROOT_MODEL, $transaction },
-}))
 mock.module('server-only', () => ({}))
+
+// ---------------------------------------------------------------------------
+// Module-mock lifetime: snapshot before registering, restore after
+// ---------------------------------------------------------------------------
+// `mock.module` patches the LIVE namespace for the whole process and never reverts, so a
+// registration made at module scope is what every file loaded afterwards binds to. Both
+// boundaries are put back. `server-only` goes first because `@/lib/prisma` resolves through
+// it and the package is not installed in this workspace.
+//
+// The `@/lib/prisma` snapshot is read HERE, before the first real registration. That is the
+// load-bearing part: a `beforeEach` capture would run after this registration had already
+// overwritten the namespace, so it would record this file's own factory and hand the double
+// straight back to the next file.
+//
+// The factory SPREADS the namespace it replaces and then overrides, making the fake both a
+// superset and a subset — which is what makes the restore complete, since `mock.module`
+// merges and an added key could never be removed again.
+const previousNamespaces = new Map<string, Record<string, unknown>>()
+previousNamespaces.set('server-only', { ...(await import('server-only')) })
+previousNamespaces.set('@/lib/prisma', { ...(await import('@/lib/prisma')) })
+
+const base = (specifier: string): Record<string, unknown> =>
+  previousNamespaces.get(specifier) ?? {}
+
+const FAKES = [
+  {
+    specifier: '@/lib/prisma',
+    factory: () => ({
+      ...base('@/lib/prisma'),
+      prisma: { systemConfig: ROOT_MODEL, $transaction },
+      default: base('@/lib/prisma').prisma,
+    }),
+  },
+] as const
+
+// Also registered at load time, so the dynamic import below resolves `@/lib/prisma` through
+// the double and the file is correct in a run that never reaches `beforeEach`.
+for (const { specifier, factory } of FAKES) {
+  mock.module(specifier, factory)
+}
 
 const {
   FEATURE_FLAGS,
@@ -116,6 +154,7 @@ const {
   clearFeatureFlagOverride,
   featureFlagDefinitions,
   isFeatureFlagWritable,
+  manageableFlagKeys,
   resolveFeatureFlags,
   setFeatureFlag,
 } = await import('@/lib/system-config')
@@ -207,6 +246,9 @@ function storeRow(value: unknown, version: number, isEditable = true): void {
 }
 
 beforeEach(() => {
+  for (const { specifier, factory } of FAKES) {
+    mock.module(specifier, factory)
+  }
   // Reset rather than only clear: a leaked implementation from one test would
   // let the next test pass on data it did not set up.
   log = []
@@ -970,5 +1012,108 @@ describe('system-config - featureFlagDefinitions is a pure projection', () => {
 
     expect(first).not.toBe(second)
     expect(first.ai_enabled).not.toBe(second.ai_enabled)
+  })
+})
+
+/**
+ * What the registry is allowed to contain, and why.
+ *
+ * Two production comments rest on the registry holding booleans and nothing
+ * else, and neither had a test:
+ *
+ *   * `storesTheDefault` compares with `===` rather than a deep comparison,
+ *     because "every flag is registered with a scalar schema (`z.boolean()`)".
+ *   * The PATCH route writes the flag's old and new value into the audit
+ *     entry's `changes` payload — which `logger.ts` folds into the chain hash —
+ *     on the grounds that "every registered flag is a boolean, and the
+ *     `Object.hasOwn` gate above means this route never reads or writes a
+ *     non-registry key".
+ *
+ * Neither is a type error, because `FlagDefinition.defaultValue` is `unknown` and
+ * `schema` is a bare `z.ZodType`: a string-valued flag compiles cleanly, stores
+ * into a JSON column, and rides into the hash. So the invariant is asserted here
+ * against the registry itself.
+ */
+describe('system-config - the registry holds switches, not settings', () => {
+  /** Every entry, widened so `manageRoles` is readable on each. */
+  const entries = () =>
+    Object.entries(FEATURE_FLAGS).map(
+      ([key, def]) =>
+        [key, def as { defaultValue: unknown; schema: { safeParse: (v: unknown) => { success: boolean } } }] as const,
+    )
+
+  it('should default every registered flag to a boolean', () => {
+    for (const [key, def] of entries()) {
+      // `typeof` rather than a list of accepted defaults: a flag added tomorrow
+      // with a string default is the defect, and it is invisible to any
+      // hand-written key list.
+      expect({ key, type: typeof def.defaultValue }).toEqual({ key, type: 'boolean' })
+    }
+  })
+
+  it('should accept only booleans through every registered flag’s own schema', () => {
+    for (const [key, def] of entries()) {
+      expect({ key, accepted: def.schema.safeParse(true).success }).toEqual({ key, accepted: true })
+      expect({ key, accepted: def.schema.safeParse(false).success }).toEqual({ key, accepted: true })
+      // A string, a number or a document would be stored verbatim and then
+      // rendered by a control that only knows on and off. `''` and `0` are here
+      // because they are the falsy values a hand-written coercion would produce.
+      for (const notABoolean of ['', 'true', 'false', 0, 1, {}, [], null]) {
+        expect({ key, accepted: def.schema.safeParse(notABoolean).success }).toEqual({
+          key,
+          accepted: false,
+        })
+      }
+    }
+  })
+
+  it('should keep every flag the PATCH route can reach boolean-valued', () => {
+    // Scoped to the WRITABLE set rather than to the registry, because that is the
+    // set whose values reach the tamper-evident audit payload. A flag nothing
+    // can write here is out of reach of that payload too.
+    const writable = manageableFlagKeys(PLATFORM_ROLES.HEADMASTER)
+    expect(writable.length).toBeGreaterThan(0)
+
+    for (const key of writable) {
+      const def = FEATURE_FLAGS[key] as unknown as {
+        defaultValue: unknown
+        schema: { safeParse: (v: unknown) => { success: boolean } }
+      }
+      expect({ key, type: typeof def.defaultValue }).toEqual({ key, type: 'boolean' })
+      expect({ key, accepted: def.schema.safeParse('secret').success }).toEqual({ key, accepted: false })
+    }
+  })
+
+  it('should admit exactly the flags that declare a non-empty manageRoles, or none at all', () => {
+    const open = (Object.keys(FEATURE_FLAGS) as FeatureFlagKey[]).filter(
+      (key) =>
+        ((FEATURE_FLAGS[key] as { manageRoles?: readonly string[] }).manageRoles ??
+          PLATFORM_ADMIN_ROLES).length > 0,
+    )
+
+    expect(manageableFlagKeys(PLATFORM_ROLES.HEADMASTER)).toEqual(open)
+  })
+
+  it('should keep an empty manageRoles out of every role’s writable list', () => {
+    // `admissions_open` is the case that makes the rule mean something: it is
+    // registered — the dedicated route resolves its default through this same
+    // registry — but its empty set means the generic PATCH route refuses it for
+    // every role. One writer per flag means one audit action to read back.
+    const locked = Object.keys(FEATURE_FLAGS).filter(
+      (key) =>
+        ((FEATURE_FLAGS[key as FeatureFlagKey] as { manageRoles?: readonly string[] }).manageRoles ??
+          PLATFORM_ADMIN_ROLES).length === 0,
+    )
+    expect(locked.length).toBeGreaterThan(0)
+
+    for (const key of locked) {
+      for (const role of Object.values(PLATFORM_ROLES)) {
+        expect({ role, key, admitted: manageableFlagKeys(role).includes(key as FeatureFlagKey) }).toEqual(
+          { role, key, admitted: false },
+        )
+      }
+      // A session with no role at all is refused the same way.
+      expect(manageableFlagKeys(null)).not.toContain(key as FeatureFlagKey)
+    }
   })
 })

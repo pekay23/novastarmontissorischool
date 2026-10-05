@@ -19,6 +19,10 @@ import { describe, it, expect, beforeEach, mock } from 'bun:test'
  * only the `where` shapes these routes build, which is called out below rather
  * than left to look like a general Prisma double.
  */
+// `server-only` is not installed in this workspace, so every file stubs it; it goes
+// first, on its own, because `@/lib/audit/logger` and `@/lib/tenant` import it and
+// nothing else is capturable until it resolves. Its snapshot entry is therefore the
+// empty module registered here — an identity, not a restoration, and inert either way.
 mock.module('server-only', () => ({}))
 
 const SENT: Array<{ to: string; subject: string; html?: string; text?: string }> = []
@@ -32,7 +36,7 @@ const SENT: Array<{ to: string; subject: string; html?: string; text?: string }>
  */
 let sendFails = false
 
-mock.module('resend', () => ({
+const resendFactory = () => ({
   Resend: class {
     emails = {
       send: async (payload: { to: string; subject: string; html?: string; text?: string }) => {
@@ -42,7 +46,7 @@ mock.module('resend', () => ({
       },
     }
   },
-}))
+})
 
 // --- In-memory user store ----------------------------------------------------
 
@@ -166,42 +170,13 @@ const prisma = {
     findFirst: async ({ where }: { where: Record<string, unknown> }) =>
       where.name === 'HEADMASTER' ? { id: 'role-head', name: 'HEADMASTER' } : null,
   },
-  auditLog: { create: async () => ({ id: 'audit-1' }) },
+   auditLog: { create: async () => ({ id: 'audit-1' }) },
+    $transaction: async (fn: (tx: any) => Promise<unknown>) => fn(prisma),
 }
 
-// Load the real module before replacing it.
-//
-// Bun's `mock.module` patches a module that is already in the registry. Registering
-// a mock for one that has not been resolved yet does not reach the modules that
-// import it afterwards, so `lib/auth/email-verification.ts` and the routes below
-// kept talking to the real client and every assertion here ran against a store
-// that never changed — twenty failures, all of them "expected a digest, got null".
-// Whether this file passed therefore depended on whether an earlier file in the
-// run happened to have loaded `@/lib/prisma` first. The pre-load makes it
-// independent of that. Nothing here touches a database.
-await import('@/lib/prisma')
-
-mock.module('@/lib/prisma', () => ({ prisma, default: prisma }))
-
-/**
- * The same fake, registered under the package name too.
- *
- * `@/lib/prisma` re-exports `prisma` from `@novastar/database`, so they are one object
- * at runtime — but `mock.module` keys on the specifier, so a mock registered for the
- * alias says nothing about the package. The email-token primitives and
- * `createInvitedUser` now live in `@novastar/auth/invite` (shared with the platform
- * console), and that module reaches the database through `@novastar/database`. Without
- * this line those calls would build the real lazy client and answer from its
- * empty-result mock, and every assertion below about a stored digest would fail for a
- * reason that has nothing to do with the code under test.
- */
-mock.module('@novastar/database', () => ({ prisma, default: prisma }))
-
-mock.module('@/lib/audit/logger', () => ({
-  AuditLogAction: { LOGIN: 'LOGIN', CREATE: 'CREATE', UPDATE: 'UPDATE', PASSWORD_CHANGED: 'PASSWORD_CHANGED' },
-  createAuditLog: mock(async () => null),
-  logAuditEvent: mock(async () => null),
-}))
+// The `server-only`, `resend`, `@/lib/prisma`, `@novastar/database`,
+// `@/lib/audit/logger` and `@/lib/auth/session-context` doubles are all registered
+// together below, at load time so the route import below resolves through the doubles.
 
 /**
  * Locally defined, following the convention in `route-authz.test.ts`: Bun's
@@ -222,14 +197,79 @@ let session: { userId: string; tenantId: string; schoolId: string | null; role: 
   role: 'HEADMASTER',
 }
 
-mock.module('@/lib/auth/session-context', () => ({
-  getCachedSessionAndTenant: mock(async () => {
-    if (session instanceof Error) throw session
-    const { userId, tenantId, schoolId, role } = session
-    return { userId, tenantId, schoolId, role, roleName: role, user: { id: userId }, claimedTenantId: tenantId }
-  }),
-  getTokenTenantId: mock(async () => (session instanceof Error ? null : TENANT)),
-}))
+// ---------------------------------------------------------------------------
+// Module-mock lifetime: snapshot before registering, restore after
+// ---------------------------------------------------------------------------
+// `mock.module` patches the LIVE namespace for the whole process and never reverts, so a
+// registration made at module scope is what every file loaded afterwards binds to. Every
+// boundary this file replaces is put back. `server-only` goes first because
+// `@/lib/audit/logger` and `@/lib/tenant` import it and the package is not installed here.
+//
+// The remaining snapshots are read HERE, before the first real registration. That is the
+// load-bearing part: a `beforeEach` capture would run after these registrations had already
+// overwritten the namespace, so it would record this file's own factory and hand the double
+// straight back to the next file.
+//
+// Every factory SPREADS the namespace it replaces and then overrides, making each fake both
+// a superset and a subset — which is what makes the restore complete, since `mock.module`
+// merges and an added key could never be removed again.
+const previousNamespaces = new Map<string, Record<string, unknown>>()
+previousNamespaces.set('server-only', { ...(await import('server-only')) })
+// `resend` is not installed in this workspace either, so it has no real namespace to hand
+// back for the same reason as `server-only`; its entry is the empty module and the
+// restore is an identity rather than a restoration.
+previousNamespaces.set('resend', {})
+previousNamespaces.set('@/lib/prisma', { ...(await import('@/lib/prisma')) })
+previousNamespaces.set('@novastar/database', { ...(await import('@novastar/database')) })
+previousNamespaces.set('@/lib/audit/logger', { ...(await import('@/lib/audit/logger')) })
+previousNamespaces.set('@/lib/auth/session-context', {
+  ...(await import('@/lib/auth/session-context')),
+})
+
+const base = (specifier: string): Record<string, unknown> =>
+  previousNamespaces.get(specifier) ?? {}
+
+const FAKES = [
+  {
+    specifier: 'resend',
+    factory: () => ({ ...base('resend'), ...resendFactory() }),
+  },
+  { specifier: '@/lib/prisma', factory: () => ({ ...base('@/lib/prisma'), prisma, default: prisma }) },
+  {
+    // The same fake under the package name too: `@/lib/prisma` re-exports `prisma` from
+    // `@novastar/database`, so they are one object at runtime, but `mock.module` keys on
+    // the specifier, so a mock registered for the alias says nothing about the package.
+    specifier: '@novastar/database',
+    factory: () => ({ ...base('@novastar/database'), prisma, default: prisma }),
+  },
+  {
+    specifier: '@/lib/audit/logger',
+    factory: () => ({
+      ...base('@/lib/audit/logger'),
+      AuditLogAction: { LOGIN: 'LOGIN', CREATE: 'CREATE', UPDATE: 'UPDATE', PASSWORD_CHANGED: 'PASSWORD_CHANGED' },
+      createAuditLog: mock(async () => null),
+      logAuditEvent: mock(async () => null),
+    }),
+  },
+  {
+    specifier: '@/lib/auth/session-context',
+    factory: () => ({
+      ...base('@/lib/auth/session-context'),
+      getCachedSessionAndTenant: mock(async () => {
+        if (session instanceof Error) throw session
+        const { userId, tenantId, schoolId, role } = session
+        return { userId, tenantId, schoolId, role, roleName: role, user: { id: userId }, claimedTenantId: tenantId }
+      }),
+      getTokenTenantId: mock(async () => (session instanceof Error ? null : TENANT)),
+    }),
+  },
+] as const
+
+// Also registered at load time, so the imports below resolve these specifiers through the
+// doubles and the file is correct in a run that never reaches `beforeEach`.
+for (const { specifier, factory } of FAKES) {
+  mock.module(specifier, factory)
+}
 
 // The portal origin the emailed links are built from, and the tenant a
 // school-code-less request resolves to. `RESEND_API_KEY` is set to a dummy value
@@ -277,6 +317,9 @@ function post(path: string, body: unknown, ip = '198.51.100.10'): Request {
 }
 
 beforeEach(() => {
+  for (const { specifier, factory } of FAKES) {
+    mock.module(specifier, factory)
+  }
   users = [makeUser()]
   SENT.length = 0
   sendFails = false

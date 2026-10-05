@@ -138,15 +138,49 @@ describe('role grants', () => {
 
   it('never grants classroom teachers the school-wide configuration keys', () => {
     const granted = permissionsForRole('CLASSROOM_TEACHER')
-    for (const forbidden of ['grading:update', 'promotion:execute']) {
+    for (const forbidden of ['grading:update', 'promotion:execute', 'score:approve']) {
       expect(granted).not.toContain(forbidden)
     }
   })
 
   it('gives PARENT only self-scoped and school-wide-notice reads', () => {
     expect(permissionsForRole('PARENT').sort()).toEqual(
-      ['announcement:read', 'communication:read', 'student:read'].sort(),
+      [
+        'announcement:read',
+        'communication:read',
+        'document:health:read',
+        'document:health:upload',
+        'report:read',
+        'student:health:read',
+        'student:health:write',
+        'student:read',
+      ].sort(),
     )
+  })
+
+  it('scopes every PARENT grant to their own child except school-wide notices', () => {
+    // The set assertion above says which keys a parent holds. This says what
+    // each one is allowed to reach, which is the part that actually protects a
+    // child. `report:read` is what makes a parent able to open their own child's
+    // report card; if it ever resolved to `all` the same key would hand a parent
+    // every report in the school.
+    const scopes = Object.fromEntries(
+      permissionsForRole('PARENT').map((key) => [key, scopeFor('PARENT', key)]),
+    )
+    expect(scopes['report:read']).toBe('own')
+    expect(scopes['student:read']).toBe('own')
+    // Not student data: a notice and a school message genuinely are
+    // school-wide, so these two are the deliberate exceptions.
+    expect(scopes['announcement:read']).toBe('all')
+    expect(scopes['communication:read']).toBe('all')
+    // Anything else a parent is granted in future must not be school-wide by
+    // accident. Adding a key to ROLE_GRANT_RULES.PARENT without a scope
+    // override silently widens it, so the default is pinned here.
+    const schoolWideByNature = new Set(['announcement:read', 'communication:read'])
+    for (const [key, scope] of Object.entries(scopes)) {
+      if (schoolWideByNature.has(key)) continue
+      expect(scope, `PARENT grant ${key} must not be school-wide`).not.toBe('all')
+    }
   })
 
   it('grants no unknown keys and every granted key exists in the catalog', () => {
@@ -245,9 +279,50 @@ describe('controlled vocabularies', () => {
   })
 
   it('grants every role a non-empty, non-total permission set', () => {
+    const catalogSize = PERMISSION_CATALOG.length
     for (const role of PLATFORM_ROLE_NAMES) {
       const granted = permissionsForRole(role)
       expect(granted.length, `${role} has no permissions`).toBeGreaterThan(0)
+    }
+  })
+
+  it('keeps every role except the Head of School short of the whole catalog', () => {
+    // The "non-total" half of the title above, which that test used to omit.
+    // Rewriting `permissionsForRole` as `catalog.filter(() => true)` made every
+    // role fully privileged — ROLE_GRANT_RULES bypassed and never read — and the
+    // loop stayed green, because `length > 0` cannot tell a scoped grant from the
+    // entire catalog.
+    //
+    // HEADMASTER is exempt on purpose, not by oversight: its rule is literally
+    // `() => true` (permission-keys.ts), because the Head of School is the
+    // school's principal and is meant to hold every permission the tenant defines.
+    // The exemption is stated here rather than smuggled in, so that "HEADMASTER is
+    // total" stays a visible decision instead of becoming the one role nobody
+    // checks.
+    const catalogSize = PERMISSION_CATALOG.length
+    for (const role of PLATFORM_ROLE_NAMES) {
+      if (role === 'HEADMASTER') continue
+      const granted = permissionsForRole(role)
+      expect(granted.length, `${role} was granted every permission in the catalog`).toBeLessThan(
+        catalogSize,
+      )
+    }
+  })
+
+  it('gives the Head of School the whole catalog, deliberately', () => {
+    // Pins the exemption above so it cannot quietly become a bug in either
+    // direction: HEADMASTER losing a permission is as much a regression as another
+    // role gaining one.
+    expect(permissionsForRole('HEADMASTER').length).toBe(PERMISSION_CATALOG.length)
+  })
+
+  it('grants only permissions that exist in the catalog', () => {
+    // The other half of "scoped": a grant set can be short without being correct if
+    // it is short because it names things that do not exist.
+    for (const role of PLATFORM_ROLE_NAMES) {
+      for (const granted of permissionsForRole(role)) {
+        expect(PERMISSION_CATALOG.map((def) => def.key)).toContain(granted)
+      }
     }
   })
 })

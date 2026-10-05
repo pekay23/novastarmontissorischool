@@ -90,18 +90,16 @@ const getTenantContext = mock(async (): Promise<Session> => {
   return session
 })
 
+class ForbiddenError extends Error {
+  constructor(message = 'Forbidden') {
+    super(message)
+    this.name = 'ForbiddenError'
+  }
+}
+
 const hasPermission = mock(
   async (_userId: string, key: string): Promise<boolean> => grants.includes(key),
 )
-
-mock.module('server-only', () => ({}))
-mock.module('@novastar/auth', () => ({ hasPermission }))
-mock.module('@/lib/tenant', () => ({
-  UnauthorizedError,
-  ForbiddenError: class extends Error {},
-  getTenantContext,
-  getTenantContextOrNull: async () => (sessionError ? null : session),
-}))
 
 // --- Prisma ------------------------------------------------------------------
 
@@ -149,21 +147,109 @@ const syllabusCreate = mock(async (args: QueryArgs): Promise<Row> => {
   return row
 })
 
-const syllabusFindMany = mock(async (_args: QueryArgs): Promise<Row[]> => [])
+/**
+ * The stored syllabi the list read resolves, before the projection is applied.
+ * A test sets this; the double below decides what the handler actually gets back.
+ */
+let syllabusRows: Row[] = []
+
+/**
+ * Apply the projection the handler asked for, the way Prisma would.
+ *
+ * A `select` REPLACES the column list: every column the handler did not name is
+ * absent from the row it returns. That is the whole reason this exists — without
+ * it the double hands back the fixture whatever the handler asked for, so a route
+ * that narrowed its read to `select: { id: true, title: true }` would still
+ * return `topics`, `body` and `status`, and every assertion about what the list
+ * response contains would pass against a query that in production returns none
+ * of them.
+ *
+ * The relation `include` is left alone: a fixture row that already carries its
+ * `classSubject` and `term` stands in for a joined result, and what the handler
+ * asked for there is asserted on the arguments directly.
+ */
+function projectRow(row: Row, args: QueryArgs): Row {
+  const select = args.select
+  if (!select) return { ...row }
+  const projected: Row = {}
+  for (const [column, wanted] of Object.entries(select)) {
+    if (wanted === true && column in row) projected[column] = row[column]
+  }
+  return projected
+}
+
+const syllabusFindMany = mock(async (args: QueryArgs): Promise<Row[]> =>
+  syllabusRows.map((row) => projectRow(row, args)),
+)
 
 /** `logSystemError` writes through this when `toErrorResponse` persists. */
 const systemErrorCreate = mock(async (_args: QueryArgs): Promise<Row> => ({ id: 'err-1' }))
 
-mock.module('@/lib/prisma', () => ({
-  prisma: {
-    syllabus: { create: syllabusCreate, findMany: syllabusFindMany },
-    classSubject: { findFirst: classSubjectFindFirst, findMany: mock(async () => []) },
-    term: { findFirst: termFindFirst, findMany: mock(async () => []) },
-    class: { findMany: mock(async () => []) },
-    systemError: { create: systemErrorCreate },
-    auditLog: { findFirst: mock(async () => null) },
+// ---------------------------------------------------------------------------
+// Module-mock lifetime: snapshot before registering, restore after
+// ---------------------------------------------------------------------------
+// `mock.module` patches the LIVE namespace for the whole process and never reverts, so a
+// registration made at module scope is what every file loaded afterwards binds to. All four
+// boundaries are put back. `server-only` goes first and alone because the real
+// `@/lib/tenant` imports it and the package is not installed here, so nothing else is
+// capturable until that specifier resolves.
+//
+// The remaining snapshots are read HERE, before the first real registration. That is the
+// load-bearing part: a `beforeEach` capture would run after these registrations had
+// already overwritten the namespace, so it would record this file's own factory and hand
+// the double straight back to the next file.
+//
+// Every factory SPREADS the namespace it replaces and then overrides, making each fake
+// both a superset and a subset — which is what makes the restore complete, since
+// `mock.module` merges and an added key could never be removed again. The `@/lib/tenant`
+// spread is what makes this file work in ISOLATION: the real module also exports
+// `TenantSuspendedError`, which `@/lib/api-response` imports, and a factory listing only
+// four names left it absent for every import resolved after this one — which is why this
+// file used to pass only when some earlier file had happened to load the real module.
+mock.module('server-only', () => ({}))
+
+const previousNamespaces = new Map<string, Record<string, unknown>>()
+previousNamespaces.set('server-only', { ...(await import('server-only')) })
+previousNamespaces.set('@novastar/auth', { ...(await import('@novastar/auth')) })
+previousNamespaces.set('@/lib/tenant', { ...(await import('@/lib/tenant')) })
+previousNamespaces.set('@/lib/prisma', { ...(await import('@/lib/prisma')) })
+
+const base = (specifier: string): Record<string, unknown> =>
+  previousNamespaces.get(specifier) ?? {}
+
+const FAKES = [
+  { specifier: '@novastar/auth', factory: () => ({ ...base('@novastar/auth'), hasPermission }) },
+  {
+    specifier: '@/lib/tenant',
+    factory: () => ({
+      ...base('@/lib/tenant'),
+      UnauthorizedError,
+      ForbiddenError,
+      getTenantContext,
+      getTenantContextOrNull: async () => (sessionError ? null : session),
+    }),
   },
-}))
+  {
+    specifier: '@/lib/prisma',
+    factory: () => ({
+      ...base('@/lib/prisma'),
+      prisma: {
+        syllabus: { create: syllabusCreate, findMany: syllabusFindMany },
+        classSubject: { findFirst: classSubjectFindFirst, findMany: mock(async () => []) },
+        term: { findFirst: termFindFirst, findMany: mock(async () => []) },
+        class: { findMany: mock(async () => []) },
+        systemError: { create: systemErrorCreate },
+        auditLog: { findFirst: mock(async () => null) },
+      },
+    }),
+  },
+] as const
+
+// Also registered at load time, so the route import below resolves these specifiers
+// through the doubles and the file is correct in a run that never reaches `beforeEach`.
+for (const { specifier, factory } of FAKES) {
+  mock.module(specifier, factory)
+}
 
 const { GET, POST } = await import('@/app/api/syllabi/route')
 
@@ -197,6 +283,9 @@ function p2002(): Error {
 }
 
 beforeEach(() => {
+  for (const { specifier, factory } of FAKES) {
+    mock.module(specifier, factory)
+  }
   session = {
     tenantId: TENANT_ID,
     schoolId: SCHOOL_ID,
@@ -208,6 +297,7 @@ beforeEach(() => {
   grants = ['academic:read', 'academic:create']
   createdSyllabi = []
   createError = null
+  syllabusRows = []
 })
 
 // --- Tests -------------------------------------------------------------------
@@ -263,6 +353,32 @@ describe('POST /api/syllabi - validation', () => {
     await POST(postRequest({ ...validBody, topics: ['  Counting  ', 'Patterns'] }))
 
     expect(createdSyllabi[0].topics).toEqual(['Counting', 'Patterns'])
+  })
+
+  it('stores a new syllabus as DRAFT when the body says nothing about status', async () => {
+    // `validBody` carries no `status`, so this is the create form's own payload.
+    // The default is what an unpublished draft looks like on the list page, and
+    // a default flipped to PUBLISHED would publish every syllabus the moment it
+    // was written, with nothing in a test noticing.
+    await POST(postRequest(validBody))
+
+    expect(createdSyllabi[0].status).toBe('DRAFT')
+  })
+
+  it('stores the status the body names rather than the default', async () => {
+    await POST(postRequest({ ...validBody, status: 'PUBLISHED' }))
+
+    expect(createdSyllabi[0].status).toBe('PUBLISHED')
+  })
+
+  it('rejects a status outside the enum instead of storing it', async () => {
+    const res = await POST(postRequest({ ...validBody, status: 'published' }))
+
+    // Lower-case is the spelling a hand-written client reaches for; the column
+    // stores the enum, so accepting it would store a value the list page cannot
+    // map to a badge.
+    expect(res.status).toBe(400)
+    expect(createdSyllabi).toHaveLength(0)
   })
 
   it('reports a duplicate title as 409, not as a server fault', async () => {
@@ -321,11 +437,22 @@ describe('POST /api/syllabi - authorization', () => {
 })
 
 describe('GET /api/syllabi', () => {
-  it('refuses a caller without the academic read key', async () => {
-    grants = []
+  it('refuses a caller whose only academic key is the create one', async () => {
+    // A specific OTHER key, not an empty grant list. `grants = []` would deny
+    // every key the route could possibly ask about, so the test would still pass
+    // if the read were gated on `academic:create`, `attendance:read`, or a key
+    // nobody has heard of. Granting the one real near-miss pins the exact key.
+    grants = ['academic:create']
     const res = await GET(getRequest())
 
     expect(res.status).toBe(403)
+  })
+
+  it('answers a caller holding only the academic read key, so the refusal above is load-bearing', async () => {
+    grants = ['academic:read']
+    const res = await GET(getRequest())
+
+    expect(res.status).toBe(200)
   })
 
   it('answers an unauthenticated caller with 401', async () => {
@@ -373,17 +500,47 @@ describe('GET /api/syllabi', () => {
   })
 
   it('returns the topics with the list', async () => {
-    syllabusFindMany.mockImplementationOnce(async () => [
+    // Served through the projection-honouring double, so this is a statement
+    // about the columns the handler asked for. With the fixture's own topics
+    // returned regardless of the query, the assertion held even for a handler
+    // that narrowed its read and got no `topics` column at all.
+    syllabusRows = [
       {
         id: 'syl-1',
         title: 'Number bonds to 10',
         topics: ['Counting to five', 'Making ten'],
       },
-    ])
+    ]
 
     const res = await GET(getRequest())
     const payload = await res.json()
 
     expect(payload.data[0].topics).toEqual(['Counting to five', 'Making ten'])
+  })
+
+  it('asks for the class, subject and term names the list renders, in one query', async () => {
+    let seen: QueryArgs | null = null
+    syllabusFindMany.mockImplementationOnce(async (args: QueryArgs) => {
+      seen = args
+      return []
+    })
+
+    await GET(getRequest())
+
+    // The row has to arrive with its relations or the table renders nothing for
+    // every row but the title: the list is one call, with no client-side resolve
+    // of the class subject ids behind it.
+    expect(seen!.include).toEqual({
+      classSubject: {
+        include: {
+          class: { select: { id: true, name: true } },
+          subject: { select: { id: true, name: true, code: true } },
+        },
+      },
+      term: { select: { id: true, name: true, academicYear: { select: { name: true } } } },
+    })
+    // Not narrowed with `select` at the same time: Prisma rejects the two
+    // together, so a route that added one would 500 in production.
+    expect(seen!.select).toBeUndefined()
   })
 })

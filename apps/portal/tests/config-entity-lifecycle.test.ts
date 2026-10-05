@@ -116,18 +116,11 @@ const tenantContext = {
   userId: 'user-1',
 }
 
-// Bun's module-mock registry is process-global and outlives this file, so the
-// factory must export every name `@/lib/tenant` exports that anything imports.
-mock.module('@/lib/tenant', () => ({
-  getTenantContext: async () => tenantContext,
-  getTenantContextOrNull: async () => tenantContext,
-  UnauthorizedError: MockUnauthorizedError,
-  ForbiddenError: MockForbiddenError,
-  ServerConfigError: MockServerConfigError,
-}))
-
+// Captured before the first `mock.module` below, so it is the namespace this file
+// replaces rather than its own factory. Registered with the rest further down. The
+// `@/lib/tenant` factory below spreads the namespace it replaces rather than listing a
+// subset, so no caller can fail on a name this file happened not to spell out.
 const actualAuth = await import('@novastar/auth')
-mock.module('@novastar/auth', () => ({ ...actualAuth, hasPermission: async () => true }))
 
 type Args = { where?: Record<string, unknown>; data?: Record<string, unknown> }
 
@@ -136,11 +129,43 @@ const findFirstCalls: Args[] = []
 const updateCalls: Args[] = []
 const deleteCalls: Args[] = []
 
+/**
+ * The sibling read, empty.
+ *
+ * `grading_scale` declares a sibling-row rule, so its PATCH and POST read the
+ * school's other scales before writing. There are none here, which is a valid
+ * configuration and the reason these tests are about `isActive` rather than about
+ * applicability — a tenant with two scales claiming one level is covered in
+ * grading-scale-applicability.test.ts.
+ */
+/**
+ * Whether a stored row satisfies the `where` the route built.
+ *
+ * The subset of Prisma filter syntax `buildScopeWhere` produces: every value it
+ * pushes is a scalar equality, so this is scalar equality with Prisma's
+ * `null` semantics (a `null` clause matches only a null column, not a missing
+ * one). A field the clause does not mention is not constrained.
+ *
+ * Honouring the clause is what makes the cross-school case real. Answering from
+ * `storedRow` unconditionally would hand back a row belonging to another school,
+ * so a route that dropped its `if (!entity) 404` guard — or scoped the lookup
+ * only by `id` — would still be handed the row and still pass. Prisma would not
+ * do that, so neither does this.
+ */
+function satisfies(row: Record<string, unknown> | null, where: Record<string, unknown> | undefined): boolean {
+  if (row === null) return false
+  if (where === undefined) return true
+  return Object.entries(where).every(([key, expected]) =>
+    expected === null ? row[key] === null : row[key] === expected,
+  )
+}
+
 const delegate = {
   findFirst: mock(async (args: Args) => {
     findFirstCalls.push(args)
-    return storedRow
+    return satisfies(storedRow, args.where) ? storedRow : null
   }),
+  findMany: mock(async () => [] as unknown[]),
   update: mock(async (args: Args) => {
     updateCalls.push(args)
     return { ...(storedRow ?? {}), ...(args.data ?? {}) }
@@ -151,15 +176,71 @@ const delegate = {
   }),
 }
 
+// ---------------------------------------------------------------------------
+// Module-mock lifetime: snapshot before registering, restore after
+// ---------------------------------------------------------------------------
+// `mock.module` patches the LIVE namespace for the whole process and never reverts, so a
+// registration made at module scope is what every file loaded afterwards binds to. All
+// four boundaries are put back. `server-only` goes first and alone because the real
+// `@/lib/tenant` imports it and the package is not installed here, so nothing else is
+// capturable until that specifier resolves.
+//
+// The remaining snapshots are read HERE, before the first real registration. That is the
+// load-bearing part: a `beforeEach` capture would run after these registrations had
+// already overwritten the namespace, so it would record this file's own factory and hand
+// the double straight back to the next file.
+//
+// Every factory SPREADS the namespace it replaces and then overrides, making each fake
+// both a superset (no caller can fail on a name this file did not list) and a subset
+// (`mock.module` merges, so an added key could never be removed by the restore).
+const previousNamespaces = new Map<string, Record<string, unknown>>([
+  ['@novastar/auth', { ...actualAuth }],
+])
+
 mock.module('server-only', () => ({}))
-mock.module('@/lib/prisma', () => ({
-  prisma: {
-    gradingScale: delegate,
-    assessmentTypeConfig: delegate,
-    feeStructure: delegate,
-    attendanceTaker: delegate,
+
+previousNamespaces.set('server-only', { ...(await import('server-only')) })
+previousNamespaces.set('@/lib/tenant', { ...(await import('@/lib/tenant')) })
+previousNamespaces.set('@/lib/prisma', { ...(await import('@/lib/prisma')) })
+
+const base = (specifier: string): Record<string, unknown> =>
+  previousNamespaces.get(specifier) ?? {}
+
+const FAKES = [
+  {
+    specifier: '@novastar/auth',
+    factory: () => ({ ...base('@novastar/auth'), hasPermission: async () => true }),
   },
-}))
+  {
+    specifier: '@/lib/tenant',
+    factory: () => ({
+      ...base('@/lib/tenant'),
+      getTenantContext: async () => tenantContext,
+      getTenantContextOrNull: async () => tenantContext,
+      UnauthorizedError: MockUnauthorizedError,
+      ForbiddenError: MockForbiddenError,
+      ServerConfigError: MockServerConfigError,
+    }),
+  },
+  {
+    specifier: '@/lib/prisma',
+    factory: () => ({
+      ...base('@/lib/prisma'),
+      prisma: {
+        gradingScale: delegate,
+        assessmentTypeConfig: delegate,
+        feeStructure: delegate,
+        attendanceTaker: delegate,
+      },
+    }),
+  },
+] as const
+
+// Also registered at load time, so the route import below resolves these specifiers
+// through the doubles and the file is correct in a run that never reaches `beforeEach`.
+for (const { specifier, factory } of FAKES) {
+  mock.module(specifier, factory)
+}
 
 const silencedError = spyOn(console, 'error').mockImplementation(() => {})
 afterAll(() => {
@@ -192,6 +273,9 @@ const remove = (entityType: string, id = 'row-1') =>
   })
 
 beforeEach(() => {
+  for (const { specifier, factory } of FAKES) {
+    mock.module(specifier, factory)
+  }
   storedRow = null
   findFirstCalls.length = 0
   updateCalls.length = 0
@@ -283,13 +367,39 @@ describe('a grading scale is readable, editable and retirable again', () => {
   it('still 404s a row from another school, so the fix did not widen the scope', async () => {
     // `buildScopeWhere` still carries id + tenantId + schoolId. Removing `isActive`
     // must not have removed the school clause with it.
+    //
+    // The stored row is another school's, and `findFirst` above answers from the
+    // clause rather than from the fixture, so the lookup really does come back
+    // empty. That is what makes the 404 below a fact about the route rather than
+    // about the mock: a route that returned whatever Prisma gave it — even a
+    // null it never checked for — would answer 200 here.
     storedRow = { id: 'row-1', tenantId: 'tenant-1', schoolId: 'school-2', name: 'Other school' }
 
-    await get('grading_scale')
+    const res = await get('grading_scale')
+    const body = (await res.json()) as Record<string, unknown>
 
+    expect(res.status).toBe(404)
+    expect(body).toEqual({ error: 'Entity not found' })
+    // The other school's name is never echoed, so the 404 confirms nothing about
+    // a row the caller may not see.
+    expect(JSON.stringify(body)).not.toContain('Other school')
     expect(findFirstCalls[0]!.where).toEqual({
       id: 'row-1',
       tenantId: 'tenant-1',
+      schoolId: 'school-1',
+    })
+  })
+
+  it('answers 404 for a row the caller owns, so the 404 above is not just "no row"', async () => {
+    // The negative control for the case above: same route, same status, a row the
+    // caller really does own. Without it a 404 could come from anything.
+    storedRow = { id: 'row-1', tenantId: 'tenant-1', schoolId: 'school-1', name: 'Ghana Primary' }
+
+    const res = await get('grading_scale')
+
+    expect(res.status).toBe(200)
+    expect((await res.json()) as Record<string, unknown>).toMatchObject({
+      id: 'row-1',
       schoolId: 'school-1',
     })
   })

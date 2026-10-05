@@ -97,8 +97,6 @@ const hasPermission = mock(
     grants.includes('*') || grants.includes(key),
 )
 
-mock.module('@novastar/auth', () => ({ hasPermission }))
-
 class UnauthorizedError extends Error {
   constructor() {
     super('Unauthorized')
@@ -119,14 +117,6 @@ const getTenantContext = mock(async (): Promise<Session> => {
   if (sessionError) throw sessionError
   return session
 })
-
-mock.module('server-only', () => ({}))
-mock.module('@/lib/tenant', () => ({
-  UnauthorizedError,
-  ForbiddenError,
-  getTenantContext,
-  getTenantContextOrNull: async () => (sessionError ? null : session),
-}))
 
 // --- Prisma -----------------------------------------------------------------
 
@@ -169,13 +159,66 @@ const attendanceTakerFindMany = mock(async (args: QueryArgs): Promise<Row[]> => 
   return grantRows
 })
 
-mock.module('@/lib/prisma', () => ({
-  prisma: {
-    staff: { findFirst: staffFindFirst },
-    classSubject: { findMany: classSubjectFindMany },
-    attendanceTaker: { findMany: attendanceTakerFindMany },
+// ---------------------------------------------------------------------------
+// Module-mock lifetime: snapshot before registering, restore after
+// ---------------------------------------------------------------------------
+// `mock.module` patches the LIVE namespace for the whole process and never reverts, so a
+// registration made at module scope is what every file loaded afterwards binds to. All four
+// boundaries are put back. `server-only` goes first and alone because the real
+// `@/lib/tenant` imports it and the package is not installed here, so nothing else is
+// capturable until that specifier resolves.
+//
+// The remaining snapshots are read HERE, before the first real registration. That is the
+// load-bearing part: a `beforeEach` capture would run after these registrations had
+// already overwritten the namespace, so it would record this file's own factory and hand
+// the double straight back to the next file.
+//
+// Every factory SPREADS the namespace it replaces and then overrides, making each fake
+// both a superset (no caller can fail on a name this file did not list) and a subset
+// (`mock.module` merges, so an added key could never be removed by the restore). The
+// `@novastar/auth` spread matters most: a factory exporting only `hasPermission` left every
+// other export `undefined` for every file that resolved the module afterwards.
+mock.module('server-only', () => ({}))
+
+const previousNamespaces = new Map<string, Record<string, unknown>>()
+previousNamespaces.set('server-only', { ...(await import('server-only')) })
+previousNamespaces.set('@novastar/auth', { ...(await import('@novastar/auth')) })
+previousNamespaces.set('@/lib/tenant', { ...(await import('@/lib/tenant')) })
+previousNamespaces.set('@/lib/prisma', { ...(await import('@/lib/prisma')) })
+
+const base = (specifier: string): Record<string, unknown> =>
+  previousNamespaces.get(specifier) ?? {}
+
+const FAKES = [
+  { specifier: '@novastar/auth', factory: () => ({ ...base('@novastar/auth'), hasPermission }) },
+  {
+    specifier: '@/lib/tenant',
+    factory: () => ({
+      ...base('@/lib/tenant'),
+      UnauthorizedError,
+      ForbiddenError,
+      getTenantContext,
+      getTenantContextOrNull: async () => (sessionError ? null : session),
+    }),
   },
-}))
+  {
+    specifier: '@/lib/prisma',
+    factory: () => ({
+      ...base('@/lib/prisma'),
+      prisma: {
+        staff: { findFirst: staffFindFirst },
+        classSubject: { findMany: classSubjectFindMany },
+        attendanceTaker: { findMany: attendanceTakerFindMany },
+      },
+    }),
+  },
+] as const
+
+// Also registered at load time, so the route import below resolves these specifiers
+// through the doubles and the file is correct in a run that never reaches `beforeEach`.
+for (const { specifier, factory } of FAKES) {
+  mock.module(specifier, factory)
+}
 
 const { GET, decideCanTakeAttendance } = await import(
   '@/app/api/teachers/me/courses/route'
@@ -185,11 +228,14 @@ const { GET, decideCanTakeAttendance } = await import(
 // Helpers
 // ---------------------------------------------------------------------------
 
-function coursesRequest(): NextRequest {
-  return new NextRequest('http://localhost/api/teachers/me/courses')
+function coursesRequest(query = ''): NextRequest {
+  return new NextRequest(`http://localhost/api/teachers/me/courses${query}`)
 }
 
 beforeEach(() => {
+  for (const { specifier, factory } of FAKES) {
+    mock.module(specifier, factory)
+  }
   session = { ...SESSION }
   sessionError = null
   grants = ['timetable:read']
@@ -300,13 +346,37 @@ describe('GET /api/teachers/me/courses', () => {
   })
 
   it('queries by the session’s Staff id and tenantId only — never a URL param', async () => {
-    await GET(coursesRequest())
-    const where = (classSubjectFindMany.mock.calls[0][0] as QueryArgs).where ?? {}
-    expect(where.tenantId).toBe(TENANT_ID)
-    expect(where.teacherId).toBe(STAFF_ID)
-    // The route takes no parameters at all, so no caller can name
-    // another teacher.
-    expect(classSubjectFindMany.mock.calls[0][0]).not.toHaveProperty('params')
+    // Two requests: one bare, one naming another teacher's class subject, another
+    // teacher's staff id and another class. A handler that read any of them would
+    // put it in the query, and between them these two catch both spellings — a
+    // value, and a `searchParams.get(...) ?? undefined` that is inert here and
+    // therefore invisible to a value assertion.
+    const bare = await GET(coursesRequest())
+    const parametrised = await GET(
+      coursesRequest('?classSubjectId=cs-foreign&teacherId=staff-other&classId=class-foreign'),
+    )
+
+    expect(bare.status).toBe(200)
+    expect(parametrised.status).toBe(200)
+    // The list is the teacher's own courses whatever the URL asked for.
+    for (const res of [bare, parametrised]) {
+      const body = (await res.json()) as { data: Row[] }
+      expect(body.data.map((c) => c.classSubjectId)).toEqual(['cs-1', 'cs-2'])
+    }
+
+    const wheres = classSubjectFindMany.mock.calls
+      .slice(-2)
+      .map((call) => (call[0] as QueryArgs).where as Row)
+    expect(wheres).toHaveLength(2)
+    for (const where of wheres) {
+      // The whole predicate, not two properties of it. A `where` that also
+      // carried a URL-supplied `classSubjectId` would still satisfy a `toBe` on
+      // each field, which is how an attacker-namable filter gets in.
+      expect(where).toEqual({ tenantId: TENANT_ID, teacherId: STAFF_ID })
+      // `toEqual` ignores keys whose value is `undefined`, so a param read on a
+      // request that carried none would pass it. The key list cannot.
+      expect(Object.keys(where).sort()).toEqual(['teacherId', 'tenantId'])
+    }
   })
 
   it('answers 200 with an empty list for a teacher with no ClassSubject rows', async () => {
@@ -381,11 +451,23 @@ describe('GET /api/teachers/me/courses', () => {
     ])
   })
 
-  it('refuses a caller without the timetable:read key', async () => {
-    grants = ['attendance:read']
+  it('refuses a caller whose only timetable key is the write one', async () => {
+    // The near miss this route's own docstring discusses: `timetable:update`
+    // goes with writing a schedule, not with reading one, and `ROLE_READ_SCOPE`
+    // narrows both to the caller's own classes. An unrelated key in this list
+    // would have been denied by any gate at all.
+    grants = ['timetable:update']
     const res = await GET(coursesRequest())
     expect(res.status).toBe(403)
     expect(classSubjectFindMany).not.toHaveBeenCalled()
+  })
+
+  it('answers a caller holding only timetable:read, so the refusal above is load-bearing', async () => {
+    grants = ['timetable:read']
+    const res = await GET(coursesRequest())
+
+    expect(res.status).toBe(200)
+    expect(classSubjectFindMany).toHaveBeenCalledTimes(1)
   })
 
   it('answers 401 when the session is missing', async () => {

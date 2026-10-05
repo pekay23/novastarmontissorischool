@@ -1,4 +1,4 @@
-import { describe, it, expect, mock } from 'bun:test'
+import { describe, it, expect, mock, beforeEach } from 'bun:test'
 
 /**
  * Guards on `scripts/repair-attendance-duplicates.ts --apply`.
@@ -16,14 +16,62 @@ import { describe, it, expect, mock } from 'bun:test'
  */
 
 mock.module('server-only', () => ({}))
-mock.module('@/lib/prisma', () => ({
-  prisma: {
-    attendanceStudent: { deleteMany: mock(async () => ({ count: 0 })) },
-    $queryRaw: mock(async () => []),
-    $transaction: mock(async (fn: (tx: unknown) => Promise<unknown>) => fn({})),
-    $disconnect: mock(async () => {}),
+
+// ---------------------------------------------------------------------------
+// Module-mock lifetime: snapshot before registering, restore after
+// ---------------------------------------------------------------------------
+//
+// `mock.module` patches the LIVE namespace for the whole process and never reverts, so
+// a registration made at module scope is what every file that loads afterwards binds
+// to. Both boundaries registered here are put back afterwards.
+//
+// `server-only` is registered first and on its own: the real `@/lib/tenant` imports it
+// and the package is not installed in this workspace, so nothing else is capturable
+// until something makes that specifier resolvable. It has no real namespace to hand
+// back for the same reason, so its snapshot entry is the empty module registered here.
+//
+// The remaining snapshot is read BEFORE the first real registration, and that is
+// load-bearing: a `beforeEach` capture would run after the registrations below had
+// already overwritten the namespace, so it would record this file's own factory and
+// hand the double straight back to the next file.
+//
+// The factory SPREADS the namespace it replaces and then overrides, which makes the
+// fake both a superset (no caller can fail on a name this file did not list) and a
+// subset (`mock.module` merges, so an added key could never be removed by the restore).
+const previousNamespaces = new Map<string, Record<string, unknown>>()
+previousNamespaces.set('server-only', { ...(await import('server-only')) })
+previousNamespaces.set('@/lib/prisma', { ...(await import('@/lib/prisma')) })
+
+const base = (specifier: string): Record<string, unknown> =>
+  previousNamespaces.get(specifier) ?? {}
+
+const FAKES = [
+  {
+    specifier: '@/lib/prisma',
+    factory: () => ({
+      ...base('@/lib/prisma'),
+      prisma: {
+        attendanceStudent: { deleteMany: mock(async () => ({ count: 0 })) },
+        $queryRaw: mock(async () => []),
+        $transaction: mock(async (fn: (tx: unknown) => Promise<unknown>) => fn({})),
+        $disconnect: mock(async () => {}),
+      },
+      default: base('@/lib/prisma').prisma,
+    }),
   },
-}))
+] as const
+
+// Also registered at load time, so the import of the script below resolves `@/lib/prisma`
+// through the double and the file is correct in a run that never reaches `beforeEach`.
+for (const { specifier, factory } of FAKES) {
+  mock.module(specifier, factory)
+}
+
+beforeEach(() => {
+  for (const { specifier, factory } of FAKES) {
+    mock.module(specifier, factory)
+  }
+})
 
 const { resolveDatabaseTarget, confirmationToken } = await import(
   '../scripts/repair-attendance-duplicates'
@@ -66,11 +114,36 @@ describe('--apply refuses a production target without an explicit second flag', 
   })
 
   it('refuses an absent or unparseable URL rather than guessing', () => {
-    // An unidentifiable target is not a safe target.
-    expect(resolveDatabaseTarget(undefined)).toBeNull()
+    // An unidentifiable target is not a safe target. `''` is the absent case
+    // here — there is no way to express "absent" by passing `undefined`, because
+    // `undefined` selects the DATABASE_URL fallback in the next test rather than
+    // an empty URL. This assertion used to read `resolveDatabaseTarget(undefined)`
+    // and expect null, which held only on a machine with no DATABASE_URL set: it
+    // passed in CI and failed on any developer laptop, and on CI it was silently
+    // testing the env-empty path instead of the absent-URL path it named.
     expect(resolveDatabaseTarget('')).toBeNull()
     expect(resolveDatabaseTarget('not-a-url')).toBeNull()
     expect(resolveDatabaseTarget('postgresql://')).toBeNull()
+  })
+
+  it('treats an omitted URL as "use DATABASE_URL", and an unset one as absent', () => {
+    // `main()` calls `resolveDatabaseTarget()` with no argument, so this default
+    // is the difference between repairing the configured database and refusing to
+    // run at all. Asserted against a value this test controls rather than
+    // whatever the host machine happens to have exported.
+    const original = process.env.DATABASE_URL
+    try {
+      process.env.DATABASE_URL = 'postgresql://u:p@db.example.com/neondb'
+      expect(resolveDatabaseTarget(undefined)?.host).toBe('db.example.com')
+      expect(resolveDatabaseTarget()?.database).toBe('neondb')
+
+      delete process.env.DATABASE_URL
+      expect(resolveDatabaseTarget(undefined)).toBeNull()
+      expect(resolveDatabaseTarget()).toBeNull()
+    } finally {
+      if (original === undefined) delete process.env.DATABASE_URL
+      else process.env.DATABASE_URL = original
+    }
   })
 })
 

@@ -42,6 +42,7 @@ const SCHOOL_ID = 'school-main'
 const CLASSES: Row[] = [
   { id: 'class-own', tenantId: TENANT_ID, schoolId: SCHOOL_ID },
   { id: 'class-other', tenantId: TENANT_ID, schoolId: SCHOOL_ID },
+  { id: 'class-shared', tenantId: TENANT_ID, schoolId: SCHOOL_ID },
   { id: 'class-foreign', tenantId: OTHER_TENANT_ID, schoolId: 'school-other' },
 ]
 
@@ -54,9 +55,11 @@ const TIMETABLES: Row[] = [
     termId: 'term-1',
     name: 'Autumn',
     isPublished: true,
-    // Deliberately stored out of order. `selectTimetable` applies the
-    // `orderBy` the handler asked for, so the expected sequence below
-    // is only reachable by a handler that actually asked.
+    // Deliberately stored out of order. These are not sorted by the
+    // top-level `orderBy` — that orders whole timetable rows, not the
+    // entries hanging off one — but by `include.entries.orderBy` via
+    // `orderEntries`, so the expected sequence below is only reachable by
+    // a handler that actually asked.
     entries: [
       { id: 'e2', dayOfWeek: 1, startTime: '10:00', endTime: '11:00' },
       { id: 'e1', dayOfWeek: 1, startTime: '08:00', endTime: '09:00' },
@@ -81,6 +84,31 @@ const TIMETABLES: Row[] = [
     classId: 'class-foreign',
     termId: 'term-foreign',
     name: 'Autumn',
+    isPublished: true,
+    entries: [],
+  },
+  // Two named timetables for ONE class/term pair, stored in the wrong
+  // order. `Timetable` is unique on `(tenantId, classId, termId, name)`
+  // and not on `(classId, termId)`, so this pair is exactly the case the
+  // route's `orderBy: { name: 'asc' }` exists for: two rows match, and
+  // nothing but the requested ordering picks between them. If a
+  // `findFirst` double answered with fixture order, 'Zebra' would win and
+  // the route's determinism claim would be untested.
+  {
+    id: 'tt-zebra',
+    tenantId: TENANT_ID,
+    classId: 'class-shared',
+    termId: 'term-shared',
+    name: 'Zebra',
+    isPublished: true,
+    entries: [],
+  },
+  {
+    id: 'tt-apple',
+    tenantId: TENANT_ID,
+    classId: 'class-shared',
+    termId: 'term-shared',
+    name: 'Apple',
     isPublished: true,
     entries: [],
   },
@@ -110,8 +138,6 @@ const hasPermission = mock(
     grants.includes('*') || grants.includes(key),
 )
 
-mock.module('@novastar/auth', () => ({ hasPermission }))
-
 class UnauthorizedError extends Error {
   constructor() {
     super('Unauthorized')
@@ -132,14 +158,6 @@ const getTenantContext = mock(async (): Promise<Session> => {
   if (sessionError) throw sessionError
   return session
 })
-
-mock.module('server-only', () => ({}))
-mock.module('@/lib/tenant', () => ({
-  UnauthorizedError,
-  ForbiddenError,
-  getTenantContext,
-  getTenantContextOrNull: async () => (sessionError ? null : session),
-}))
 
 // --- Prisma -----------------------------------------------------------------
 
@@ -184,6 +202,40 @@ function compareValues(a: unknown, b: unknown): number {
 }
 
 /**
+ * Apply an `orderBy` clause the way Prisma does.
+ *
+ * `requested` is whatever the handler put in the clause: one
+ * `{ field: 'asc' }`, an ordered list of them, or absent. It is typed
+ * `unknown` because it arrives through the mocked client boundary, not
+ * from a call site TypeScript checked. Absent means the caller
+ * expressed no preference, so the incoming order survives untouched —
+ * which is what a real `findFirst` without `orderBy` returns.
+ * Otherwise rows are compared clause by clause and field by field, in
+ * the order the handler listed them, so the first difference decides.
+ */
+function sortByOrderBy(rows: ReadonlyArray<Row>, requested: unknown): Row[] {
+  const clauses: Row[] = Array.isArray(requested)
+    ? requested
+    : typeof requested === 'object' && requested !== null
+      ? [requested as Row]
+      : []
+  if (clauses.length === 0) return [...rows]
+  // `Array.prototype.sort` is stable, so rows that compare equal keep
+  // the order they arrived in — a tie in the requested key leaves the
+  // outcome as it was, rather than reordering rows arbitrarily.
+  return [...rows].sort((a, b) => {
+    for (const clause of clauses) {
+      for (const key of Object.keys(clause)) {
+        const descending = String(clause[key]).toLowerCase() === 'desc'
+        const cmp = compareValues(a[key], b[key]) * (descending ? -1 : 1)
+        if (cmp !== 0) return cmp
+      }
+    }
+    return 0
+  })
+}
+
+/**
  * Apply the `include.entries.orderBy` the handler asked for.
  *
  * This is what makes the ordering assertion mean something. The
@@ -194,21 +246,7 @@ function compareValues(a: unknown, b: unknown): number {
  * route that ordered nothing.
  */
 function orderEntries(args: QueryArgs, entries: ReadonlyArray<Row>): Row[] {
-  const requested = (args.include?.entries as Row | undefined)?.orderBy
-  const clauses: Row[] = Array.isArray(requested)
-    ? requested
-    : requested
-      ? [requested]
-      : []
-  return [...entries].sort((a, b) => {
-    for (const clause of clauses) {
-      for (const key of Object.keys(clause)) {
-        const cmp = compareValues(a[key], b[key])
-        if (cmp !== 0) return cmp
-      }
-    }
-    return 0
-  })
+  return sortByOrderBy(entries, (args.include?.entries as Row | undefined)?.orderBy)
 }
 
 /**
@@ -217,11 +255,18 @@ function orderEntries(args: QueryArgs, entries: ReadonlyArray<Row>): Row[] {
  * `AND: [{ id: { in: [...] } }]` clause, so a caller outside the
  * visibility scope — or in another tenant — gets no row rather
  * than the mock being cooperative.
+ *
+ * Every row that satisfies `where` is collected before the top-level
+ * `orderBy` is applied, because `findFirst` orders the whole match set
+ * and then takes one row. Returning the first fixture match instead
+ * would ignore `orderBy` outright and answer whichever row happened to
+ * be written first, which is the behaviour the route's
+ * `orderBy: { name: 'asc' }` is there to prevent.
  */
 function selectTimetable(args: QueryArgs): Row | null {
   const where = args.where ?? {}
   const and = where.AND as Array<{ classId?: { in?: string[] } }> | undefined
-  const row = TIMETABLES.find((candidate) => {
+  const matches = TIMETABLES.filter((candidate) => {
     if (where.tenantId !== undefined && candidate.tenantId !== where.tenantId) {
       return false
     }
@@ -254,6 +299,7 @@ function selectTimetable(args: QueryArgs): Row | null {
     }
     return true
   })
+  const row = sortByOrderBy(matches, args.orderBy)[0]
   if (!row) return null
   return { ...row, entries: orderEntries(args, (row.entries as Row[]) ?? []) }
 }
@@ -295,22 +341,75 @@ const $transaction = mock(
   },
 )
 
-mock.module('@/lib/prisma', () => ({
-  prisma: {
-    staff: { findFirst: staffFindFirst },
-    parent: { findFirst: parentFindFirst },
-    class: { findFirst: classFindFirst, findMany: classFindMany },
-    term: { findFirst: termFindFirst },
-    classSubject: { findMany: classSubjectFindMany },
-    timetable: {
-      findFirst: timetableFindFirst,
-      findUnique: timetableFindUnique,
-      create: timetableCreate,
-    },
-    timetableEntry: { createMany: timetableEntryCreateMany },
-    $transaction,
+// ---------------------------------------------------------------------------
+// Module-mock lifetime: snapshot before registering, restore after
+// ---------------------------------------------------------------------------
+// `mock.module` patches the LIVE namespace for the whole process and never reverts, so a
+// registration made at module scope is what every file loaded afterwards binds to. All four
+// boundaries are put back. `server-only` goes first and alone because the real
+// `@/lib/tenant` imports it and the package is not installed here, so nothing else is
+// capturable until that specifier resolves.
+//
+// The remaining snapshots are read HERE, before the first real registration. That is the
+// load-bearing part: a `beforeEach` capture would run after these registrations had
+// already overwritten the namespace, so it would record this file's own factory and hand
+// the double straight back to the next file.
+//
+// Every factory SPREADS the namespace it replaces and then overrides, making each fake
+// both a superset (no caller can fail on a name this file did not list) and a subset
+// (`mock.module` merges, so an added key could never be removed by the restore). The
+// `@novastar/auth` spread matters most: a factory exporting only `hasPermission` left every
+// other export `undefined` for every file that resolved the module afterwards.
+mock.module('server-only', () => ({}))
+
+const previousNamespaces = new Map<string, Record<string, unknown>>()
+previousNamespaces.set('server-only', { ...(await import('server-only')) })
+previousNamespaces.set('@novastar/auth', { ...(await import('@novastar/auth')) })
+previousNamespaces.set('@/lib/tenant', { ...(await import('@/lib/tenant')) })
+previousNamespaces.set('@/lib/prisma', { ...(await import('@/lib/prisma')) })
+
+const base = (specifier: string): Record<string, unknown> =>
+  previousNamespaces.get(specifier) ?? {}
+
+const FAKES = [
+  { specifier: '@novastar/auth', factory: () => ({ ...base('@novastar/auth'), hasPermission }) },
+  {
+    specifier: '@/lib/tenant',
+    factory: () => ({
+      ...base('@/lib/tenant'),
+      UnauthorizedError,
+      ForbiddenError,
+      getTenantContext,
+      getTenantContextOrNull: async () => (sessionError ? null : session),
+    }),
   },
-}))
+  {
+    specifier: '@/lib/prisma',
+    factory: () => ({
+      ...base('@/lib/prisma'),
+      prisma: {
+        staff: { findFirst: staffFindFirst },
+        parent: { findFirst: parentFindFirst },
+        class: { findFirst: classFindFirst, findMany: classFindMany },
+        term: { findFirst: termFindFirst },
+        classSubject: { findMany: classSubjectFindMany },
+        timetable: {
+          findFirst: timetableFindFirst,
+          findUnique: timetableFindUnique,
+          create: timetableCreate,
+        },
+        timetableEntry: { createMany: timetableEntryCreateMany },
+        $transaction,
+      },
+    }),
+  },
+] as const
+
+// Also registered at load time, so the route import below resolves these specifiers
+// through the doubles and the file is correct in a run that never reaches `beforeEach`.
+for (const { specifier, factory } of FAKES) {
+  mock.module(specifier, factory)
+}
 
 const { GET, POST, validateCreateTimetable } = await import(
   '@/app/api/timetable/route'
@@ -352,6 +451,9 @@ function createPayload(overrides: Record<string, unknown> = {}) {
 }
 
 beforeEach(() => {
+  for (const { specifier, factory } of FAKES) {
+    mock.module(specifier, factory)
+  }
   session = { ...SESSION }
   sessionError = null
   grants = ['*']
@@ -505,6 +607,27 @@ describe('GET /api/timetable', () => {
     ])
   })
 
+  it('returns the name-ascending of two same-key timetables, so the answer is deterministic', async () => {
+    // Two rows match this class/term pair: `tt-zebra` ("Zebra") and
+    // `tt-apple` ("Apple"). The route asks for `orderBy: { name: 'asc' }`
+    // precisely because `(tenantId, classId, termId, name)` is unique but
+    // `(classId, termId)` is not. The fake honours the requested clause,
+    // so "Apple" comes back even though it is written second — a fake that
+    // answered the first fixture match would hand back `tt-zebra` here.
+    const res = await GET(timetableRequest('?classId=class-shared&termId=term-shared'))
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { data: Row }
+    expect(body.data.id).toBe('tt-apple')
+    expect(body.data.name).toBe('Apple')
+
+    // And the clause that made it deterministic is the one the route sent,
+    // so this cannot pass on a route that happened to sort for another
+    // reason.
+    expect((timetableFindFirst.mock.calls[0][0] as QueryArgs).orderBy).toEqual({
+      name: 'asc',
+    })
+  })
+
   it('joins each entry to its subject and teacher', async () => {
     await GET(timetableRequest('?classId=class-own&termId=term-1'))
     const include = (timetableFindFirst.mock.calls[0][0] as QueryArgs).include ?? {}
@@ -577,11 +700,27 @@ describe('GET /api/timetable', () => {
     expect(res.status).toBe(403)
   })
 
-  it('refuses a caller without the timetable:read key', async () => {
-    grants = ['attendance:read']
+  it('refuses a caller whose only timetable key is the write one', async () => {
+    // A specific OTHER key from this route's own vocabulary, not an unrelated
+    // one. Every other test in this file grants `'*'`, so a grant list of
+    // `['attendance:read']` was denied by the read gate whether it asked for
+    // `timetable:read`, `timetable:update` or anything else — the exact key was
+    // never pinned. Naming the write key is the near miss that matters: it is the
+    // one key a scheduler holds without being entitled to read the schedule.
+    grants = ['timetable:update']
     const res = await GET(timetableRequest('?classId=class-own&termId=term-1'))
     expect(res.status).toBe(403)
     expect(timetableFindFirst).not.toHaveBeenCalled()
+  })
+
+  it('answers a caller holding only timetable:read, so the refusal above is load-bearing', async () => {
+    grants = ['timetable:read']
+    const res = await GET(timetableRequest('?classId=class-own&termId=term-1'))
+
+    // Exactly the read key, no wildcard: this is the request that fails if the
+    // gate asks for any other one.
+    expect(res.status).toBe(200)
+    expect(timetableFindFirst).toHaveBeenCalledTimes(1)
   })
 
   it('answers 401 when the session is missing', async () => {
@@ -688,11 +827,21 @@ describe('POST /api/timetable', () => {
     expect(body.error).toBe('A record with these values already exists')
   })
 
-  it('refuses a caller without the timetable:update key', async () => {
+  it('refuses a caller whose only timetable key is the read one', async () => {
     grants = ['timetable:read']
     const res = await POST(jsonRequest(createPayload()))
     expect(res.status).toBe(403)
     expect($transaction).not.toHaveBeenCalled()
+  })
+
+  it('accepts a caller holding only timetable:update, so the refusal above is load-bearing', async () => {
+    // Without this, the write gate could ask for any key at all and stay green:
+    // every other POST here grants `'*'`, and the refusal grants the read key.
+    grants = ['timetable:update']
+    const res = await POST(jsonRequest(createPayload()))
+
+    expect(res.status).toBe(201)
+    expect($transaction).toHaveBeenCalledTimes(1)
   })
 
   it('answers 401 when the session is missing', async () => {

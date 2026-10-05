@@ -69,15 +69,49 @@ const delegationCreate = mock(async (args: QueryArgs): Promise<Row> => ({
 }))
 const auditLogCreate = mock(async (): Promise<Row> => ({ id: 'audit-1' }))
 
-mock.module('@novastar/database', () => ({
-  ...actualDatabase,
-  prisma: {
-    user: { findUnique: userFindUnique },
-    role: { findUnique: roleFindUnique, findMany: roleFindMany },
-    delegation: { findMany: delegationFindMany, create: delegationCreate },
-    auditLog: { create: auditLogCreate },
+// ---------------------------------------------------------------------------
+// Module-mock lifetime: snapshot before registering, restore after
+// ---------------------------------------------------------------------------
+//
+// `mock.module` patches the LIVE namespace for the whole process and never reverts, so
+// a registration made at module scope is what every file that loads afterwards binds
+// to, and it is still live once this file has finished. The double below is
+// reinstalled before each test and the namespace it replaced is handed back after,
+// so the process is left exactly as it was found.
+//
+// The snapshot is read HERE, before the first registration, and that is
+// load-bearing: a `beforeEach` capture would run after this registration had already
+// overwritten the namespace, so it would record this file's own factory and hand the
+// double straight back to the next file.
+//
+// The factory SPREADS the namespace it replaces and then overrides, which makes the
+// fake both a superset (no caller can fail on a name this file happened not to list)
+// and a subset (`mock.module` merges, so an added key could never be removed by the
+// restore).
+const previousNamespaces = new Map<string, Record<string, unknown>>([
+  ['@novastar/database', { ...actualDatabase }],
+])
+
+const FAKES = [
+  {
+    specifier: '@novastar/database',
+    factory: () => ({
+      ...previousNamespaces.get('@novastar/database'),
+      prisma: {
+        user: { findUnique: userFindUnique },
+        role: { findUnique: roleFindUnique, findMany: roleFindMany },
+        delegation: { findMany: delegationFindMany, create: delegationCreate },
+        auditLog: { create: auditLogCreate },
+      },
+    }),
   },
-}))
+] as const
+
+// Also registered at load time, so the import of `@novastar/auth` below resolves
+// through the double and the file is correct in a run that never reaches `beforeEach`.
+for (const { specifier, factory } of FAKES) {
+  mock.module(specifier, factory)
+}
 
 interface Row {
   [key: string]: unknown
@@ -86,6 +120,7 @@ interface Row {
 interface QueryArgs {
   where?: Row
   data?: Row
+  select?: Record<string, boolean>
 }
 
 const { createDelegation } = await import('@novastar/auth')
@@ -107,6 +142,9 @@ function actingAs(name: string, permissions: string[]): void {
 }
 
 beforeEach(() => {
+  for (const { specifier, factory } of FAKES) {
+    mock.module(specifier, factory)
+  }
   actingAs('CLASSROOM_TEACHER', ['student:read', 'assessment:read'])
   delegationCreate.mockClear()
   delegationFindMany.mockClear()

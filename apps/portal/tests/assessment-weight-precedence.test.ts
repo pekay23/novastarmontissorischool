@@ -61,16 +61,9 @@ const tenantContext = {
   role: 'HEADMASTER',
 }
 
-mock.module('@/lib/tenant', () => ({
-  getTenantContext: async () => tenantContext,
-  getTenantContextOrNull: async () => tenantContext,
-  UnauthorizedError: MockUnauthorizedError,
-  ForbiddenError: MockForbiddenError,
-  ServerConfigError: MockServerConfigError,
-}))
-
+// Captured before the first `mock.module` below, so it is the namespace this file
+// replaces rather than its own factory. Registered with the rest further down.
 const actualAuth = await import('@novastar/auth')
-mock.module('@novastar/auth', () => ({ ...actualAuth, hasPermission: async () => true }))
 
 type Args = { where?: Record<string, unknown>; data?: Record<string, unknown> }
 
@@ -91,15 +84,71 @@ const assessmentCreate = mock(async (args: Args) => {
   return { id: 'assessment-1', ...(args.data ?? {}) }
 })
 
+// ---------------------------------------------------------------------------
+// Module-mock lifetime: snapshot before registering, restore after
+// ---------------------------------------------------------------------------
+// `mock.module` patches the LIVE namespace for the whole process and never reverts, so a
+// registration made at module scope is what every file loaded afterwards binds to. All
+// four boundaries are put back. `server-only` goes first and alone because the real
+// `@/lib/tenant` imports it and the package is not installed here, so nothing else is
+// capturable until that specifier resolves.
+//
+// The remaining snapshots are read HERE, before the first real registration. That is the
+// load-bearing part: a `beforeEach` capture would run after these registrations had
+// already overwritten the namespace, so it would record this file's own factory and hand
+// the double straight back to the next file.
+//
+// Every factory SPREADS the namespace it replaces and then overrides, making each fake
+// both a superset (no caller can fail on a name this file did not list) and a subset
+// (`mock.module` merges, so an added key could never be removed by the restore).
+const previousNamespaces = new Map<string, Record<string, unknown>>([
+  ['@novastar/auth', { ...actualAuth }],
+])
+
 mock.module('server-only', () => ({}))
-mock.module('@/lib/prisma', () => ({
-  prisma: {
-    classSubject: { findFirst: classSubjectFindFirst },
-    assessmentTypeConfig: { findFirst: assessmentTypeConfigFindFirst },
-    term: { findFirst: termFindFirst },
-    assessment: { create: assessmentCreate },
+
+previousNamespaces.set('server-only', { ...(await import('server-only')) })
+previousNamespaces.set('@/lib/tenant', { ...(await import('@/lib/tenant')) })
+previousNamespaces.set('@/lib/prisma', { ...(await import('@/lib/prisma')) })
+
+const base = (specifier: string): Record<string, unknown> =>
+  previousNamespaces.get(specifier) ?? {}
+
+const FAKES = [
+  {
+    specifier: '@novastar/auth',
+    factory: () => ({ ...base('@novastar/auth'), hasPermission: async () => true }),
   },
-}))
+  {
+    specifier: '@/lib/tenant',
+    factory: () => ({
+      ...base('@/lib/tenant'),
+      getTenantContext: async () => tenantContext,
+      getTenantContextOrNull: async () => tenantContext,
+      UnauthorizedError: MockUnauthorizedError,
+      ForbiddenError: MockForbiddenError,
+      ServerConfigError: MockServerConfigError,
+    }),
+  },
+  {
+    specifier: '@/lib/prisma',
+    factory: () => ({
+      ...base('@/lib/prisma'),
+      prisma: {
+        classSubject: { findFirst: classSubjectFindFirst },
+        assessmentTypeConfig: { findFirst: assessmentTypeConfigFindFirst },
+        term: { findFirst: termFindFirst },
+        assessment: { create: assessmentCreate },
+      },
+    }),
+  },
+] as const
+
+// Also registered at load time, so the route import below resolves these specifiers
+// through the doubles and the file is correct in a run that never reaches `beforeEach`.
+for (const { specifier, factory } of FAKES) {
+  mock.module(specifier, factory)
+}
 
 const silencedError = spyOn(console, 'error').mockImplementation(() => {})
 afterAll(() => {
@@ -127,6 +176,9 @@ const VALID_BODY = {
 }
 
 beforeEach(() => {
+  for (const { specifier, factory } of FAKES) {
+    mock.module(specifier, factory)
+  }
   typeConfig = {
     id: 'type-quiz',
     tenantId: 'tenant-1',
@@ -273,7 +325,17 @@ describe('a retune of the type reaches every assessment that has no weight of it
 
     expect(resolveAssessmentWeight(pinned).source).toBe('assessment')
     expect(computeAcademicSummary([quizRow, pinned]).weightedPercentage).toBe(60)
-    expect(computeAcademicSummary([quizRow, { ...pinned }]).weightedPercentage).toBe(60)
+    // The same figure from the very same two objects, not from copies of them. A
+    // copy proves nothing here: `{ ...pinned }` is asserted on, so a summary that
+    // rewrote its input could still pass. `Object.freeze` turns that rewrite into a
+    // throw instead of a silently different number, and freezing the array too means
+    // the call cannot sort, splice or reorder the caller's rows either.
+    const frozen = Object.freeze([quizRow, Object.freeze(pinned)]) as ReadonlyArray<ReportableAssessment>
+    expect(computeAcademicSummary(frozen as ReportableAssessment[]).weightedPercentage).toBe(60)
+    // Unchanged by being read, which is the other half of the claim.
+    expect(pinned.weight).toBe(0.15)
+    expect(pinned.typeDefaultWeight).toBe(0.15)
+    expect(frozen[0]).toBe(quizRow)
   })
 })
 

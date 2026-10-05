@@ -167,30 +167,78 @@ function record(self: unknown, name: Step): void {
  * `update` either: the write path only ever upserts and deletes.
  */
 mock.module('server-only', () => ({}))
-mock.module('@/lib/prisma', () => ({
-  prisma: {
-    systemConfig: ROOT_MODEL,
-    systemError: { create: systemErrorCreate },
-    $transaction,
-  },
-}))
-mock.module('@/lib/auth/session-context', () => ({
-  getCachedSessionAndTenant,
-  getTokenTenantId: async () => null,
-}))
+
+// ---------------------------------------------------------------------------
+// Module-mock lifetime: snapshot before registering, restore after
+// ---------------------------------------------------------------------------
+// `mock.module` patches the LIVE namespace for the whole process and never reverts, so a
+// registration made at module scope is what every file loaded afterwards binds to. All four
+// boundaries registered here are put back. `server-only` goes first because `@/lib/prisma`
+// resolves through it and the package is not installed in this workspace.
+//
+// The remaining snapshots are read HERE, before the first real registration. That is the
+// load-bearing part: a `beforeEach` capture would run after these registrations had already
+// overwritten the namespace, so it would record this file's own factory and hand the double
+// straight back to the next file.
+//
+// Every factory SPREADS the namespace it replaces and then overrides, making each fake both
+// a superset and a subset — which is what makes the restore complete, since `mock.module`
+// merges and an added key could never be removed again.
+const previousNamespaces = new Map<string, Record<string, unknown>>()
+previousNamespaces.set('server-only', { ...(await import('server-only')) })
+previousNamespaces.set('@/lib/prisma', { ...(await import('@/lib/prisma')) })
+previousNamespaces.set('@/lib/auth/session-context', {
+  ...(await import('@/lib/auth/session-context')),
+})
+previousNamespaces.set('@/lib/audit/logger', { ...(await import('@/lib/audit/logger')) })
+
+const base = (specifier: string): Record<string, unknown> =>
+  previousNamespaces.get(specifier) ?? {}
 
 /**
- * Pull the real `AuditLogAction` enum out before the module is replaced, so the
- * `action` asserted below is the production constant rather than a copy of it
- * that could drift. Only `logAuditEvent` is under test.
+ * The real `AuditLogAction` enum, read out before the module is replaced, so the `action`
+ * asserted below is the production constant rather than a copy of it that could drift.
+ * Only `logAuditEvent` is under test.
  */
 const { AuditLogAction } = await import('@/lib/audit/logger')
-mock.module('@/lib/audit/logger', () => ({
-  AuditLogAction,
-  logAuditEvent,
-  createAuditLog: logAuditEvent,
-  queryAuditLogs: async () => ({ logs: [], total: 0 }),
-}))
+
+const FAKES = [
+  {
+    specifier: '@/lib/prisma',
+    factory: () => ({
+      ...base('@/lib/prisma'),
+      prisma: {
+        systemConfig: ROOT_MODEL,
+        systemError: { create: systemErrorCreate },
+        $transaction,
+      },
+    }),
+  },
+  {
+    specifier: '@/lib/auth/session-context',
+    factory: () => ({
+      ...base('@/lib/auth/session-context'),
+      getCachedSessionAndTenant,
+      getTokenTenantId: async () => null,
+    }),
+  },
+  {
+    specifier: '@/lib/audit/logger',
+    factory: () => ({
+      ...base('@/lib/audit/logger'),
+      AuditLogAction,
+      logAuditEvent,
+      createAuditLog: logAuditEvent,
+      queryAuditLogs: async () => ({ logs: [], total: 0 }),
+    }),
+  },
+] as const
+
+// Also registered at load time, so the route imports below resolve these specifiers through
+// the doubles and the file is correct in a run that never reaches `beforeEach`.
+for (const { specifier, factory } of FAKES) {
+  mock.module(specifier, factory)
+}
 
 const { UnauthorizedError } = await import('@/lib/tenant')
 const { FEATURE_FLAGS, manageableFlagKeys } = await import('@/lib/system-config')
@@ -246,6 +294,9 @@ function singleCall(name: 'findUnique' | 'upsert' | 'deleteMany'): ConfigArgs {
 }
 
 beforeEach(() => {
+  for (const { specifier, factory } of FAKES) {
+    mock.module(specifier, factory)
+  }
   // Reset rather than only clear: a leaked implementation from one test would
   // let the next test pass on data it did not set up.
   steps = []
@@ -1117,29 +1168,122 @@ describe('GET /api/system/config - the read path is read-only', () => {
       expect(typeof flag.version).toBe('number')
     }
   })
+it('should serve the registry metadata with the server-side fields stripped', async () => {
+    findMany.mockImplementation(async () => [])
+
+    const res = await GET(new NextRequest('http://localhost/api/system/config'))
+    const json = (await readJson(res)) as {
+      definitions: Record<string, Record<string, unknown>>
+    }
+
+    // The ROUTE is where the invariant has to hold. Asserting it on
+    // `featureFlagDefinitions()` alone proves only that the projector redacts:
+    // the handler is free to send `FEATURE_FLAGS` instead, and it did — which
+    // hands every client the zod schema (`schema` serialises to `{}`, so the
+    // redaction is invisible unless the key set is checked) and the registry's
+    // `isEditable` lock, the two fields the projector exists to keep server-side.
+    const definitions = json.definitions
+    expect(Object.keys(definitions).length).toBeGreaterThan(0)
+
+    for (const key of Object.keys(definitions)) {
+      expect({ key, served: Object.keys(definitions[key]).sort() }).toEqual({
+        key,
+        served: ['category', 'defaultValue', 'description'],
+      })
+    }
+    // And nothing outside the registry is described to anyone.
+    for (const key of Object.keys(definitions)) {
+      expect(Object.hasOwn(FEATURE_FLAGS, key)).toBe(true)
+    }
+  })
 })
 
 describe('PATCH /api/system/config/:key - flag keys come from the registry only', () => {
-  it('should refuse a key the registry has since removed', async () => {
-    // Regression guard for a rename: an old bookmark or a stale client should
-    // get a 404, not a write against a key nothing resolves any more.
-    //
-    // The list is written out by hand rather than derived from the response or
-    // from `manageableFlagKeys`, because that is what makes it a guard: deriving
-    // it would make this assertion agree with whatever the registry happens to
-    // say, which is the failure mode every other assertion in this file is
-    // written against. Six entries here, seven in `FEATURE_FLAGS` — the missing
-    // one is `admissions_open`, and it is missing ON PURPOSE. It is registered,
-    // so it must never be added here expecting a 404: this route refuses it with
-    // 403 and a pointer to `PATCH /api/admissions/status`, which the block at the
-    // end of this file pins.
-    const keys: FeatureFlagKey[] = ['ai_enabled', 'sms_enabled', 'offline_mode', 'sso_google', 'sso_microsoft', 'sso_saml']
-    expect(keys).toHaveLength(6)
+  /**
+   * The keys this route admits a HEADMASTER write for, written out by hand.
+   *
+   * Hand-written rather than derived from the response or from
+   * `manageableFlagKeys`, because deriving it would make the assertion agree with
+   * whatever the registry happens to say — the failure mode every other assertion
+   * in this file is written against. Six entries, seven in `FEATURE_FLAGS` — the
+   * missing one is `admissions_open`, and it is missing ON PURPOSE. It is
+   * registered, so it must never be added here: this route refuses it with 403
+   * and a pointer to `PATCH /api/admissions/status`, which the block at the end of
+   * this file pins.
+   *
+   * Every entry below is sent to the route, so the list is a claim about the
+   * handler rather than a note about it. A list of names that is only ever
+   * counted can be wrong in every direction at once and still pass.
+   */
+  const ADMITTED_KEYS: FeatureFlagKey[] = [
+    'ai_enabled',
+    'sms_enabled',
+    'offline_mode',
+    'sso_google',
+    'sso_microsoft',
+    'sso_saml',
+  ]
 
+  it('should admit every key on the list above, rather than 404ing one of them', async () => {
+    for (const key of ADMITTED_KEYS) {
+      const res = await patchRequest(key, { value: true })
+
+      // A registered, editable flag is written and answered 200 — or, for
+      // `offline_mode`, whose default is already true, reset and answered 200.
+      // Either way it is NOT the 404 an unregistered key gets, which is the only
+      // thing this assertion is about: the list and the handler agree.
+      expect({ key, status: res.status, reported: (await readFlag(res)).key }).toEqual({
+        key,
+        status: 200,
+        reported: key,
+      })
+    }
+  })
+
+  it('should answer 404 for a key this registry never registered', async () => {
+    // A crafted segment, and the prototype-chain keys beside it in the block
+    // above. It never existed, which is exactly why it proves nothing about a
+    // registry that CHANGED: see the next test for that.
     const res = await patchRequest('legacy_2fa', { value: true })
 
     expect(res.status).toBe(404)
     expect(dbCalls()).toBe(0)
+    expect(logAuditEvent).not.toHaveBeenCalled()
+  })
+
+  it('should refuse a key the registry has since removed', async () => {
+    // The regression this block is really for: an old bookmark or a stale client
+    // must get a 404, not a write against a key nothing resolves any more. It is
+    // provoked by removing a REAL entry rather than by naming a key that never
+    // existed, because a never-existed key cannot tell "the registry dropped it"
+    // from "the registry never had it" — and it stays green if the membership
+    // check is deleted outright, since `FEATURE_FLAGS[key]` would then be the
+    // inherited `Object.prototype.constructor` (truthy) and the write would
+    // continue.
+    const registry = FEATURE_FLAGS as unknown as Record<string, unknown>
+    const original = { ...FEATURE_FLAGS }
+    const key = 'sms_enabled'
+    delete registry[key]
+    try {
+      const res = await patchRequest(key, { value: true })
+
+      expect(res.status).toBe(404)
+      // Zero storage, and zero connections: membership is settled before
+      // anything is read or written.
+      expect(dbCalls()).toBe(0)
+      expect(logAuditEvent).not.toHaveBeenCalled()
+      // The error names the key, so the stale client can see what it asked for.
+      expect(await readJson(res)).toEqual({ error: `Unknown feature flag: ${key}` })
+    } finally {
+      // Reinsert in the ORIGINAL order, not just the original contents:
+      // `manageableFlagKeys` and `resolveFeatureFlags` both iterate the registry
+      // with `Object.keys`, which is insertion order, so a plain
+      // `registry[key] = entry` would move this flag to the end and fail every
+      // order-sensitive assertion in the file for a reason that has nothing to do
+      // with what they test.
+      for (const existing of Object.keys(registry)) delete registry[existing]
+      Object.assign(registry, original)
+    }
   })
 
   it('should list exactly the keys this route admits a HEADMASTER write for', async () => {

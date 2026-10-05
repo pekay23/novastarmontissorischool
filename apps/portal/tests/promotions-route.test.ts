@@ -86,6 +86,13 @@ class UnauthorizedError extends Error {
   }
 }
 
+class ForbiddenError extends Error {
+  constructor(message = 'Forbidden') {
+    super(message)
+    this.name = 'ForbiddenError'
+  }
+}
+
 const getTenantContext = mock(async (): Promise<Session> => {
   if (sessionError) throw sessionError
   return session
@@ -95,14 +102,7 @@ const hasPermission = mock(
   async (_userId: string, key: string): Promise<boolean> => grants.includes(key),
 )
 
-mock.module('server-only', () => ({}))
-mock.module('@novastar/auth', () => ({ hasPermission }))
-mock.module('@/lib/tenant', () => ({
-  UnauthorizedError,
-  ForbiddenError: class extends Error {},
-  getTenantContext,
-  getTenantContextOrNull: async () => (sessionError ? null : session),
-}))
+// Registered with the rest further down, once the Prisma delegates they depend on exist.
 
 // --- Prisma doubles ----------------------------------------------------------
 
@@ -139,34 +139,46 @@ const studentFindMany = mock(async (args: QueryArgs): Promise<Row[]> => {
 })
 
 /**
- * The compound-unique upsert, recorded rather than performed.
+ * The compound-unique upsert, RECORDED AND PERFORMED against a real store.
  *
- * `upsertCalls` is the evidence for idempotence: a repeated promotion must
- * issue the SAME upsert keyed on `[tenantId, studentId, termId]`, never a
- * second `create`, and never raise.
+ * Recording the call proved only that `upsert` was named twice; a mock cannot
+ * model `@@unique([tenantId, studentId, termId])`, so nothing about P2002 was
+ * under test. `ENROLLMENTS` is that constraint: keyed on the three columns, a
+ * second insert of the same key raises the Prisma error the route is supposed to
+ * avoid. The double therefore behaves as Prisma does — `create` when the key is
+ * absent, `update` when it is present — and which branch it took is recorded, so
+ * "re-running inserted nothing" is an observation rather than an inference from a
+ * method name.
  */
 interface UpsertCall {
   where: { tenantId_studentId_termId: { tenantId: string; studentId: string; termId: string } }
   create: Row
   update: Row
+  /** `'create'` when the key was absent and the row was inserted; `'update'` otherwise. */
+  branch: 'create' | 'update'
 }
 
 let upsertCalls: UpsertCall[] = []
+/** The store the unique constraint is enforced over, keyed as the constraint is. */
+let ENROLLMENTS = new Map<string, Row>()
 
 /** Set by a test to make one student's upsert fail. */
 let upsertErrorFor: string | null = null
 
 const enrollmentUpsert = mock(async (args: QueryArgs): Promise<Row> => {
   const where = args.where as UpsertCall['where']
-  const studentId = where.tenantId_studentId_termId.studentId
+  const key = where.tenantId_studentId_termId
+  const studentId = key.studentId
   if (upsertErrorFor === studentId) throw new Error('write failed')
   // Prisma's `upsert` takes `create` and `update` as siblings, not a `data`.
-  upsertCalls.push({
-    where,
-    create: (args as unknown as { create: Row }).create,
-    update: (args as unknown as { update: Row }).update,
-  })
-  return { id: `enr-${studentId}` }
+  const create = (args as unknown as { create: Row }).create
+  const update = (args as unknown as { update: Row }).update
+  const storeKey = `${key.tenantId}|${key.studentId}|${key.termId}`
+  const branch = ENROLLMENTS.has(storeKey) ? 'update' : 'create'
+  upsertCalls.push({ where, create, update, branch })
+  const row = { id: `enr-${studentId}`, ...ENROLLMENTS.get(storeKey), ...(branch === 'create' ? create : update) }
+  ENROLLMENTS.set(storeKey, row)
+  return row
 })
 
 /** Tenant-scoped by construction, so a foreign id updates nothing. */
@@ -204,24 +216,95 @@ const $transaction = mock(
   },
 )
 
-mock.module('@/lib/audit/logger', () => ({
-  AuditLogAction: { UPDATE: 'UPDATE' },
-  logAuditEvent,
-  createAuditLog: logAuditEvent,
-}))
+// The real `AuditLogAction` enum, so an assertion about the action the route
+// records is a claim about the production enum rather than about a value this
+// file chose. The previous mock was `{ UPDATE: 'UPDATE' }`: it happened to agree
+// with the real value, so `expect(action).toBe('UPDATE')` passed, but so would
+// every wrong action the route could have named had the enum ever diverged. The
+// import sits below the Prisma mock so the real logger loads against the mocked
+// client rather than a real one.
+// ---------------------------------------------------------------------------
+// Module-mock lifetime: snapshot before registering, restore after
+// ---------------------------------------------------------------------------
+// `mock.module` patches the LIVE namespace for the whole process and never reverts, so a
+// registration made at module scope is what every file loaded afterwards binds to. All five
+// boundaries are put back. `server-only` goes first and alone because the real
+// `@/lib/tenant` imports it and the package is not installed here, so nothing else is
+// capturable until that specifier resolves.
+//
+// The remaining snapshots are read HERE, before the first real registration. That is the
+// load-bearing part: a `beforeEach` capture would run after these registrations had
+// already overwritten the namespace, so it would record this file's own factory and hand
+// the double straight back to the next file.
+//
+// Every factory SPREADS the namespace it replaces and then overrides, making each fake
+// both a superset and a subset — which is what makes the restore complete, since
+// `mock.module` merges and an added key could never be removed again. The `@/lib/tenant`
+// spread is what makes this file work in ISOLATION: the real module also exports
+// `TenantSuspendedError`, which `@/lib/api-response` imports, and a factory listing only
+// four names left it absent for every import resolved after this one.
+mock.module('server-only', () => ({}))
 
-mock.module('@/lib/prisma', () => ({
-  prisma: {
-    class: { findMany: classFindMany },
-    classTerm: { findMany: classTermFindMany },
-    term: { findFirst: termFindFirst },
-    student: { findMany: studentFindMany, updateMany: studentUpdateMany },
-    enrollment: { upsert: enrollmentUpsert },
-    systemError: { create: mock(async () => ({ id: 'err-1' })) },
-    auditLog: { findFirst: mock(async () => null) },
-    $transaction,
+const previousNamespaces = new Map<string, Record<string, unknown>>()
+previousNamespaces.set('server-only', { ...(await import('server-only')) })
+previousNamespaces.set('@novastar/auth', { ...(await import('@novastar/auth')) })
+previousNamespaces.set('@/lib/tenant', { ...(await import('@/lib/tenant')) })
+previousNamespaces.set('@/lib/prisma', { ...(await import('@/lib/prisma')) })
+previousNamespaces.set('@/lib/audit/logger', { ...(await import('@/lib/audit/logger')) })
+
+const base = (specifier: string): Record<string, unknown> =>
+  previousNamespaces.get(specifier) ?? {}
+
+/** The production enum, asserted against below so a typo cannot pass. */
+const { AuditLogAction: actualAuditLogAction } = await import('@/lib/audit/logger')
+
+const FAKES = [
+  { specifier: '@novastar/auth', factory: () => ({ ...base('@novastar/auth'), hasPermission }) },
+  {
+    specifier: '@/lib/tenant',
+    factory: () => ({
+      ...base('@/lib/tenant'),
+      UnauthorizedError,
+      ForbiddenError,
+      getTenantContext,
+      getTenantContextOrNull: async () => (sessionError ? null : session),
+    }),
   },
-}))
+  {
+    specifier: '@/lib/prisma',
+    factory: () => ({
+      ...base('@/lib/prisma'),
+      prisma: {
+        class: { findMany: classFindMany },
+        classTerm: { findMany: classTermFindMany },
+        term: { findFirst: termFindFirst },
+        student: { findMany: studentFindMany, updateMany: studentUpdateMany },
+        enrollment: { upsert: enrollmentUpsert },
+        systemError: { create: mock(async () => ({ id: 'err-1' })) },
+        auditLog: { findFirst: mock(async () => null) },
+        $transaction,
+      },
+    }),
+  },
+  {
+    // The real enum, not a hand-written one, because `AuditLogAction` is a claim about
+    // production rather than about a value this file chose. Taken from the snapshot,
+    // which holds the real module's own exports.
+    specifier: '@/lib/audit/logger',
+    factory: () => ({
+      ...base('@/lib/audit/logger'),
+      AuditLogAction: base('@/lib/audit/logger').AuditLogAction,
+      logAuditEvent,
+      createAuditLog: logAuditEvent,
+    }),
+  },
+] as const
+
+// Also registered at load time, so the route import below resolves these specifiers
+// through the doubles and the file is correct in a run that never reaches `beforeEach`.
+for (const { specifier, factory } of FAKES) {
+  mock.module(specifier, factory)
+}
 
 const { GET, POST } = await import('@/app/api/promotions/route')
 
@@ -238,6 +321,9 @@ function postRequest(body: unknown): NextRequest {
 const validBody = { fromClassId: SOURCE, toClassId: TARGET, termId: TERM_ID }
 
 beforeEach(() => {
+  for (const { specifier, factory } of FAKES) {
+    mock.module(specifier, factory)
+  }
   session = {
     tenantId: TENANT_ID,
     schoolId: SCHOOL_ID,
@@ -248,6 +334,7 @@ beforeEach(() => {
   sessionError = null
   grants = ['promotion:execute']
   upsertCalls = []
+  ENROLLMENTS = new Map()
   upsertErrorFor = null
   studentUpdates = []
   studentUpdateCount = 1
@@ -331,15 +418,32 @@ describe('POST /api/promotions - the cohort transaction', () => {
     const first = await POST(postRequest(validBody))
     expect(first.status).toBe(200)
     const callsAfterFirst = upsertCalls.length
+    const storeAfterFirst = [...ENROLLMENTS.entries()].sort()
 
     const second = await POST(postRequest(validBody))
 
     expect(second.status).toBe(200)
     expect((await second.json()).data.promoted).toBe(3)
     expect(upsertCalls.length).toBe(callsAfterFirst * 2)
+
+    // Which branch each call took is the claim. The first run found no enrolment
+    // for these keys and inserted; the second found one on every key and updated,
+    // which is exactly how Prisma avoids P2002 on `@@unique([tenantId, studentId,
+    // termId])`. Counting `upsert` calls proved neither: a route that issued the
+    // same call twice against an unenforced mock cannot fail, so "no P2002" was
+    // untestable here before the store existed.
+    const branches = (calls: UpsertCall[]) => calls.map((call) => call.branch)
+    expect(branches(upsertCalls.slice(0, callsAfterFirst))).toEqual(
+      upsertCalls.slice(0, callsAfterFirst).map(() => 'create' as const),
+    )
+    expect(branches(upsertCalls.slice(callsAfterFirst))).toEqual(
+      upsertCalls.slice(callsAfterFirst).map(() => 'update' as const),
+    )
     // Still an upsert on the unique key, never a create path.
     expect(upsertCalls.every((call) => call.create && call.update)).toBe(true)
     expect(upsertCalls.some((call) => call.update.classId !== TARGET)).toBe(false)
+    // And the store converged: no key was added, so a re-run cannot grow the table.
+    expect([...ENROLLMENTS.entries()].sort()).toEqual(storeAfterFirst)
   })
 
   it('applies a per-row override to that student only', async () => {
@@ -366,6 +470,13 @@ describe('POST /api/promotions - the cohort transaction', () => {
     expect(auditWrites[0].viaTransaction).toBe(true)
     expect(auditWrites[0].params.entity).toBe('ClassPromotion')
     expect(auditWrites[0].params.tenantId).toBe(TENANT_ID)
+    // Compared against the REAL enum member. Asserting the string `'UPDATE'` here
+    // proved nothing about which action was recorded: the old mock handed the
+    // route the same one value it was then compared against, so `CREATE` or
+    // `DELETE` in the route would have been caught only by accident of the string
+    // happening to differ — and `AuditLogAction.UPDATE` in the route was never
+    // actually checked at all.
+    expect(auditWrites[0].params.action).toBe(actualAuditLogAction.UPDATE)
     const changes = auditWrites[0].params.changes as Row
     expect(changes.promoted).toBe(3)
     expect(changes.overrides).toEqual([{ studentId: 'stu-brah', toClassId: ALT }])

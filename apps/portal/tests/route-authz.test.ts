@@ -204,26 +204,6 @@ const $transaction = mock(
   async (fn: (tx: typeof TX_CLIENT) => Promise<unknown>): Promise<unknown> => fn(TX_CLIENT),
 )
 
-mock.module('server-only', () => ({}))
-mock.module('@/lib/prisma', () => ({
-  prisma: {
-    student: { findMany: studentFindMany, findFirst: studentFindFirst },
-    staff: { findMany: staffFindMany, findFirst: staffFindFirst },
-    class: { findMany: classFindMany, findFirst: classFindFirst },
-    classSubject: { findMany: classSubjectFindMany },
-    assessment: { findFirst: assessmentFindFirst, update: assessmentUpdate },
-    parent: { findFirst: parentFindFirst },
-    user: { findFirst: userFindFirst, update: userUpdate },
-    passkey: { create: passkeyCreate },
-    passkeyChallenge: {
-      findUnique: challengeFindUnique,
-      delete: challengeDelete,
-      deleteMany: mock(async (_args: QueryArgs): Promise<Row> => ({})),
-    },
-    $transaction,
-  },
-}))
-
 // --- Session and permission -------------------------------------------------
 
 interface Session {
@@ -250,8 +230,6 @@ const hasPermission = mock(
   async (_userId: string, key: string): Promise<boolean> =>
     grants.includes('*') || grants.includes(key),
 )
-
-mock.module('@novastar/auth', () => ({ hasPermission }))
 
 /**
  * Locally defined rather than imported from `@/lib/tenant`.
@@ -281,13 +259,6 @@ const getTenantContext = mock(async () => {
   return session
 })
 
-mock.module('@/lib/tenant', () => ({
-  UnauthorizedError,
-  ForbiddenError,
-  getTenantContext,
-  getTenantContextOrNull: async () => (session instanceof Error ? null : session),
-}))
-
 const getCachedSessionAndTenant = mock(async () => {
   if (session instanceof Error) throw session
   const { tenantId, schoolId, userId, role } = session
@@ -302,18 +273,100 @@ const getCachedSessionAndTenant = mock(async () => {
   }
 })
 
-mock.module('@/lib/auth/session-context', () => ({
-  getCachedSessionAndTenant,
-  getTokenTenantId: async () => (session instanceof Error ? null : TENANT_ID),
-}))
+// ---------------------------------------------------------------------------
+// Module-mock lifetime: snapshot before registering, restore after
+// ---------------------------------------------------------------------------
+// `mock.module` patches the LIVE namespace for the whole process and never reverts, so a
+// registration made at module scope is what every file loaded afterwards binds to. All six
+// boundaries registered here are put back. `server-only` goes first and alone because the
+// real `@/lib/tenant` imports it and the package is not installed here, so nothing else is
+// capturable until that specifier resolves; its snapshot entry is therefore the empty
+// module registered here — an identity, not a restoration, and inert either way.
+//
+// The other five snapshots are read HERE, before the first real registration. That is the
+// load-bearing part: a `beforeEach` capture would run after these registrations had
+// already overwritten the namespace, so it would record this file's own factory and hand
+// the double straight back to the next file.
+//
+// Every factory SPREADS the namespace it replaces and then overrides, making each fake
+// both a superset and a subset — which is what makes the restore complete, since
+// `mock.module` merges and an added key could never be removed again. The `@novastar/auth`
+// spread is the sharpest case: a factory exporting only `hasPermission` leaves every other
+// export `undefined` for every file that resolves the module afterwards, which is how
+// `empty-permissions.test.ts` could be handed no `getEffectivePermissions` at all.
+mock.module('server-only', () => ({}))
 
-// The audit logger is only reached on a passkey login, which this file does not
-// exercise; stubbed so its own imports never load.
-mock.module('@/lib/audit/logger', () => ({
-  AuditLogAction: { PASSKEY_LOGIN: 'PASSKEY_LOGIN' },
-  createAuditLog: mock(async () => null),
-  logAuditEvent: mock(async () => null),
-}))
+const previousNamespaces = new Map<string, Record<string, unknown>>()
+previousNamespaces.set('server-only', { ...(await import('server-only')) })
+previousNamespaces.set('@/lib/prisma', { ...(await import('@/lib/prisma')) })
+previousNamespaces.set('@novastar/auth', { ...(await import('@novastar/auth')) })
+previousNamespaces.set('@/lib/tenant', { ...(await import('@/lib/tenant')) })
+previousNamespaces.set('@/lib/auth/session-context', { ...(await import('@/lib/auth/session-context')) })
+previousNamespaces.set('@/lib/audit/logger', { ...(await import('@/lib/audit/logger')) })
+
+const base = (specifier: string): Record<string, unknown> =>
+  previousNamespaces.get(specifier) ?? {}
+
+const FAKES = [
+  {
+    specifier: '@/lib/prisma',
+    factory: () => ({
+      ...base('@/lib/prisma'),
+      prisma: {
+        student: { findMany: studentFindMany, findFirst: studentFindFirst },
+        staff: { findMany: staffFindMany, findFirst: staffFindFirst },
+        class: { findMany: classFindMany, findFirst: classFindFirst },
+        classSubject: { findMany: classSubjectFindMany },
+        assessment: { findFirst: assessmentFindFirst, update: assessmentUpdate },
+        parent: { findFirst: parentFindFirst },
+        user: { findFirst: userFindFirst, update: userUpdate },
+        passkey: { create: passkeyCreate },
+        passkeyChallenge: {
+          findUnique: challengeFindUnique,
+          delete: challengeDelete,
+          deleteMany: mock(async (_args: QueryArgs): Promise<Row> => ({})),
+        },
+        $transaction,
+      },
+    }),
+  },
+  { specifier: '@novastar/auth', factory: () => ({ ...base('@novastar/auth'), hasPermission }) },
+  {
+    specifier: '@/lib/tenant',
+    factory: () => ({
+      ...base('@/lib/tenant'),
+      UnauthorizedError,
+      ForbiddenError,
+      getTenantContext,
+      getTenantContextOrNull: async () => (session instanceof Error ? null : session),
+    }),
+  },
+  {
+    specifier: '@/lib/auth/session-context',
+    factory: () => ({
+      ...base('@/lib/auth/session-context'),
+      getCachedSessionAndTenant,
+      getTokenTenantId: async () => (session instanceof Error ? null : TENANT_ID),
+    }),
+  },
+  {
+    // The audit logger is only reached on a passkey login, which this file does not
+    // exercise; stubbed so its own imports never load.
+    specifier: '@/lib/audit/logger',
+    factory: () => ({
+      ...base('@/lib/audit/logger'),
+      AuditLogAction: { PASSKEY_LOGIN: 'PASSKEY_LOGIN' },
+      createAuditLog: mock(async () => null),
+      logAuditEvent: mock(async () => null),
+    }),
+  },
+] as const
+
+// Also registered at load time, so the route imports below resolve these specifiers
+// through the doubles and the file is correct in a run that never reaches `beforeEach`.
+for (const { specifier, factory } of FAKES) {
+  mock.module(specifier, factory)
+}
 
 const { GET: studentsGET } = await import('@/app/api/students/route')
 const { GET: studentGET } = await import('@/app/api/students/[id]/route')
@@ -438,6 +491,9 @@ function studentListWhere(): Row {
 }
 
 beforeEach(() => {
+  for (const { specifier, factory } of FAKES) {
+    mock.module(specifier, factory)
+  }
   session = { ...SESSION }
   grants = ['student:read']
   callerParentId = PARENT_ID

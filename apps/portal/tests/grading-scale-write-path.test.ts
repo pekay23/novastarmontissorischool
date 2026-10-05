@@ -117,22 +117,9 @@ const tenantContext: { tenantId: string; schoolId: string | null; userId: string
 }
 let permissionGranted = true
 
-// The factory must export every name `@/lib/tenant` exports that anything
-// imports: Bun's module-mock registry is process-global and outlives this file,
-// so a missing export breaks unrelated files that resolve the module afterwards.
-mock.module('@/lib/tenant', () => ({
-  getTenantContext: async () => tenantContext,
-  getTenantContextOrNull: async () => tenantContext,
-  UnauthorizedError: MockUnauthorizedError,
-  ForbiddenError: MockForbiddenError,
-  ServerConfigError: MockServerConfigError,
-}))
-
+// Captured before the first `mock.module` below, so it is the namespace this file
+// replaces rather than its own factory. Registered with the rest further down.
 const actualAuth = await import('@novastar/auth')
-mock.module('@novastar/auth', () => ({
-  ...actualAuth,
-  hasPermission: async () => permissionGranted,
-}))
 
 /** The bands a read returns, and the calls the write path made. */
 let storedBands: NamedGradeBand[] = []
@@ -213,20 +200,79 @@ const gradingLevelDelete = mock(async (args: { where: Record<string, unknown> })
 /** A second entity, to prove the check runs only where an entry declares it. */
 const feeCategoryCreate = mock(async (args: { data: Record<string, unknown> }) => args.data)
 
+// ---------------------------------------------------------------------------
+// Module-mock lifetime: snapshot before registering, restore after
+// ---------------------------------------------------------------------------
+// `mock.module` patches the LIVE namespace for the whole process and never reverts, so a
+// registration made at module scope is what every file loaded afterwards binds to. All
+// four boundaries are put back. `server-only` goes first and alone because the real
+// `@/lib/tenant` imports it and the package is not installed here, so nothing else is
+// capturable until that specifier resolves.
+//
+// The remaining snapshots are read HERE, before the first real registration. That is the
+// load-bearing part: a `beforeEach` capture would run after these registrations had
+// already overwritten the namespace, so it would record this file's own factory and hand
+// the double straight back to the next file.
+//
+// Every factory SPREADS the namespace it replaces and then overrides, making each fake
+// both a superset (no caller can fail on a name this file did not list) and a subset
+// (`mock.module` merges, so an added key could never be removed by the restore).
+const previousNamespaces = new Map<string, Record<string, unknown>>([
+  ['@novastar/auth', { ...actualAuth }],
+])
+
 mock.module('server-only', () => ({}))
-mock.module('@/lib/prisma', () => ({
-  prisma: {
-    gradingLevel: {
-      findMany: gradingLevelFindMany,
-      findFirst: gradingLevelFindFirst,
-      create: gradingLevelCreate,
-      update: gradingLevelUpdate,
-      delete: gradingLevelDelete,
-    },
-    gradingScale: { findFirst: gradingScaleFindFirst },
-    feeCategory: { create: feeCategoryCreate },
+
+previousNamespaces.set('server-only', { ...(await import('server-only')) })
+previousNamespaces.set('@/lib/tenant', { ...(await import('@/lib/tenant')) })
+previousNamespaces.set('@/lib/prisma', { ...(await import('@/lib/prisma')) })
+
+const base = (specifier: string): Record<string, unknown> =>
+  previousNamespaces.get(specifier) ?? {}
+
+const FAKES = [
+  {
+    specifier: '@novastar/auth',
+    factory: () => ({
+      ...base('@novastar/auth'),
+      hasPermission: async () => permissionGranted,
+    }),
   },
-}))
+  {
+    specifier: '@/lib/tenant',
+    factory: () => ({
+      ...base('@/lib/tenant'),
+      getTenantContext: async () => tenantContext,
+      getTenantContextOrNull: async () => tenantContext,
+      UnauthorizedError: MockUnauthorizedError,
+      ForbiddenError: MockForbiddenError,
+      ServerConfigError: MockServerConfigError,
+    }),
+  },
+  {
+    specifier: '@/lib/prisma',
+    factory: () => ({
+      ...base('@/lib/prisma'),
+      prisma: {
+        gradingLevel: {
+          findMany: gradingLevelFindMany,
+          findFirst: gradingLevelFindFirst,
+          create: gradingLevelCreate,
+          update: gradingLevelUpdate,
+          delete: gradingLevelDelete,
+        },
+        gradingScale: { findFirst: gradingScaleFindFirst },
+        feeCategory: { create: feeCategoryCreate },
+      },
+    }),
+  },
+] as const
+
+// Also registered at load time, so the route imports below resolve these specifiers
+// through the doubles and the file is correct in a run that never reaches `beforeEach`.
+for (const { specifier, factory } of FAKES) {
+  mock.module(specifier, factory)
+}
 
 const silencedError = spyOn(console, 'error').mockImplementation(() => {})
 afterAll(() => {
@@ -237,6 +283,9 @@ const { POST } = await import('@/app/api/config/[entityType]/route')
 const { PATCH, DELETE } = await import('@/app/api/config/[entityType]/[id]/route')
 
 beforeEach(() => {
+  for (const { specifier, factory } of FAKES) {
+    mock.module(specifier, factory)
+  }
   storedBands = PRIMARY.map((band) => ({ ...band }))
   storedRow = null
   permissionGranted = true
@@ -597,7 +646,27 @@ describe('POST /api/config/grading_level - the scale is checked before the row i
       order: 6,
     })
 
+    // WHICH schema answered is the claim, not the 400. Both refusals are a 400:
+    // the row schema names the offending FIELD, and the cross-row rule names the
+    // two BANDS that collide. A `400` and no write is equally true of a collision,
+    // so it establishes nothing on its own.
+    const body = (await res.json()) as { error: string; issues: unknown }
+
     expect(res.status).toBe(400)
+    expect(body.error).toBe('Validation failed')
+    // A field-keyed issue map with a `_errors` list under `minScore` is Zod's
+    // `format()`. The cross-row rule answers with a flat array of sentences, which
+    // has no `minScore` key at all.
+    expect(Array.isArray(body.issues)).toBe(false)
+    const fieldIssues = body.issues as Record<string, { _errors?: string[] }>
+    expect(fieldIssues.minScore._errors?.[0]).toContain('<=100')
+    expect(fieldIssues.minScore._errors?.[1]).toBe(
+      'minScore must be less than or equal to maxScore',
+    )
+    // And the cross-row rule demonstrably never ran: it cannot name two colliding
+    // bands without first reading the scale's, so a read count of zero is the
+    // direct evidence that the row schema short-circuited ahead of it.
+    expect(bandReads).toBe(0)
     expect(created).toEqual([])
   })
 
@@ -661,9 +730,22 @@ describe('PATCH /api/config/grading_level/[id] - retuning a boundary', () => {
 
     expect(res.status).toBe(200)
     expect(updated).toHaveLength(1)
+    // The write carried BOTH boundaries the caller named. `minScore` is not on the
+    // route's immutable-field strip, so it must reach the database: adding it to
+    // that strip would drop it here, leave the row's lower boundary at whatever it
+    // already was, and the assertions below would all still hold — which is
+    // precisely how the reconstructed-array version of this test stayed green
+    // against that mutation. Asserted on the write because the write is the claim.
+    expect(updated[0]).toEqual({ minScore: 60, maxScore: 64 })
+
+    // And what the route PERSISTED is read back, rather than the scale being
+    // rebuilt from `PRIMARY` with the expected value pasted in.
+    const persisted = (await res.json()) as NamedGradeBand
+    expect(persisted.minScore).toBe(60)
+    expect(persisted.maxScore).toBe(64)
 
     const afterWrite: NamedGradeBand[] = PRIMARY.map((band) =>
-      band.key === 'level_4' ? { ...band, maxScore: 64 } : band,
+      band.key === persisted.key ? persisted : band,
     )
     expect(findGradeBandDefects(afterWrite)).toEqual([
       '65-69% falls between level_4 and level_5 and matches no band',

@@ -1,4 +1,4 @@
-import { describe, it, expect, mock } from 'bun:test'
+import { describe, it, expect, mock, beforeEach } from 'bun:test'
 
 /**
  * What `authOptions.providers` actually contains, which is the only thing that
@@ -26,12 +26,63 @@ const prisma = {
 }
 
 await import('@/lib/prisma')
-mock.module('@/lib/prisma', () => ({ prisma, default: prisma }))
-mock.module('@novastar/database', () => ({ prisma, default: prisma }))
-mock.module('@/lib/audit/logger', () => ({
-  AuditLogAction: { LOGIN: 'LOGIN', LOGOUT: 'LOGOUT', LOGIN_FAILED: 'LOGIN_FAILED' },
-  createAuditLog: mock(async () => null),
-}))
+
+// ---------------------------------------------------------------------------
+// Module-mock lifetime: snapshot before registering, restore after
+// ---------------------------------------------------------------------------
+//
+// `mock.module` patches the LIVE namespace for the whole process and never reverts, so
+// a registration made at module scope is what every file that loads afterwards binds
+// to. Three boundaries are registered below and all three are put back.
+//
+// The snapshot is read HERE, before the first registration, and that is
+// load-bearing: a `beforeEach` capture would run after these registrations had already
+// overwritten the namespace, so it would record this file's own factory and hand the
+// double straight back to the next file.
+//
+// Every factory SPREADS the namespace it replaces and then overrides, which makes each
+// fake both a superset (no import below can fail on a name this file happened not to
+// list) and a subset (`mock.module` merges, so an added key could never be removed by
+// the restore).
+const previousNamespaces = new Map<string, Record<string, unknown>>()
+previousNamespaces.set('@/lib/prisma', { ...(await import('@/lib/prisma')) })
+previousNamespaces.set('@novastar/database', { ...(await import('@novastar/database')) })
+previousNamespaces.set('@/lib/audit/logger', { ...(await import('@/lib/audit/logger')) })
+
+const base = (specifier: string): Record<string, unknown> =>
+  previousNamespaces.get(specifier) ?? {}
+
+const FAKES = [
+  {
+    specifier: '@/lib/prisma',
+    factory: () => ({ ...base('@/lib/prisma'), prisma, default: prisma }),
+  },
+  {
+    specifier: '@novastar/database',
+    factory: () => ({ ...base('@novastar/database'), prisma, default: prisma }),
+  },
+  {
+    specifier: '@/lib/audit/logger',
+    factory: () => ({
+      ...base('@/lib/audit/logger'),
+      AuditLogAction: { LOGIN: 'LOGIN', LOGOUT: 'LOGOUT', LOGIN_FAILED: 'LOGIN_FAILED' },
+      createAuditLog: mock(async () => null),
+    }),
+  },
+] as const
+
+// Also registered at load time, so the import of `@/lib/auth` below resolves these
+// specifiers through the doubles and the file is correct in a run that never reaches
+// `beforeEach`.
+for (const { specifier, factory } of FAKES) {
+  mock.module(specifier, factory)
+}
+
+beforeEach(() => {
+  for (const { specifier, factory } of FAKES) {
+    mock.module(specifier, factory)
+  }
+})
 
 // No provider credential is set in the test environment, which is the point.
 delete process.env.GOOGLE_CLIENT_ID

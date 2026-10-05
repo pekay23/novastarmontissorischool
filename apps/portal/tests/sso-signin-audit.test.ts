@@ -29,15 +29,7 @@ const EMAIL = 'teacher@novastarmontessori.com'
 let schoolCode: string | null = SCHOOL
 
 // `headers` is exported alongside `cookies` so the module keeps the shape
-// `lib/auth/redirect-to-login.ts` imports it for. Bun's `mock.module` registry is
-// global, so a partial replacement would leak into whatever loads next.
-mock.module('next/headers', () => ({
-  cookies: async () => ({
-    get: (name: string) =>
-      name === SSO_SCHOOL_CODE_COOKIE && schoolCode !== null ? { value: schoolCode } : undefined,
-  }),
-  headers: async () => new Headers(),
-}))
+// `lib/auth/redirect-to-login.ts` imports it for. Registered below with the rest.
 
 type Row = Record<string, unknown>
 
@@ -88,10 +80,6 @@ const prisma = {
   auditLog: { findFirst: async () => null, create: async () => ({}) },
 }
 
-await import('@/lib/prisma')
-mock.module('@/lib/prisma', () => ({ prisma, default: prisma }))
-mock.module('@novastar/database', () => ({ prisma, default: prisma }))
-
 let auditWrites: Row[] = []
 
 const createAuditLog = mock(async (params: Row) => {
@@ -99,11 +87,78 @@ const createAuditLog = mock(async (params: Row) => {
   return null
 })
 
-mock.module('@/lib/audit/logger', () => ({
-  AuditLogAction: { LOGIN: 'LOGIN', LOGOUT: 'LOGOUT', LOGIN_FAILED: 'LOGIN_FAILED' },
-  createAuditLog,
-  logAuditEvent: createAuditLog,
-}))
+// ---------------------------------------------------------------------------
+// Module-mock lifetime: snapshot before registering, restore after
+// ---------------------------------------------------------------------------
+//
+// `mock.module` patches the LIVE namespace for the whole process and never reverts,
+// so a registration made at module scope is not this file's alone — it is what every
+// file that loads afterwards binds to, and it is still what their tests see after
+// this file has finished. Four boundaries are registered below and all four are put
+// back.
+//
+// The snapshot is read HERE, at module scope, before the first registration, and
+// that is load-bearing rather than incidental: a `beforeEach` capture would run
+// after the registrations below had already overwritten the namespace, so it would
+// record this file's own factory and hand the double straight back to the next file.
+//
+// Every factory SPREADS the namespace it replaces and then overrides, which makes
+// each fake both a superset (so no import below can fail on a name this file
+// happened not to list, whatever loaded first) and a subset (so the restore above
+// cannot leave a key behind — `mock.module` merges, so an added key could never be
+// removed again).
+const previousNamespaces = new Map<string, Record<string, unknown>>()
+previousNamespaces.set('next/headers', { ...(await import('next/headers')) })
+previousNamespaces.set('@/lib/prisma', { ...(await import('@/lib/prisma')) })
+previousNamespaces.set('@novastar/database', { ...(await import('@novastar/database')) })
+previousNamespaces.set('@/lib/audit/logger', { ...(await import('@/lib/audit/logger')) })
+
+const base = (specifier: string): Record<string, unknown> =>
+  previousNamespaces.get(specifier) ?? {}
+
+const FAKES = [
+  {
+    specifier: 'next/headers',
+    factory: () => ({
+      ...base('next/headers'),
+      cookies: async () => ({
+        get: (name: string) =>
+          name === SSO_SCHOOL_CODE_COOKIE && schoolCode !== null ? { value: schoolCode } : undefined,
+      }),
+      headers: async () => new Headers(),
+    }),
+  },
+  {
+    specifier: '@/lib/prisma',
+    factory: () => ({ ...base('@/lib/prisma'), prisma, default: prisma }),
+  },
+  {
+    specifier: '@novastar/database',
+    factory: () => ({ ...base('@novastar/database'), prisma, default: prisma }),
+  },
+  {
+    specifier: '@/lib/audit/logger',
+    factory: () => ({
+      ...base('@/lib/audit/logger'),
+      AuditLogAction: { LOGIN: 'LOGIN', LOGOUT: 'LOGOUT', LOGIN_FAILED: 'LOGIN_FAILED' },
+      createAuditLog,
+      logAuditEvent: createAuditLog,
+    }),
+  },
+] as const
+
+// Also registered at load time, so the import of the module under test below
+// resolves these specifiers through the doubles, and so the file is correct in a
+// run that never reaches `beforeEach`.
+for (const { specifier, factory } of FAKES) {
+  mock.module(specifier, factory)
+}
+
+beforeEach(() => {
+  for (const { specifier, factory } of FAKES) {
+    mock.module(specifier, factory)
+  }
+})
 
 const { ssoSignIn } = await import('@/lib/auth/sso-signin')
 

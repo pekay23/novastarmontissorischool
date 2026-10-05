@@ -23,14 +23,23 @@ import { describe, it, expect, beforeEach, mock } from 'bun:test'
  * matches nothing rather than matching everything, so an unscoped handler fails
  * here instead of being waved through.
  *
+ * EVERY CLIENT IS LABELLED, BOTH READS AND WRITES
+ * ----------------------------------------------
+ * The module client and the transaction client are two different objects, and each
+ * records whether it was `tx` or `module`. They used to be one object (`{ ...TX }`),
+ * so the atomicity claim at the centre of this file was unfalsifiable: writing the
+ * `User` and its setup token outside `$transaction` produced exactly the same
+ * observable store as writing them inside it. The same applies to the permission
+ * gate, which is evaluated for a `(tenantId, schoolId)` and used to have that pair
+ * discarded by its double.
+ *
  * NOTE ON THE DOUBLE-REGISTERED DATABASE MOCK
  * -------------------------------------------
  * `mock.module('@novastar/database', ...)` is registered because the house rule
  * requires it, but this suite does not depend on it: the route hands its
  * transaction client to `createInvitedUser` explicitly, so every call the shared
- * function makes goes through `tx` and never through its module-scope default.
- * That also makes these assertions immune to whichever other suite most recently
- * registered a fake under that specifier.
+ * function makes goes through `tx` and never through its module-scope default —
+ * which `writes` below now records rather than assumes.
  */
 mock.module('server-only', () => ({}))
 
@@ -72,10 +81,7 @@ const sendEmail = mock(async (options: { to: string; subject: string; html?: str
   return { id: 'msg_1' }
 })
 
-mock.module('@novastar/notifications', () => ({
-  sendEmail,
-  setPasswordTemplate: realNotifications.setPasswordTemplate,
-}))
+// `@novastar/notifications` is registered with the rest further down.
 
 // --- Store -------------------------------------------------------------------
 
@@ -83,6 +89,15 @@ const TENANT = 'tenant-1'
 const SCHOOL = 'school-1'
 const OTHER_TENANT = 'tenant-2'
 const OTHER_SCHOOL = 'school-2'
+/**
+ * A second school in the CALLER's own tenant.
+ *
+ * Without it, every tenant in this file holds exactly one school, so a `where` that
+ * dropped `schoolId` from the role lookup would still refuse the cross-TENANT cases
+ * and the school-scoped one would never be expressed. It is the only way to prove
+ * the lookup is scoped to the caller's school and not merely to their tenant.
+ */
+const SIBLING_SCHOOL = 'school-1b'
 
 interface StoredUser {
   id: string
@@ -123,10 +138,11 @@ let staffs: StoredStaff[] = []
 /**
  * `@@unique([tenantId, schoolId, name])` on `Role`.
  *
- * The two tenants hold DIFFERENT sets on purpose. `Role` is the model that makes
- * role resolution scannable rather than a name lookup: a name that resolves in one
- * school must not resolve in another, and a fixture where every school has every
- * role cannot demonstrate that.
+ * The two tenants hold DIFFERENT sets on purpose, and so do the two schools of the
+ * first tenant. `Role` is the model that makes role resolution scannable rather than
+ * a name lookup: a name that resolves in one school must not resolve in another, and
+ * a fixture where every school has every role cannot demonstrate that — for a
+ * cross-TENANT case and for a cross-SCHOOL one alike.
  */
 const ROLES: Array<{ tenantId: string; schoolId: string; name: string }> = [
   { tenantId: TENANT, schoolId: SCHOOL, name: 'HEADMASTER' },
@@ -136,12 +152,28 @@ const ROLES: Array<{ tenantId: string; schoolId: string; name: string }> = [
   { tenantId: TENANT, schoolId: SCHOOL, name: 'ACCOUNTANT' },
   { tenantId: TENANT, schoolId: SCHOOL, name: 'ADMIN_STAFF' },
   { tenantId: TENANT, schoolId: SCHOOL, name: 'PARENT' },
-  // A real role row in the other school, and the only role it has.
+  // The sibling school of the SAME tenant: one role, and it is not the one the
+  // cross-school tests below try to borrow.
+  { tenantId: TENANT, schoolId: SIBLING_SCHOOL, name: 'CLASSROOM_TEACHER' },
+  // A real role row in the other tenant, and the only role it has.
   { tenantId: OTHER_TENANT, schoolId: OTHER_SCHOOL, name: 'CLASSROOM_TEACHER' },
 ]
 
-/** Every write that was attempted, in order, whether or not it was rolled back. */
+/**
+ * Every write that was attempted, in order, whether or not it was rolled back, and
+ * through WHICH client.
+ *
+ * The module-level `prisma` and the transaction client `tx` are deliberately
+ * separate objects here, each carrying its own label. They used to be one object
+ * (`{ ...TX }`), which made a write enlisted in the transaction indistinguishable
+ * from a write made outside it — so dropping the `tx` argument from
+ * `createInvitedUser`, which is the defect this route exists to prevent, left every
+ * test in this file green.
+ */
+type ClientScope = 'tx' | 'module'
 let writes: string[] = []
+/** The reads the route made, with the `where` it built, so scoping is observable. */
+let reads: Array<{ scope: ClientScope; op: string; where: Record<string, unknown> | undefined }> = []
 
 /** Set by a test to make the `Staff` insert fail for a reason other than a duplicate. */
 let staffCreateError: unknown = null
@@ -160,89 +192,104 @@ function uniqueViolation(): Error {
   return err
 }
 
-const userFindFirst = async (args: { where: Record<string, unknown> }) =>
-  users.find((row) => whereMatches(row as unknown as Record<string, unknown>, args.where)) ?? null
+const userFindFirst = (scope: ClientScope) =>
+  mock(async (args: { where: Record<string, unknown> }) => {
+    reads.push({ scope, op: 'user.findFirst', where: args.where })
+    return users.find((row) => whereMatches(row as unknown as Record<string, unknown>, args.where)) ?? null
+  })
 
-const roleFindFirst = async (args: { where: Record<string, unknown> }) => {
-  const row = ROLES.find((r) => whereMatches(r as unknown as Record<string, unknown>, args.where))
-  return row ? { id: `role-${row.tenantId}-${row.name}` } : null
-}
+const roleFindFirst = (scope: ClientScope) =>
+  mock(async (args: { where: Record<string, unknown> }) => {
+    reads.push({ scope, op: 'role.findFirst', where: args.where })
+    const row = ROLES.find((r) => whereMatches(r as unknown as Record<string, unknown>, args.where))
+    return row ? { id: `role-${row.tenantId}-${row.name}` } : null
+  })
 
-const userCreate = async (args: { data: Partial<StoredUser> }) => {
-  if (users.some((row) => row.tenantId === args.data.tenantId && row.email === args.data.email)) {
-    throw uniqueViolation()
-  }
-  writes.push('user.create')
-  const row: StoredUser = {
-    id: `user-${users.length + 1}`,
-    tenantId: TENANT,
-    schoolId: SCHOOL,
-    email: '',
-    name: null,
-    roleId: null,
-    passwordHash: null,
-    emailVerified: null,
-    mustChangePassword: false,
-    isActive: true,
-    status: 'ACTIVE',
-    verifyToken: null,
-    verifyTokenExpires: null,
-    ...args.data,
-  }
-  users.push(row)
-  return row
-}
+const userCreate = (scope: ClientScope) =>
+  mock(async (args: { data: Partial<StoredUser> }) => {
+    if (users.some((row) => row.tenantId === args.data.tenantId && row.email === args.data.email)) {
+      throw uniqueViolation()
+    }
+    writes.push(`${scope}:user.create`)
+    const row: StoredUser = {
+      id: `user-${users.length + 1}`,
+      tenantId: TENANT,
+      schoolId: SCHOOL,
+      email: '',
+      name: null,
+      roleId: null,
+      passwordHash: null,
+      emailVerified: null,
+      mustChangePassword: false,
+      isActive: true,
+      status: 'ACTIVE',
+      verifyToken: null,
+      verifyTokenExpires: null,
+      ...args.data,
+    }
+    users.push(row)
+    return row
+  })
 
-const userUpdate = async (args: { where: { id: string }; data: Partial<StoredUser> }) => {
-  const row = users.find((u) => u.id === args.where.id)
-  if (!row) throw new Error('Record to update not found')
-  Object.assign(row, args.data)
-  return row
-}
+const userUpdate = (scope: ClientScope) =>
+  mock(async (args: { where: { id: string }; data: Partial<StoredUser> }) => {
+    const row = users.find((u) => u.id === args.where.id)
+    if (!row) throw new Error('Record to update not found')
+    // The token write is inside the transaction too, so it is recorded: a user row
+    // enlisted with its setup token left outside is exactly the half-created state.
+    writes.push(`${scope}:user.update`)
+    Object.assign(row, args.data)
+    return row
+  })
 
-const staffCreate = async (args: { data: Partial<StoredStaff> }) => {
-  if (staffCreateError) {
-    writes.push('staff.create(failed)')
-    throw staffCreateError
-  }
-  if (
-    staffs.some(
-      (row) =>
-        row.tenantId === args.data.tenantId &&
-        row.schoolId === args.data.schoolId &&
-        row.employeeId === args.data.employeeId,
-    )
-  ) {
-    writes.push('staff.create(duplicate)')
-    throw uniqueViolation()
-  }
-  writes.push('staff.create')
-  const row: StoredStaff = {
-    id: `staff-${staffs.length + 1}`,
-    tenantId: TENANT,
-    schoolId: SCHOOL,
-    userId: '',
-    employeeId: '',
-    firstName: '',
-    lastName: '',
-    otherNames: null,
-    gender: 'OTHER',
-    phone: '',
-    email: '',
-    address: null,
-    hireDate: new Date(),
-    roleId: null,
-    ...args.data,
-  }
-  staffs.push(row)
-  return row
-}
+const staffCreate = (scope: ClientScope) =>
+  mock(async (args: { data: Partial<StoredStaff> }) => {
+    if (staffCreateError) {
+      writes.push(`${scope}:staff.create(failed)`)
+      throw staffCreateError
+    }
+    if (
+      staffs.some(
+        (row) =>
+          row.tenantId === args.data.tenantId &&
+          row.schoolId === args.data.schoolId &&
+          row.employeeId === args.data.employeeId,
+      )
+    ) {
+      writes.push(`${scope}:staff.create(duplicate)`)
+      throw uniqueViolation()
+    }
+    writes.push(`${scope}:staff.create`)
+    const row: StoredStaff = {
+      id: `staff-${staffs.length + 1}`,
+      tenantId: TENANT,
+      schoolId: SCHOOL,
+      userId: '',
+      employeeId: '',
+      firstName: '',
+      lastName: '',
+      otherNames: null,
+      gender: 'OTHER',
+      phone: '',
+      email: '',
+      address: null,
+      hireDate: new Date(),
+      roleId: null,
+      ...args.data,
+    }
+    staffs.push(row)
+    return row
+  })
 
-/** The transaction client. Deliberately not the module client: that is the point. */
+/** The transaction client, labelled. */
 const TX = {
-  user: { findFirst: userFindFirst, create: userCreate, update: userUpdate },
-  role: { findFirst: roleFindFirst },
-  staff: { create: staffCreate },
+  user: {
+    findFirst: userFindFirst('tx'),
+    create: userCreate('tx'),
+    update: userUpdate('tx'),
+  },
+  role: { findFirst: roleFindFirst('tx') },
+  staff: { create: staffCreate('tx') },
 }
 
 /**
@@ -266,27 +313,34 @@ const $transaction = async (fn: (tx: typeof TX) => Promise<unknown>): Promise<un
   }
 }
 
+/**
+ * The module-level client: a DIFFERENT object from `TX`, so every write says which
+ * one it went through. `{ ...TX }` made them the same object, and a file that
+ * cannot tell the two apart cannot assert that anything was enlisted at all.
+ */
 const prisma = {
-  ...TX,
+  user: {
+    findFirst: userFindFirst('module'),
+    create: userCreate('module'),
+    update: userUpdate('module'),
+  },
+  role: { findFirst: roleFindFirst('module') },
+  staff: { create: staffCreate('module') },
   school: {
-    findFirst: async (args: { where: Record<string, unknown> }) => {
-      writes.push('school.findFirst')
+    findFirst: mock(async (args: { where: Record<string, unknown> }) => {
+      writes.push('module:school.findFirst')
       return whereMatches({ id: SCHOOL, tenantId: TENANT }, args.where)
         ? { id: SCHOOL, tenantId: TENANT, name: 'Novastar Montessori School' }
         : null
-    },
+    }),
   },
   auditLog: { findFirst: async () => null, create: async () => ({ id: 'audit-1' }) },
   $transaction,
 }
 
-// Load the real module before replacing it: Bun's `mock.module` patches a module
+// Load the real modules before replacing them: Bun's `mock.module` patches a module
 // already in the registry, so registering for one that has not resolved yet does
 // not reach the modules that import it afterwards.
-await import('@/lib/prisma')
-
-mock.module('@/lib/prisma', () => ({ prisma, default: prisma }))
-mock.module('@novastar/database', () => ({ prisma, default: prisma }))
 
 // --- Session, permission, audit ---------------------------------------------
 
@@ -318,19 +372,40 @@ class UnauthorizedError extends Error {
 
 let grants: string[] = ['teacher:create']
 
+/**
+ * Every gate check, with the scope it was evaluated against.
+ *
+ * The double used to accept `(_userId, key)` and throw the tenant and school away,
+ * which is the same as accepting any scope: `hasPermission(userId, key,
+ * 'attacker-tenant', 'attacker-school')` was indistinguishable from the correct
+ * call and every test here stayed green. Recording the arguments is what makes the
+ * gate's scope assertable.
+ */
+interface PermissionCheck {
+  userId: string
+  key: string
+  tenantId: string | undefined
+  schoolId: string | undefined
+}
+let permissionChecks: PermissionCheck[] = []
+
 const hasPermission = mock(
-  async (_userId: string, key: string): Promise<boolean> => grants.includes(key),
+  async (
+    userId: string,
+    key: string,
+    tenantId?: string,
+    schoolId?: string,
+  ): Promise<boolean> => {
+    permissionChecks.push({ userId, key, tenantId, schoolId })
+    return grants.includes(key)
+  },
 )
 
-mock.module('@novastar/auth', () => ({ hasPermission }))
-
-mock.module('@/lib/auth/session-context', () => ({
-  getCachedSessionAndTenant: mock(async () => {
-    if (session instanceof Error) throw session
-    return { ...session, roleName: session.role, user: { id: session.userId } }
-  }),
-  getTokenTenantId: mock(async () => (session instanceof Error ? null : TENANT)),
-}))
+/**
+ * The gate's scope for `teacher:create`, whatever the caller decided.
+ */
+const teacherCreateChecks = (): PermissionCheck[] =>
+  permissionChecks.filter((check) => check.key === 'teacher:create')
 
 let auditWrites: Array<{ params: Record<string, unknown>; viaTransaction: boolean }> = []
 
@@ -341,11 +416,83 @@ const createAuditLog = mock(
   },
 )
 
-mock.module('@/lib/audit/logger', () => ({
-  AuditLogAction: { CREATE: 'CREATE', UPDATE: 'UPDATE' },
-  createAuditLog,
-  logAuditEvent: createAuditLog,
-}))
+// ---------------------------------------------------------------------------
+// Module-mock lifetime: register before the route import
+// ---------------------------------------------------------------------------
+// `mock.module` patches the module registry for the whole process. Each test
+// file re-registers its own mocks in `beforeEach`, so the namespace from the
+// last-registered file wins. `server-only` goes first because `@/lib/audit/logger`
+// imports it and the package is not installed in this workspace.
+//
+// The snapshots are read HERE, before the first real registration. That is the
+// load-bearing part: a `beforeEach` capture would run after these registrations had already
+// overwritten the namespace, so it would record this file's own factory and hand the double
+// straight back to the next file.
+//
+// Every factory SPREADS the namespace it replaces and then overrides, making each fake both
+// a superset and a subset — which is what makes the restore complete, since `mock.module`
+// merges and an added key could never be removed again. The `@novastar/auth` spread is the
+// sharpest case: a factory exporting only `hasPermission` leaves every other export
+// `undefined` for every file that resolves the module afterwards.
+const previousNamespaces = new Map<string, Record<string, unknown>>()
+previousNamespaces.set('server-only', { ...(await import('server-only')) })
+previousNamespaces.set('@novastar/notifications', { ...(await import('@novastar/notifications')) })
+previousNamespaces.set('@/lib/prisma', { ...(await import('@/lib/prisma')) })
+previousNamespaces.set('@novastar/database', { ...(await import('@novastar/database')) })
+previousNamespaces.set('@novastar/auth', { ...(await import('@novastar/auth')) })
+previousNamespaces.set('@/lib/auth/session-context', {
+  ...(await import('@/lib/auth/session-context')),
+})
+previousNamespaces.set('@/lib/audit/logger', { ...(await import('@/lib/audit/logger')) })
+
+const base = (specifier: string): Record<string, unknown> =>
+  previousNamespaces.get(specifier) ?? {}
+
+const FAKES = [
+  {
+    specifier: '@novastar/notifications',
+    factory: () => ({
+      ...base('@novastar/notifications'),
+      sendEmail,
+      setPasswordTemplate: realNotifications.setPasswordTemplate,
+    }),
+  },
+  { specifier: '@/lib/prisma', factory: () => ({ ...base('@/lib/prisma'), prisma, default: prisma }) },
+  {
+    specifier: '@novastar/database',
+    factory: () => ({ ...base('@novastar/database'), prisma, default: prisma }),
+  },
+  { specifier: '@novastar/auth', factory: () => ({ ...base('@novastar/auth'), hasPermission }) },
+  {
+    // `getTokenTenantId` is exported although nothing on this route's import graph reaches
+    // it, and the factory spreads the namespace anyway: a partial replacement would break
+    // whatever resolved the module afterwards rather than this file.
+    specifier: '@/lib/auth/session-context',
+    factory: () => ({
+      ...base('@/lib/auth/session-context'),
+      getCachedSessionAndTenant: mock(async () => {
+        if (session instanceof Error) throw session
+        return { ...session, roleName: session.role, user: { id: session.userId } }
+      }),
+      getTokenTenantId: mock(async () => (session instanceof Error ? null : TENANT)),
+    }),
+  },
+  {
+    specifier: '@/lib/audit/logger',
+    factory: () => ({
+      ...base('@/lib/audit/logger'),
+      AuditLogAction: { CREATE: 'CREATE', UPDATE: 'UPDATE' },
+      createAuditLog,
+      logAuditEvent: createAuditLog,
+    }),
+  },
+] as const
+
+// Also registered at load time, so the route import below resolves these specifiers through
+// the doubles and the file is correct in a run that never reaches `beforeEach`.
+for (const { specifier, factory } of FAKES) {
+  mock.module(specifier, factory)
+}
 
 // The origin an emailed link is built from. The provider is not reached —
 // `sendEmail` is replaced above — so no key is needed and none is set.
@@ -378,6 +525,9 @@ const validBody = {
 }
 
 beforeEach(() => {
+  for (const { specifier, factory } of FAKES) {
+    mock.module(specifier, factory)
+  }
   users = [
     {
       id: 'user-existing',
@@ -399,6 +549,8 @@ beforeEach(() => {
   SENT.length = 0
   sendFails = false
   writes = []
+  reads = []
+  permissionChecks = []
   staffCreateError = null
   auditWrites = []
   grants = ['teacher:create']
@@ -414,11 +566,54 @@ function asOtherSchool(): void {
   session = { userId: 'head-2', tenantId: OTHER_TENANT, schoolId: OTHER_SCHOOL, role: 'HEADMASTER' }
 }
 
+/** The Head of School of the other school of THIS tenant. */
+function asSiblingSchool(): void {
+  session = { userId: 'head-3', tenantId: TENANT, schoolId: SIBLING_SCHOOL, role: 'HEADMASTER' }
+}
+
 // ---------------------------------------------------------------------------
 // Authorization
 // ---------------------------------------------------------------------------
 
 describe('POST /api/teachers/invite - authorization', () => {
+  it('evaluates the gate against the CALLER\'S tenant and school', async () => {
+    // The claim is about scope, and the double used to discard it. Both handlers
+    // must pass the session's own pair: a gate evaluated for any other tenant is a
+    // gate this suite would have called a pass.
+    await POST(post(validBody))
+
+    expect(teacherCreateChecks()).toEqual([
+      { userId: 'head-1', key: 'teacher:create', tenantId: TENANT, schoolId: SCHOOL },
+    ])
+    // And the body cannot redirect it, because the body is never consulted for scope.
+    await POST(
+      post({ ...validBody, email: 'b@novastarmontessori.com', tenantId: OTHER_TENANT, schoolId: OTHER_SCHOOL }),
+    )
+    expect(teacherCreateChecks()).toHaveLength(2)
+    for (const check of teacherCreateChecks()) {
+      expect([check.tenantId, check.schoolId]).toEqual([TENANT, SCHOOL])
+    }
+  })
+
+  it('evaluates the gate against the caller\'s own pair even when they are elsewhere', async () => {
+    asOtherSchool()
+    await POST(post({ ...validBody, email: 'c@novastarmontessori.com' }))
+
+    expect(teacherCreateChecks()).toEqual([
+      { userId: 'head-2', key: 'teacher:create', tenantId: OTHER_TENANT, schoolId: OTHER_SCHOOL },
+    ])
+
+    asSiblingSchool()
+    await POST(post({ ...validBody, email: 'd@novastarmontessori.com', employeeId: 'EMP-101' }))
+
+    expect(teacherCreateChecks()[1]).toEqual({
+      userId: 'head-3',
+      key: 'teacher:create',
+      tenantId: TENANT,
+      schoolId: SIBLING_SCHOOL,
+    })
+  })
+
   it('refuses a caller without teacher:create and writes nothing', async () => {
     grants = []
     const res = await POST(post(validBody))
@@ -428,6 +623,10 @@ describe('POST /api/teachers/invite - authorization', () => {
     expect(staffs).toHaveLength(0)
     expect(writes).toEqual([])
     expect(SENT).toHaveLength(0)
+    // The gate was reached, for the caller's own scope, before the refusal.
+    expect(teacherCreateChecks()).toEqual([
+      { userId: 'head-1', key: 'teacher:create', tenantId: TENANT, schoolId: SCHOOL },
+    ])
   })
 
   it('answers an unauthenticated caller with 401, not 500', async () => {
@@ -462,9 +661,14 @@ describe('POST /api/teachers/invite - authorization', () => {
       statuses.push(res.status)
     }
 
-    expect(statuses.slice(0, 20).every((s) => s === 201)).toBe(true)
-    expect(statuses[20]).toBe(429)
+    // All twenty, as twenty distinct answers rather than one collapsed predicate: a
+    // single 403 or 500 in the middle would satisfy `.every(s => s === 201)`.
+    expect(statuses).toEqual([...Array(20).fill(201), 429])
     expect(users).toHaveLength(21)
+    // Nothing was written outside the transaction by any of the twenty.
+    expect(writes.filter((write) => !write.startsWith('tx:'))).toEqual([
+      ...Array(20).fill('module:school.findFirst'),
+    ])
   })
 })
 
@@ -542,6 +746,40 @@ describe('POST /api/teachers/invite - the privilege ceiling', () => {
     expect(res.status).toBe(400)
     expect((await res.json()).error).toContain('does not exist in your school')
     expect(users).toHaveLength(1)
+  })
+
+  it('refuses a role name that resolves only in a SIBLING school of the same tenant', async () => {
+    // The same refusal one level in, and the only case in this file that a lookup
+    // scoped by tenant alone cannot pass: the role and the caller share a tenant.
+    asSiblingSchool()
+    const res = await POST(
+      post({ ...validBody, roleName: 'ACCOUNTANT', email: 'e@novastarmontessori.com' }),
+    )
+
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toContain('does not exist in your school')
+    expect(users).toHaveLength(1)
+    expect(staffs).toHaveLength(0)
+    // The lookup really did carry the caller's school, rather than the refusal
+    // coming from somewhere else in the handler.
+    expect(
+      reads.filter((read) => read.op === 'role.findFirst').map((read) => [read.scope, read.where]),
+    ).toEqual([['tx', { tenantId: TENANT, schoolId: SIBLING_SCHOOL, name: 'ACCOUNTANT' }]])
+  })
+
+  it('does grant the one role the sibling school does have', async () => {
+    // The positive control for the refusal above, in the same tenant and the same
+    // session shape, so a passing refusal cannot be "this caller is refused
+    // everything".
+    asSiblingSchool()
+    const res = await POST(
+      post({ ...validBody, roleName: 'CLASSROOM_TEACHER', email: 'f@novastarmontessori.com' }),
+    )
+
+    expect(res.status).toBe(201)
+    const user = users.find((row) => row.email === 'f@novastarmontessori.com')!
+    expect(user.schoolId).toBe(SIBLING_SCHOOL)
+    expect(staffFor(user.id)?.schoolId).toBe(SIBLING_SCHOOL)
   })
 
   it('does grant the one role the other school does have', async () => {
@@ -622,6 +860,31 @@ describe('POST /api/teachers/invite - the body is not trusted with scope', () =>
     expect(staffs).toHaveLength(0)
   })
 
+  it('refuses a hire date that is shaped like one but does not exist', async () => {
+    // The shape test above cannot see these: all of them match `^\d{4}-\d{2}-\d{2}$`.
+    // `new Date('2026-02-31')` is the 3rd of March and `new Date('2026-04-31')` is
+    // the 1st of May, so a shape-only guard stores a date nobody entered; and a
+    // month of 13 or 45 is an Invalid Date, which Prisma writes as-is. The real
+    // date beside them, so the refusal cannot be "the schema refuses everything".
+    for (const hireDate of ['2026-02-31', '2026-04-31', '2026-13-45', '2026-02-30', '2026-11-31']) {
+      const res = await POST(
+        post({ ...validBody, hireDate, email: `c${hireDate}@novastarmontessori.com` }),
+      )
+
+      expect(res.status).toBe(400)
+      expect(staffs).toHaveLength(0)
+      expect(invited()).toBeUndefined()
+      expect(writes).toEqual([])
+    }
+
+    const real = await POST(
+      post({ ...validBody, hireDate: '2026-02-28', email: 'leap@novastarmontessori.com' }),
+    )
+    expect(real.status).toBe(201)
+    const leap = users.find((row) => row.email === 'leap@novastarmontessori.com')!
+    expect(staffFor(leap.id)?.hireDate.toISOString().slice(0, 10)).toBe('2026-02-28')
+  })
+
   it('writes both rows into the caller own tenant and school, whatever the body claimed', async () => {
     await POST(post(validBody))
     const user = invited()!
@@ -657,8 +920,27 @@ describe('POST /api/teachers/invite - one transaction', () => {
     // `Staff.roleId` points at `StaffRole`, a job title, not at the access `Role`
     // this route resolved. Leaving it null keeps two same-named columns apart.
     expect(staff.roleId).toBeNull()
-    // Exactly one pass through the database, in this order.
-    expect(writes).toEqual(['user.create', 'staff.create', 'school.findFirst'])
+    // Exactly one pass through the database, in this order, and every write is
+    // labelled with the client that made it. `tx:` on all three — the `User`, its
+    // setup token and the `Staff` row — is the atomicity claim, stated where it can
+    // be falsified: a write through the module client is a row that survives a
+    // rollback. Only the school-name read afterwards is `module:`, and that is
+    // after the commit by design.
+    expect(writes).toEqual([
+      'tx:user.create',
+      'tx:user.update',
+      'tx:staff.create',
+      'module:school.findFirst',
+    ])
+    // Nothing went through the module client but the post-commit read.
+    expect(writes.filter((write) => write.startsWith('module:'))).toEqual([
+      'module:school.findFirst',
+    ])
+    // Every read inside the creation was too, with the scope the session carried.
+    for (const read of reads) {
+      expect(read.scope).toBe('tx')
+    }
+    expect(reads.map((read) => read.op)).toEqual(['role.findFirst', 'user.findFirst'])
   })
 
   it('leaves the account invited, with no password and a live setup token', async () => {
@@ -704,6 +986,11 @@ describe('POST /api/teachers/invite - one transaction', () => {
     expect(SENT).toHaveLength(0)
     // And nothing claims to have happened.
     expect(auditWrites).toHaveLength(0)
+    // The rollback was real because the writes were enlisted: the `User` row and
+    // its token were attempted through `tx`, so restoring the snapshot is what
+    // undoes them. A `module:` write here would have survived the rollback and this
+    // assertion is where that shows.
+    expect(writes).toEqual(['tx:user.create', 'tx:user.update', 'tx:staff.create(failed)'])
   })
 
   it('writes neither row when the employee ID is already in use', async () => {
@@ -775,7 +1062,18 @@ describe('POST /api/teachers/invite - the setup email', () => {
 
     expect(SENT).toHaveLength(1)
     expect(SENT[0]!.to).toBe('new.teacher@novastarmontessori.com')
-    expect(SENT[0]!.text).toContain('/set-password?token=vem_')
+    // The link's ORIGIN, not just its path: `toContain('/set-password?token=vem_')`
+    // passed for a link pointing anywhere on the internet, and a link built from
+    // the wrong host is a 404 in the recipient's browser for a token that expires in
+    // a day.
+    expect(SENT[0]!.text).toContain('https://portal.example.test/set-password?token=vem_')
+    expect(SENT[0]!.html).toContain('https://portal.example.test/set-password?token=vem_')
+    // No other host appears anywhere in the message, so a second link cannot be the
+    // one the recipient follows.
+    const hosts = [...`${SENT[0]!.text} ${SENT[0]!.html}`.matchAll(/https?:\/\/[^/\s"'<>]+/g)].map(
+      (match) => match[0],
+    )
+    expect([...new Set(hosts)]).toEqual(['https://portal.example.test'])
     expect(SENT[0]!.subject).toContain('Novastar Montessori School')
     // The link carries the raw token; the row carries its digest.
     const token = SENT[0]!.text!.split('token=')[1]!.split('\n')[0]!
@@ -795,8 +1093,10 @@ describe('POST /api/teachers/invite - the setup email', () => {
     expect(body.email).toBe('new.teacher@novastarmontessori.com')
     expect(body.staffId).toBe(staffs[0]?.id)
     expect(body.userId).toBe(invited()?.id)
-    // Never a success.
-    expect(res.status).not.toBe(201)
+    // Never a success, as a claim about the body rather than about the status the
+    // line above already pinned.
+    expect(body.status).not.toBe('invited')
+    expect(body).not.toHaveProperty('roleName')
   })
 
   it('still audits the creation when the delivery failed', async () => {
@@ -861,6 +1161,24 @@ describe('POST /api/teachers/invite - the audit entry', () => {
 // ---------------------------------------------------------------------------
 
 describe('GET /api/teachers/invite', () => {
+  it('probes the gate for the caller\'s own tenant and school, not an arbitrary one', async () => {
+    // The probe and the POST are separate call sites and either could be the one
+    // that evaluates the gate against the wrong pair, so both are pinned.
+    await GET()
+    expect(teacherCreateChecks()).toEqual([
+      { userId: 'head-1', key: 'teacher:create', tenantId: TENANT, schoolId: SCHOOL },
+    ])
+
+    asSiblingSchool()
+    await GET()
+    expect(teacherCreateChecks()[1]).toEqual({
+      userId: 'head-3',
+      key: 'teacher:create',
+      tenantId: TENANT,
+      schoolId: SIBLING_SCHOOL,
+    })
+  })
+
   it('offers a Head of School every seeded role, because the ceiling is their own rank', async () => {
     const body = await (await GET()).json()
 

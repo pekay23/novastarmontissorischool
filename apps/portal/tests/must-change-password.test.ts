@@ -111,27 +111,64 @@ const prisma = {
   },
 }
 
-// Load the real module before replacing it. Bun's `mock.module` patches a module
+// Load the real modules before replacing them. Bun's `mock.module` patches a module
 // that is already in the registry; registering a mock for one that has not been
 // resolved yet does not reach the modules that import it afterwards, and
 // `authorize()` then quietly talks to the real client. Nothing here touches a
 // database — the pre-load only forces the module graph to resolve.
-await import('@/lib/prisma')
-
-mock.module('@/lib/prisma', () => ({ prisma, default: prisma }))
-
+//
 // The same fake, registered under the package name too. `issueEmailToken` now lives
 // in `@novastar/auth/invite` — shared with the platform console, which mints setup
 // links through the same code — and that module reaches the database through
 // `@novastar/database`. `mock.module` keys on the specifier, so without this the
 // token would be written through the real lazy client and `authorize()` would find
 // no token to carry the flag from.
-mock.module('@novastar/database', () => ({ prisma, default: prisma }))
+//
+// ---------------------------------------------------------------------------
+// Module-mock lifetime: snapshot before registering, restore after
+// ---------------------------------------------------------------------------
+// `mock.module` patches the LIVE namespace for the whole process and never reverts, so a
+// registration made at module scope is what every file loaded afterwards binds to. All three
+// boundaries registered here are put back.
+//
+// The snapshots are read HERE, before the first registration. That is the load-bearing part:
+// a `beforeEach` capture would run after these registrations had already overwritten the
+// namespace, so it would record this file's own factory and hand the double straight back to
+// the next file.
+//
+// Every factory SPREADS the namespace it replaces and then overrides, making each fake both
+// a superset and a subset — which is what makes the restore complete, since `mock.module`
+// merges and an added key could never be removed again.
+const previousNamespaces = new Map<string, Record<string, unknown>>()
+previousNamespaces.set('@/lib/prisma', { ...(await import('@/lib/prisma')) })
+previousNamespaces.set('@novastar/database', { ...(await import('@novastar/database')) })
+previousNamespaces.set('@/lib/audit/logger', { ...(await import('@/lib/audit/logger')) })
 
-mock.module('@/lib/audit/logger', () => ({
-  AuditLogAction: { LOGIN: 'LOGIN', PASSWORD_CHANGED: 'PASSWORD_CHANGED' },
-  createAuditLog: mock(async () => null),
-}))
+const base = (specifier: string): Record<string, unknown> =>
+  previousNamespaces.get(specifier) ?? {}
+
+const FAKES = [
+  { specifier: '@/lib/prisma', factory: () => ({ ...base('@/lib/prisma'), prisma, default: prisma }) },
+  {
+    specifier: '@novastar/database',
+    factory: () => ({ ...base('@novastar/database'), prisma, default: prisma }),
+  },
+  {
+    specifier: '@/lib/audit/logger',
+    factory: () => ({
+      ...base('@/lib/audit/logger'),
+      AuditLogAction: { LOGIN: 'LOGIN', PASSWORD_CHANGED: 'PASSWORD_CHANGED' },
+      createAuditLog: mock(async () => null),
+    }),
+  },
+] as const
+
+// Also registered at load time, so the imports below resolve these specifiers through the
+// doubles and the file is correct in a run that never reaches `beforeEach`.
+for (const { specifier, factory } of FAKES) {
+  mock.module(specifier, factory)
+}
+
 // `withAuth` reads the secret off the environment because the proxy passes only
 // `pages`, and `NEXTAUTH_URL` over https is what selects the `__Secure-` cookie
 // name the middleware looks for.
@@ -166,6 +203,9 @@ const authorize = (authOptions.providers[0] as { options: { authorize: Authorize
   .authorize
 
 beforeEach(() => {
+  for (const { specifier, factory } of FAKES) {
+    mock.module(specifier, factory)
+  }
   users = [makeUser()]
   resetRateLimit()
 })

@@ -82,24 +82,6 @@ class MockServerConfigError extends Error {
 
 const hasPermission = mock(async (): Promise<boolean> => permissionResult)
 
-// The factory must export every name `@/lib/tenant` exports that
-// anything imports: Bun's module-mock registry is global and
-// outlives this file, so a missing export (e.g. `ForbiddenError`,
-// which `lib/api-response.ts` imports) breaks unrelated test files
-// that load the mocked module afterwards.
-mock.module('@/lib/tenant', () => ({
-  getTenantContext,
-  getTenantContextOrNull: async () => {
-    try {
-      return await getTenantContext()
-    } catch {
-      return null
-    }
-  },
-  UnauthorizedError: MockUnauthorizedError,
-  ForbiddenError: MockForbiddenError,
-  ServerConfigError: MockServerConfigError,
-}))
 /**
  * The real auth module, captured before the mock is installed so the
  * factory can hand back every export it does not replace.
@@ -109,10 +91,9 @@ mock.module('@/lib/tenant', () => ({
  * `logAudit`, `getUserSession` and the delegation helpers undefined for
  * every file that resolves `@novastar/auth` afterwards — and
  * `tests/auth.test.ts` and `tests/rbac.test.ts` import exactly those.
- * Same reasoning as the `@/lib/tenant` factory above.
+ * Same reasoning as the `@/lib/tenant` factory below.
  */
 const actualAuth = await import('@novastar/auth')
-mock.module('@novastar/auth', () => ({ ...actualAuth, hasPermission }))
 
 /**
  * The deliberately-provoked 500s below each log a JSON line; mute them for
@@ -265,24 +246,55 @@ let gradingScales: Array<Record<string, unknown>> = []
 
 const assessmentFindFirst = mock(async () => assessmentRow)
 /**
- * The `orderBy` this read is handed is recorded, because it is load-bearing.
+ * The `orderBy` and `where` this read is handed, because both are load-bearing.
  *
  * `resolveApplicableGradingScale` takes the FIRST scale that claims the level, and
  * both callers used to pass no ordering at all — so with two scales claiming `B9`
  * the winning scale, and therefore every child's band, was whatever order the
- * database returned rows in. A routine VACUUM was enough to change it. The rows the
- * mock returns are unchanged so every existing assertion here holds; what is new is
- * that the clause is now observable.
+ * database returned rows in. A routine VACUUM was enough to change it.
+ *
+ * `where` is honoured for the same reason: both callers ask for
+ * `{ tenantId, OR: [{ schoolId }, { schoolId: null }] }`, and returning the
+ * fixture array regardless would make an unscoped read indistinguishable from a
+ * scoped one — a route that dropped the tenant clause entirely would still grade
+ * against another tenant's scale here. Every fixture below is therefore stamped
+ * with the caller's own tenant and school, so the filter has something real to
+ * filter on.
  */
 const gradingScaleQueryArgs: Array<Record<string, unknown>> = []
 const gradingScaleFindMany = mock(async (args: Record<string, unknown>) => {
   gradingScaleQueryArgs.push(args)
-  return gradingScales
+  const where = (args.where ?? {}) as {
+    tenantId?: string
+    OR?: Array<{ schoolId?: string | null }>
+  }
+  return gradingScales.filter((scale) => {
+    if (where.tenantId !== undefined && scale.tenantId !== where.tenantId) return false
+    if (where.OR) {
+      const allowed = where.OR.map((clause) => clause.schoolId)
+      if (!allowed.includes(scale.schoolId as string | null | undefined)) return false
+    }
+    return true
+  })
 })
+const scoreFindFirst = mock(async () => null)
 const scoreUpsert = mock(async (args: UpsertArgs) => {
   steps.push('score.upsert')
   return { id: 'score-1', ...args.create }
 })
+
+/**
+ * Scale fixtures stamped into the caller's own tenant and school.
+ *
+ * Needed because the double above now filters: a fixture carrying no scope would
+ * simply be filtered away, and every assertion in the file would fail for a reason
+ * that has nothing to do with the claim under test. The stamp goes FIRST, so a test
+ * that wants a scale belonging to another tenant or another school declares that
+ * on the row itself and overrides it — which is the only honest way to assert the
+ * scoping, because the alternative is the unscoped double that hid it.
+ */
+const inScope = (rows: Array<Record<string, unknown>>): Array<Record<string, unknown>> =>
+  rows.map((row) => ({ tenantId: BASE_SESSION.tenantId, schoolId: BASE_SESSION.schoolId, ...row }))
 
 // --- Academic report (DEFECT 5) ---
 let studentRow: Record<string, unknown> | null = null
@@ -308,33 +320,91 @@ const assessmentFindMany = mock(async () => {
   return reportAssessments
 })
 
-mock.module('@/lib/prisma', () => {
-  // `default` is part of `@/lib/prisma`'s surface as well as the named
-  // export; a factory that omits it breaks any later file using a
-  // default import of the same module.
-  const prismaMock = {
-    class: { findFirst: classFindFirst, findMany: classFindMany },
-    classSubject: { findMany: classSubjectFindMany },
-    staff: { findFirst: staffFindFirst },
-    parent: { findFirst: parentFindFirst },
-    attendanceTaker: { findFirst: attendanceTakerFindFirst },
-    attendanceStudent: {
-      findMany: attendanceFindMany,
-      findFirst: attendanceFindFirst,
-      update: attendanceUpdate,
-      create: attendanceCreate,
-      delete: attendanceDelete,
+// ---------------------------------------------------------------------------
+// Module-mock lifetime: snapshot before registering, restore after
+// ---------------------------------------------------------------------------
+// `mock.module` patches the LIVE namespace for the whole process and never reverts, so a
+// registration made at module scope is what every file loaded afterwards binds to. All three
+// boundaries registered here are put back. `server-only` goes first because `@/lib/tenant`
+// imports it and the package is not installed in this workspace.
+//
+// The remaining snapshots are read HERE, before the first real registration. That is the
+// load-bearing part: a `beforeEach` capture would run after these registrations had already
+// overwritten the namespace, so it would record this file's own factory and hand the double
+// straight back to the next file.
+//
+// Every factory SPREADS the namespace it replaces and then overrides, making each fake both
+// a superset and a subset — which is what makes the restore complete, since `mock.module`
+// merges and an added key could never be removed again. The `@/lib/tenant` spread is what
+// keeps this file working in isolation: the real module also exports `TenantSuspendedError`,
+// which `lib/api-response.ts` imports.
+mock.module('server-only', () => ({}))
+
+const previousNamespaces = new Map<string, Record<string, unknown>>()
+previousNamespaces.set('@novastar/auth', { ...actualAuth })
+previousNamespaces.set('server-only', { ...(await import('server-only')) })
+previousNamespaces.set('@/lib/tenant', { ...(await import('@/lib/tenant')) })
+previousNamespaces.set('@/lib/prisma', { ...(await import('@/lib/prisma')) })
+
+const base = (specifier: string): Record<string, unknown> =>
+  previousNamespaces.get(specifier) ?? {}
+
+const FAKES = [
+  {
+    specifier: '@/lib/tenant',
+    factory: () => ({
+      ...base('@/lib/tenant'),
+      getTenantContext,
+      getTenantContextOrNull: async () => {
+        try {
+          return await getTenantContext()
+        } catch {
+          return null
+        }
+      },
+      UnauthorizedError: MockUnauthorizedError,
+      ForbiddenError: MockForbiddenError,
+      ServerConfigError: MockServerConfigError,
+    }),
+  },
+  { specifier: '@novastar/auth', factory: () => ({ ...base('@novastar/auth'), hasPermission }) },
+  {
+    specifier: '@/lib/prisma',
+    factory: () => {
+      // `default` is part of `@/lib/prisma`'s surface as well as the named export; a
+      // factory that omits it breaks any later file using a default import of the same
+      // module.
+      const prismaMock = {
+        class: { findFirst: classFindFirst, findMany: classFindMany },
+        classSubject: { findMany: classSubjectFindMany },
+        staff: { findFirst: staffFindFirst },
+        parent: { findFirst: parentFindFirst },
+        attendanceTaker: { findFirst: attendanceTakerFindFirst },
+        attendanceStudent: {
+          findMany: attendanceFindMany,
+          findFirst: attendanceFindFirst,
+          update: attendanceUpdate,
+          create: attendanceCreate,
+          delete: attendanceDelete,
+        },
+        assessment: { findFirst: assessmentFindFirst, findMany: assessmentFindMany },
+        score: { upsert: scoreUpsert, findFirst: scoreFindFirst },
+        gradingScale: { findMany: gradingScaleFindMany },
+        term: { findFirst: termFindFirst },
+        enrollment: { findFirst: enrollmentFindFirst },
+        student: { findFirst: studentFindFirst },
+        $transaction: prismaTransaction,
+      }
+      return { ...base('@/lib/prisma'), prisma: prismaMock, default: prismaMock }
     },
-    assessment: { findFirst: assessmentFindFirst, findMany: assessmentFindMany },
-    score: { upsert: scoreUpsert },
-    gradingScale: { findMany: gradingScaleFindMany },
-    term: { findFirst: termFindFirst },
-    enrollment: { findFirst: enrollmentFindFirst },
-    student: { findFirst: studentFindFirst },
-    $transaction: prismaTransaction,
-  }
-  return { prisma: prismaMock, default: prismaMock }
-})
+  },
+] as const
+
+// Also registered at load time, so the route imports below resolve these specifiers through
+// the doubles and the file is correct in a run that never reaches `beforeEach`.
+for (const { specifier, factory } of FAKES) {
+  mock.module(specifier, factory)
+}
 
 const { GET: GET_ATTENDANCE, POST: POST_ATTENDANCE } = await import(
   '@/app/api/attendance/route'
@@ -458,6 +528,9 @@ const MARK_BODY = {
 const TERM_DATE = { startDate: new Date('2026-01-05'), endDate: new Date('2026-03-31') }
 
 beforeEach(() => {
+  for (const { specifier, factory } of FAKES) {
+    mock.module(specifier, factory)
+  }
   steps = []
   session = BASE_SESSION
   permissionResult = true
@@ -499,6 +572,7 @@ beforeEach(() => {
     prismaTransaction,
     assessmentFindFirst,
     gradingScaleFindMany,
+    scoreFindFirst,
     scoreUpsert,
     studentFindFirst,
     termFindFirst,
@@ -541,14 +615,19 @@ describe('POST /api/attendance — one normalised period, one row', () => {
     expect(attendanceUpdate).toHaveBeenCalledTimes(1)
     expect(attendanceCreate).toHaveBeenCalledTimes(0)
     const write = singleCall(attendanceUpdate)
-    expect(write.where).toEqual({ id: 'att-1' })
+    // Tenant-scoped as well as id-scoped: the row was proved in scope by the
+    // lookup, and the write carries that scope rather than trusting it.
+    expect(write.where).toEqual({ id: 'att-1', tenantId: 'tenant-1' })
     expect(write.data).toMatchObject({
       classId: 'class-1',
       status: 'PRESENT',
       period: '',
       notes: null,
-      markedById: 'user-1',
     })
+    // `markedById` is ABSENT on the update branch. It used to be set to the
+    // caller here, so a bulk re-save overwrote whoever first marked the register
+    // and "changed after the fact" became indistinguishable from "always wrong".
+    expect(Object.keys(write.data as Record<string, unknown>)).not.toContain('markedById')
 
     const body = await readJson(res)
     expect(bodyRows(body)[0]).toMatchObject({ studentId: 'student-1', success: true })
@@ -707,7 +786,9 @@ describe('PATCH /api/attendance/[id] — the normaliser guards the edit path', (
     const data = singleCall(attendanceUpdate).data as Record<string, unknown>
     expect(data.period).toBe('')
     expect(data.notes).toBeNull()
-    expect(data.markedById).toBe('user-1')
+    // The marker is preserved rather than reassigned: this is a correction, and
+    // the column names whoever first marked the register.
+    expect(Object.keys(data)).not.toContain('markedById')
   })
 
   it('trims a real period value on PATCH', async () => {
@@ -945,6 +1026,7 @@ describe('POST /api/attendance — AttendanceTaker enforcement', () => {
 const ASSESSMENT_WITH_LEVEL = {
   id: 'assess-1',
   maxScore: 100,
+  isPublished: true,
   classSubject: {
     class: {
       students: [{ id: 'student-1' }],
@@ -957,7 +1039,7 @@ const ASSESSMENT_WITH_LEVEL = {
 describe('POST /api/assessments/[id]/scores — grade bands are applied', () => {
   it('stores the grade band key and the grading scale id on both write branches', async () => {
     assessmentRow = ASSESSMENT_WITH_LEVEL
-    gradingScales = [
+    gradingScales = inScope([
       {
         id: 'scale-ges',
         isDefault: true,
@@ -967,7 +1049,7 @@ describe('POST /api/assessments/[id]/scores — grade bands are applied', () => 
           { key: 'B', label: 'B (Very Good)', minScore: 70, maxScore: 79 },
         ],
       },
-    ]
+    ])
 
     const res = await POST_SCORES(
       jsonRequest('POST', '/api/assessments/assess-1/scores', {
@@ -1068,14 +1150,14 @@ describe('POST /api/assessments/[id]/scores — grade bands are applied', () => 
 
   it('falls back to the default scale when the level is not named', async () => {
     assessmentRow = ASSESSMENT_WITH_LEVEL
-    gradingScales = [
+    gradingScales = inScope([
       {
         id: 'scale-default',
         isDefault: true,
         appliesToLevels: ['SOMETHING_ELSE'],
         levels: [{ key: 'C', label: 'C', minScore: 50, maxScore: 100 }],
       },
-    ]
+    ])
 
     await POST_SCORES(
       jsonRequest('POST', '/api/assessments/assess-1/scores', {
@@ -1121,7 +1203,7 @@ describe('POST /api/assessments/[id]/scores — grade bands are applied', () => 
  */
 describe('the grading-scale read is ordered, so the same rows always grade the same way', () => {
   /** Both claim B1 and both are marked default: the ambiguous configuration. */
-  const AMBIGUOUS = [
+  const AMBIGUOUS = inScope([
     {
       id: 'scale-copy',
       name: 'Ghana Primary 2026',
@@ -1138,7 +1220,7 @@ describe('the grading-scale read is ordered, so the same rows always grade the s
       createdAt: '2026-01-01T00:00:00Z',
       levels: [{ key: 'A', label: 'A', minScore: 80, maxScore: 100 }],
     },
-  ]
+  ])
 
   it('asks Prisma for a total order, rather than accepting whatever rows arrive', async () => {
     assessmentRow = ASSESSMENT_WITH_LEVEL
@@ -1160,6 +1242,75 @@ describe('the grading-scale read is ordered, so the same rows always grade the s
       { createdAt: 'asc' },
       { id: 'asc' },
     ])
+    // The same query is scoped, and the scope is now real rather than decorative:
+    // `gradingScaleFindMany` filters on this clause, so the two cases below could
+    // not pass by accident. Before the double honoured `where`, this file could not
+    // tell a scoped read from an unscoped one — dropping `tenantId` or the `OR`
+    // changed nothing observable, so a cross-tenant gradebook leak would have been
+    // invisible here.
+    expect(gradingScaleQueryArgs[0]!.where).toEqual({
+      tenantId: BASE_SESSION.tenantId,
+      OR: [{ schoolId: BASE_SESSION.schoolId }, { schoolId: null }],
+    })
+  })
+
+  it('grades against nothing when the only scale belongs to another tenant', async () => {
+    // The behavioural half of the scoping claim. A scale belonging to another
+    // tenant is filtered out, so no scale applies, and the write stores no band
+    // rather than another school's bands. An unscoped read would have graded this
+    // child against a scale it has no right to see.
+    assessmentRow = ASSESSMENT_WITH_LEVEL
+    gradingScales = inScope([
+      {
+        id: 'scale-foreign',
+        tenantId: 'tenant-other',
+        isDefault: true,
+        appliesToLevels: ['B1'],
+        levels: [{ key: 'A', label: 'A', minScore: 80, maxScore: 100 }],
+      },
+    ])
+
+    const res = await POST_SCORES(
+      jsonRequest('POST', '/api/assessments/assess-1/scores', {
+        studentId: 'student-1',
+        rawScore: 90,
+      }),
+      { params: Promise.resolve({ id: 'assess-1' }) },
+    )
+
+    expect(res.status).toBe(200)
+    const update = objectAt(singleCall(scoreUpsert), 'update')
+    expect(update.grade).toBeNull()
+    expect(update.gradingScaleId).toBeNull()
+  })
+
+  it('still grades against a tenant-wide scale, which has no school of its own', async () => {
+    // The other half of the `OR`. A scale with `schoolId: null` is the tenant's own
+    // shared scale and every school grades against it, so the clause must admit it
+    // — a naive `where: { schoolId }` would silently blank every band in a
+    // deployment that uses one.
+    assessmentRow = ASSESSMENT_WITH_LEVEL
+    gradingScales = inScope([
+      {
+        id: 'scale-shared',
+        schoolId: null,
+        isDefault: true,
+        appliesToLevels: ['B1'],
+        levels: [{ key: 'A', label: 'A (Excellent)', minScore: 80, maxScore: 100 }],
+      },
+    ])
+
+    await POST_SCORES(
+      jsonRequest('POST', '/api/assessments/assess-1/scores', {
+        studentId: 'student-1',
+        rawScore: 90,
+      }),
+      { params: Promise.resolve({ id: 'assess-1' }) },
+    )
+
+    const update = objectAt(singleCall(scoreUpsert), 'update')
+    expect(update.grade).toBe('A')
+    expect(update.gradingScaleId).toBe('scale-shared')
   })
 
   it('stores the older scale\'s band whatever order the two scales come back in', async () => {
@@ -1213,7 +1364,7 @@ describe('the grading-scale read is ordered, so the same rows always grade the s
  */
 describe('POST /api/assessments/[id]/scores — a mark is bounded by the assessment', () => {
   /** Ghana Primary, so "level_6" here means the Excellent band under test. */
-  const ghanaPrimary = [
+  const ghanaPrimary = inScope([
     {
       id: 'scale-primary',
       isDefault: true,
@@ -1224,7 +1375,7 @@ describe('POST /api/assessments/[id]/scores — a mark is bounded by the assessm
         { key: 'level_1', label: 'Level 1', minScore: 0, maxScore: 39 },
       ],
     },
-  ]
+  ])
 
   const postMark = (body: Record<string, unknown>) =>
     POST_SCORES(
@@ -1574,7 +1725,7 @@ describe('GET /api/reports/academic/[studentId] — term-scoped joins', () => {
       classId: 'class-term-1',
       class: { name: 'Term 1 Class', level: { name: 'Basic 5', code: 'B5' } },
     }
-    gradingScales = [
+    gradingScales = inScope([
       {
         id: 'scale-primary',
         isDefault: true,
@@ -1585,7 +1736,7 @@ describe('GET /api/reports/academic/[studentId] — term-scoped joins', () => {
           { key: 'level_1', label: 'Level 1', minScore: 0, maxScore: 39 },
         ],
       },
-    ]
+    ])
     attendanceList = []
     reportAssessments = [
       {
@@ -1634,7 +1785,7 @@ describe('GET /api/reports/academic/[studentId] — term-scoped joins', () => {
       classId: 'class-term-1',
       class: { name: 'Term 1 Class', level: { name: 'Basic 5', code: 'B5' } },
     }
-    gradingScales = [
+    gradingScales = inScope([
       {
         id: 'scale-primary',
         isDefault: true,
@@ -1645,7 +1796,7 @@ describe('GET /api/reports/academic/[studentId] — term-scoped joins', () => {
           { key: 'level_1', label: 'Level 1', minScore: 0, maxScore: 39 },
         ],
       },
-    ]
+    ])
     attendanceList = []
     reportAssessments = [
       {
@@ -1710,7 +1861,7 @@ describe('GET /api/reports/academic/[studentId] — term-scoped joins', () => {
   })
 
   it('labels the same percentage the same way whichever order two claiming scales arrive in', async () => {
-    const twoScales = [
+    const twoScales = inScope([
       {
         id: 'scale-copy',
         isDefault: true,
@@ -1725,7 +1876,7 @@ describe('GET /api/reports/academic/[studentId] — term-scoped joins', () => {
         createdAt: '2026-01-01T00:00:00Z',
         levels: [{ key: 'level_6', label: 'Level 6', minScore: 85, maxScore: 100 }],
       },
-    ]
+    ])
     const gradedReport = async () => {
       studentRow = STUDENT_ROW
       currentTerm = { id: 'term-1', ...TERM_DATE }

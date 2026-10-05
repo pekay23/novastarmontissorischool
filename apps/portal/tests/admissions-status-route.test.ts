@@ -181,30 +181,78 @@ function record(self: unknown, name: Step): void {
  * ever upserts and deletes.
  */
 mock.module('server-only', () => ({}))
-mock.module('@/lib/prisma', () => ({
-  prisma: {
-    systemConfig: ROOT_MODEL,
-    systemError: { create: systemErrorCreate },
-    $transaction,
-  },
-}))
-mock.module('@/lib/auth/session-context', () => ({
-  getCachedSessionAndTenant,
-  getTokenTenantId: async () => null,
-}))
+
+// ---------------------------------------------------------------------------
+// Module-mock lifetime: snapshot before registering, restore after
+// ---------------------------------------------------------------------------
+// `mock.module` patches the LIVE namespace for the whole process and never reverts, so a
+// registration made at module scope is what every file loaded afterwards binds to. All four
+// boundaries registered here are put back. `server-only` goes first because `@/lib/prisma`
+// resolves through it and the package is not installed in this workspace.
+//
+// The remaining snapshots are read HERE, before the first real registration. That is the
+// load-bearing part: a `beforeEach` capture would run after these registrations had already
+// overwritten the namespace, so it would record this file's own factory and hand the double
+// straight back to the next file.
+//
+// Every factory SPREADS the namespace it replaces and then overrides, making each fake both
+// a superset and a subset — which is what makes the restore complete, since `mock.module`
+// merges and an added key could never be removed again.
+const previousNamespaces = new Map<string, Record<string, unknown>>()
+previousNamespaces.set('server-only', { ...(await import('server-only')) })
+previousNamespaces.set('@/lib/prisma', { ...(await import('@/lib/prisma')) })
+previousNamespaces.set('@/lib/auth/session-context', {
+  ...(await import('@/lib/auth/session-context')),
+})
+previousNamespaces.set('@/lib/audit/logger', { ...(await import('@/lib/audit/logger')) })
+
+const base = (specifier: string): Record<string, unknown> =>
+  previousNamespaces.get(specifier) ?? {}
 
 /**
- * Pull the real `AuditLogAction` enum out before the module is replaced, so the
- * `action` asserted below is the production constant rather than a copy of it
- * that could drift. Only `logAuditEvent` is under test.
+ * The real `AuditLogAction` enum, read out before the module is replaced, so the `action`
+ * asserted below is the production constant rather than a copy of it that could drift.
+ * Only `logAuditEvent` is under test.
  */
 const { AuditLogAction } = await import('@/lib/audit/logger')
-mock.module('@/lib/audit/logger', () => ({
-  AuditLogAction,
-  logAuditEvent,
-  createAuditLog: logAuditEvent,
-  queryAuditLogs: async () => ({ logs: [], total: 0 }),
-}))
+
+const FAKES = [
+  {
+    specifier: '@/lib/prisma',
+    factory: () => ({
+      ...base('@/lib/prisma'),
+      prisma: {
+        systemConfig: ROOT_MODEL,
+        systemError: { create: systemErrorCreate },
+        $transaction,
+      },
+    }),
+  },
+  {
+    specifier: '@/lib/auth/session-context',
+    factory: () => ({
+      ...base('@/lib/auth/session-context'),
+      getCachedSessionAndTenant,
+      getTokenTenantId: async () => null,
+    }),
+  },
+  {
+    specifier: '@/lib/audit/logger',
+    factory: () => ({
+      ...base('@/lib/audit/logger'),
+      AuditLogAction,
+      logAuditEvent,
+      createAuditLog: logAuditEvent,
+      queryAuditLogs: async () => ({ logs: [], total: 0 }),
+    }),
+  },
+] as const
+
+// Also registered at load time, so the route imports below resolve these specifiers through
+// the doubles and the file is correct in a run that never reaches `beforeEach`.
+for (const { specifier, factory } of FAKES) {
+  mock.module(specifier, factory)
+}
 
 const { UnauthorizedError } = await import('@/lib/tenant')
 const { GET, PATCH } = await import('@/app/api/admissions/status/route')
@@ -289,6 +337,9 @@ function expectStatus(
 }
 
 beforeEach(() => {
+  for (const { specifier, factory } of FAKES) {
+    mock.module(specifier, factory)
+  }
   // Reset rather than only clear: a leaked implementation from one test would
   // let the next test pass on data it did not set up.
   steps = []
@@ -939,8 +990,11 @@ describe('GET /api/admissions/status - the read path resolves, and writes nothin
   })
 
   it('should report isOverridden false when no row exists', async () => {
-    // DEFECT, NOT A TEST PREFERENCE — this currently fails and should not be
-    // "fixed" by editing the expectation.
+    // A defect that was fixed, kept as a regression guard because the wrong
+    // answer here is indistinguishable from the right one except by asserting
+    // it. The handler reads `isOverridden: row !== null`; the history of how it
+    // came to, and why `!== undefined` was wrong for a `findUnique` result, is
+    // below.
     //
     // Prisma's `findUnique` resolves to `null` when there is no record, not to
     // `undefined`. The handler guards with `row !== undefined`, so an absent row

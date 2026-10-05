@@ -814,6 +814,11 @@ describe('Role grant matrices', () => {
     expect(permissionsForRole('PARENT').sort()).toEqual([
       'announcement:read',
       'communication:read',
+      'document:health:read',
+      'document:health:upload',
+      'report:read',
+      'student:health:read',
+      'student:health:write',
       'student:read',
     ])
   })
