@@ -6,9 +6,18 @@ import { PLATFORM_AUDIT_SCOPE, writeAuditEntry, type AuditWrite } from '@/lib/qu
  * A closed set on purpose. `AuditLog.action` is a free `String`, so the platform
  * already contains entries no code path can produce; adding another way to spell
  * "the operator changed something" makes the log harder to query, not easier.
- * The portal's own `AuditLogAction` is the sibling vocabulary, and the generic
- * `UPDATE`/`CREATE`/`SYSTEM_UPDATE` values are deliberately identical to it so a
- * filter written for one app filters the other.
+ *
+ * PARITY WITH THE PORTAL IS PARTIAL, AND THAT IS KNOWN. The portal's
+ * `AuditLogAction` (an enum) carries `LOGIN`, `LOGIN_FAILED`, `LOGOUT`,
+ * `SYSTEM_UPDATE`, `CREATE`, `READ`, `UPDATE`, `DELETE` and a handful of domain
+ * events. This console shares the first three by value — same strings, because
+ * the auth routes were written to match — and `SYSTEM_UPDATE` by value too,
+ * though nothing here writes it. There is no `CREATE`, `UPDATE`, `DELETE` or
+ * `READ` here: this console has never logged a read, and its writes are the
+ * tenant lifecycle, invites, and sign-in. Do not read this table as a vocabulary
+ * the portal is a subset of. A cross-app query that unions the two trails buckets
+ * reads under `READ` from the portal and under nothing from here, and that is the
+ * real state, not a gap to close by adding a member nobody emits.
  */
 export const AdminAuditAction = {
   LOGIN: 'LOGIN',
