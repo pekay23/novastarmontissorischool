@@ -564,16 +564,34 @@ model User {
   delegationsTo       Delegation[]        @relation("DelegationsTo")
   delegationApprovals Delegation[]        @relation("DelegationApprovals")
   createdNews         News[]              @relation("NewsAuthor")
+  // Internal staff notices, which are a different surface from the public
+  // marketing CMS above. Separate relation because `Announcement` and `News`
+  // are both "a thing this person wrote" and would otherwise be ambiguous.
+  announcements       Announcement[]      @relation("AnnouncementAuthor")
   parent              Parent?
   assessments         Assessment[]
   scores              Score[]
   attendanceStudents  AttendanceStudent[]
   attendanceStaffs    AttendanceStaff[]
+
+  // The four reason-gated locks (Student, Parent, AttendanceStudent,
+  // AttendanceStaff). Each is named because all four models ALREADY have an
+  // unrelated relation back to `User` — `Student.user`, `Parent.user`,
+  // `AttendanceStudent.markedBy`, `AttendanceStaff.markedBy` — and Prisma
+  // rejects two unnamed relations between the same pair of models.
+  finalizedAttendanceStudents AttendanceStudent[] @relation("FinalizedAttendanceStudents")
+  finalizedAttendanceStaffs   AttendanceStaff[]   @relation("FinalizedAttendanceStaffs")
+  finalizedStudents           Student[]           @relation("FinalizedStudents")
+  finalizedParents            Parent[]            @relation("FinalizedParents")
   payments            Payment[]
   messages            Message[]
   notifications       Notification[]
   leaveRequests       LeaveRequest[]
    auditLogs           AuditLog[]
+    // Every value change this account made that had to carry a reason. The
+    // trail outlives the account: an account that has made an amendment cannot be
+    // deleted at all, because doing so would break the exactly-one-actor CHECK.
+    recordAmendments        RecordAmendment[]
     passkeys            Passkey[]
     passkeyChallenges   PasskeyChallenge[]
      systemErrors        SystemError[]     @relation("ReportedErrors")
@@ -625,6 +643,11 @@ model PlatformOperator {
   createdAt          DateTime   @default(now())
   updatedAt          DateTime   @updatedAt
   auditLogs          AuditLog[]
+  // Same SET NULL treatment as `auditLogs`, and with the same caveat: this row's
+  // deletion is refused while it has amendments, because the exactly-one-actor
+  // CHECK is evaluated on the UPDATE that SET NULL performs. See the model
+  // comment's "FOREIGN KEYS" section.
+  recordAmendments   RecordAmendment[]
 
   // Serves the lockout sweep — "every active operator whose lock has lapsed" —
   // which is otherwise a sequential scan of the whole operator table on every
@@ -782,6 +805,18 @@ model Student {
   parent             Parent?             @relation(fields: [parentId], references: [id])
   createdAt          DateTime            @default(now())
   updatedAt          DateTime            @updatedAt
+
+  // Reason-gated lock — see the RecordAmendment model comment for the full
+  // rationale. NULL means the profile is still open; a value means it was
+  // settled on that date by that person, and any later edit has to carry a
+  // written reason. Deliberately NOT an immutability flag: the row stays
+  // editable and unlocking is clearing these two columns, because a school
+  // would rather amend a child's record with a reason on it than be told the
+  // system will not let them fix a typo.
+  finalizedAt   DateTime?
+  finalizedById String?
+  finalizedBy   User?                @relation("FinalizedStudents", fields: [finalizedById], references: [id])
+
   enrollments        Enrollment[]
   scores             Score[]
   attendanceStudents AttendanceStudent[]
@@ -817,6 +852,14 @@ model Parent {
   occupation String?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
+
+  // Reason-gated lock, as on Student. Contact details are the most frequently
+  // corrected fields in the whole register — a guardian changes phone, moves,
+  // changes email — which is exactly why the correction needs to leave a record
+  // instead of overwriting the previous value in place.
+  finalizedAt   DateTime?
+  finalizedById String?
+  finalizedBy   User?     @relation("FinalizedParents", fields: [finalizedById], references: [id])
 
   students Student[]
 
@@ -920,6 +963,15 @@ date       DateTime
   createdAt  DateTime         @default(now())
   updatedAt  DateTime         @updatedAt
 
+  // Reason-gated lock, as on Student. Attendance is the record most likely to be
+  // disputed after the fact and the hardest to audit, because the row carries no
+  // separate "last changed by" column at all: `PATCH /api/attendance/[id]`
+  // overwrites `markedById` with the correcting user, so the original marker is
+  // gone. See the RecordAmendment model comment for what that costs.
+  finalizedAt   DateTime?
+  finalizedById String?
+  finalizedBy   User?           @relation("FinalizedAttendanceStudents", fields: [finalizedById], references: [id])
+
   @@unique([tenantId, studentId, date, period])
 }
 
@@ -937,6 +989,12 @@ model AttendanceStaff {
   notes      String?
   createdAt  DateTime         @default(now())
   updatedAt  DateTime         @updatedAt
+
+  // Reason-gated lock, as on AttendanceStudent — and the same `markedById`
+  // overwrite applies here, which is why `markedById` is optional on this model.
+  finalizedAt   DateTime?
+  finalizedById String?
+  finalizedBy   User?           @relation("FinalizedAttendanceStaffs", fields: [finalizedById], references: [id])
 
   @@unique([tenantId, staffId, date, period])
 }
@@ -1176,6 +1234,67 @@ enum ReportType {
   FINANCIAL_SUMMARY
   ENROLLMENT_STATS
   CUSTOM
+}
+
+// ============ INTERNAL COMMS (staff-only; never the public site) ============
+//
+// WHY THIS IS NOT `News`
+// ----------------------
+// `News` is the public marketing CMS: `apps/public-site/lib/data.ts` renders it,
+// filtered on nothing but `status: 'PUBLISHED'`, and it is read at BUILD time by a
+// static export. `POST /api/announcements` nonetheless writes its staff notices
+// there, so an internal notice addressed to one classroom teacher is one
+// `status` flip away from appearing on the school's public homepage. That is the
+// defect this model exists to end.
+//
+// The two tables are therefore separate storage, not a shared one with a flag.
+// `audience` on `News` already exists and is not a containment boundary: nothing
+// reads it on the public path, so it selects nothing there.
+//
+// `tenantId`/`schoolId` are plain columns with no relation, matching `AuditLog` —
+// the closest sibling, and also an internal record. Every read of this table is
+// scoped by an explicit `where`, and `Announcement` has no back-relation on
+// `Tenant` or `School` because it does not need one.
+//
+// `AnnouncementStatus` is declared as its own enum rather than reusing
+// `ContentStatus`, which holds the same three values. That is a deliberate
+// redundancy, not an oversight: this table's lifecycle is set by a school
+// administrator and is not part of the public publishing workflow, so coupling
+// the two would mean a change to how the marketing CMS is moderated could
+// silently break internal notices. The cost is one more Postgres enum type.
+model Announcement {
+  id       String @id @default(cuid())
+  tenantId String
+  schoolId String
+  title    String
+  // The notice body. `bodyEn`/`bodyTw` are deliberately NOT reused: this is a
+  // single internal notice written once by staff, not a bilingual published
+  // article needing per-locale bodies.
+  body     String            @db.Text
+  // Role names to target, e.g. `['CLASSROOM_TEACHER']`. An empty array means
+  // every role in the school, which is the common case for a general notice.
+  // Deliberately a string array and not an enum: the portal's role vocabulary is
+  // a `Role` table, not a closed set, and a notice must be able to name a role
+  // that exists without a migration.
+  audience String[]
+  status   AnnouncementStatus @default(DRAFT)
+  // Set when the notice goes live, NULL while it is a draft. Kept separate from
+  // `updatedAt` so "when was this first shown to staff" is answerable after
+  // later edits.
+  publishedAt DateTime?
+  authorId    String
+  author      User      @relation("AnnouncementAuthor", fields: [authorId], references: [id])
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([tenantId, schoolId, status, publishedAt])
+  @@index([authorId])
+}
+
+enum AnnouncementStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
 }
 
 // ============ HOUSES ============
@@ -1502,6 +1621,193 @@ model AuditLog {
   // "Everything this operator did" is the question the new column exists to
   // answer, so it gets its own index rather than relying on a scan.
    @@index([operatorId])
+}
+
+// ============ RECORD AMENDMENTS ============
+//
+// A per-field, append-only trail of changes made to a record AFTER it was
+// written: one row per changed field, carrying the tagged old and new value, the
+// reason, the actor, and a `groupId` shared by every field row of one logical
+// edit. This is the companion to the reason-gated locks on `Student`, `Parent`,
+// `AttendanceStudent` and `AttendanceStaff` — a lock says "this row now requires
+// a reason", and this table is where the reason lands.
+//
+// WHY NOT AN `AuditLog` EXTENSION
+// -------------------------------
+// `AuditLog` is the obvious home for this and was rejected for three reasons that
+// only bite at one-row-per-field grain:
+//
+//   1. It is hash-chained per tenant (`previousHash`/`hash`), so every row
+//      extends one tenant-wide tail. A single register correction is roughly 100
+//      field rows, which would serialise every amendment in a school against
+//      that one tail.
+//   2. Verifying the chain is O(all rows in the tenant). Auth-event retention and
+//      per-child-per-term retention are different lifetimes; chaining them means
+//      neither can be pruned without destroying the other's proof.
+//   3. `AuditLog.oldData`/`newData` are whole-record JSON. One of those per
+//      changed field is quadratic in the field count and leaves the reader
+//      computing a diff to learn which field actually moved.
+//
+// WHY NOT ONE TABLE PER ENTITY
+// ---------------------------
+// Because the grain is a value rather than a record, a single entity-agnostic
+// table is the whole design. A new amendable entity is a value of `entity`, not a
+// migration, a pair of back-relations and a set of grants.
+//
+// GRAIN, AND WHY `groupId` HAS NO DEFAULT
+// ---------------------------------------
+// One row per FIELD, because the unit a school disputes is a value — "her phone
+// number was wrong" — not a record.
+//
+// `groupId` is deliberately declared with NO `@default`. A `@default(cuid())`
+// here would hand every row a different value and group nothing, and that is the
+// worst possible failure mode: the column would look like it works, and every
+// multi-field edit would land as N unrelated single-field entries with N
+// unrelated reasons. Instead every writer must mint one id and pass it to every
+// field row of the same edit, so a three-field student correction is ONE group
+// with ONE reason. The column is NOT NULL and indexed; nothing generates it.
+//
+// `reason`, the actor and `createdAt` are denormalised onto every row of a group
+// deliberately. A partial group — some field rows carrying the reason and some
+// not — then becomes unrepresentable, so "why was this changed" can never depend
+// on how many rows a failed write happened to land.
+//
+// WHY NOT HASH-CHAINED
+// --------------------
+// Integrity comes from three cheaper guarantees: append-only privileges
+// (`REVOKE UPDATE, DELETE ON "RecordAmendment" FROM PUBLIC`), the amendment row
+// being written in the SAME transaction as the edit it describes, and CHECK
+// constraints refusing an empty `field`, an empty `reason`, or a row naming zero
+// or two actors. A chain would add a write-time lock to a table that has to
+// accept the correction even when something else has already gone wrong — and
+// append-only is the one guarantee worth enforcing in DDL, because a trail that
+// can be quietly rewritten launders the very change it exists to expose.
+//
+// ACTORS: EXACTLY ONE
+// -------------------
+// `userId` and `operatorId` are siblings, mirroring `AuditLog.operatorId`, and the
+// same reasoning applies. An operator has no `User` row — `User.tenantId` is
+// non-null and an operator belongs to no tenant — so there is no correct `User` to
+// point at. Pointing `userId` at the nearest school administrator would be worse
+// than NULL: it would attribute a cross-tenant action to a tenant member who did
+// not perform it. A row therefore names exactly one of the two, and the CHECK
+// `num_nonnulls("userId","operatorId") = 1` makes "neither" and "both"
+// unrepresentable rather than merely discouraged.
+//
+// FOREIGN KEYS: SET NULL, BUT READ THIS BEFORE RELYING ON IT
+// -------------------------------------------------------
+// The actor FKs are declared `ON DELETE SET NULL ON UPDATE CASCADE`, matching
+// `AuditLog_operatorId_fkey` in 20261003164500_platform_operator, and the intent is
+// the same one AuditLog states: the trail must outlive the person it describes.
+// In practice this model does NOT achieve that by detaching the rows.
+//
+// `ON DELETE SET NULL` is performed as an UPDATE of the referencing row, and the
+// exactly-one-actor CHECK below is evaluated on every UPDATE. Deleting a user who
+// has ever made an amendment therefore sets `userId` to NULL, `num_nonnulls`
+// drops to 0, and the DELETE is REJECTED. The real behaviour is that an account
+// which has made a recorded amendment CANNOT BE DELETED — the trail outlives the
+// person because the person's removal is refused. `SET NULL` on these two columns
+// is unreachable while that CHECK exists.
+//
+// That is the right trade for an append-only evidence trail (deleting an actor
+// would erase the attribution of every change they made), but it is not what
+// "SET NULL" usually signals, and it needs a documented support path for removing
+// a former employee. The alternatives are `<= 1` instead of `= 1`, or no CHECK at
+// all — both weaker. See RecordAmendment_userId_fkey in
+// 20261004170000_record_amendment_trail for the full trade.
+//
+// The lock columns on the four models below DO get working SET NULL behaviour,
+// because nothing there constrains the pair.
+//
+// THE VALUE ENVELOPE
+// ------------------
+// `oldValue`/`newValue` are `Json` because no single column type both round-trips
+// a `Decimal` and a `DateTime` and distinguishes SQL NULL from "this field was not
+// part of the change". Naive JSON fails both ways: an `@db.Decimal(12,2)` passed
+// through a JSON number becomes a double and prints `72.5` for `72.50`, and a bare
+// `null` is indistinguishable from an absent value. So each value is a tagged
+// envelope and the writer owns the encoding:
+//
+//   {"kind":"decimal","value":"72.50"}            decimal as a STRING, never a
+//                                                 JSON number — see above
+//   {"kind":"datetime","value":"2026-10-04T00:00:00.000Z"}
+//   {"kind":"date","value":"2026-10-04"}
+//   {"kind":"string","value":"Ama Serwaa"}
+//   {"kind":"enum","value":"ACTIVE"}
+//   {"kind":"number","value":72}                  counters, sort positions
+//   {"kind":"bool","value":true}
+//   {"kind":"null"}                               the column held SQL NULL
+//
+// `oldValue` is SQL NULL ONLY for an insert. Every other row carries an envelope
+// on both sides, and "this field was not part of the change" is expressed by
+// omitting the key — never by writing `null`.
+//
+// STATUS: THE TRAIL STARTS EMPTY, AND AN EMPTY TRAIL IS NOT A CLEAN HISTORY
+// ------------------------------------------------------------------------
+// This table is created empty and is never backfilled. Read that as a positive
+// statement, not a caveat: THE ABSENCE OF A ROW IS NOT EVIDENCE THAT A VALUE WAS
+// NEVER CORRECTED. A missing amendment means "not recorded", and "not recorded"
+// and "never happened" are different claims. Any reader presenting an empty trail
+// as a verified clean history is presenting a history that does not exist.
+//
+// For attendance and for scores the pre-deployment corrections are UNRECOVERABLE,
+// not merely unrecorded:
+//
+//   * `apps/portal/app/api/attendance/[id]/route.ts:148` assigns
+//     `updateData.markedById = userId`, so a correction OVERWRITES the original
+//     marker with the correcting user. "Changed after the fact" and "always wrong"
+//     are indistinguishable in the stored data.
+//   * `AttendanceStudent` and `AttendanceStaff` have no `updatedById` column, so
+//     there is no second identity left to recover.
+//   * No attendance route imports the audit logger, so nothing was captured
+//     anywhere else either.
+//
+//   * `Score.rawScore`, `Score.percentage` and `Score.grade` were editable through
+//     a write path that called no audit logger, and `Score.isApproved` had no
+//     writer at all, so an approved mark could be replaced with no trace of the
+//     value it replaced.
+//
+// Stated here so that no future reader mistakes a blank table for a clean record,
+// and so nobody attempts a backfill that cannot succeed.
+model RecordAmendment {
+  id       String @id @default(cuid())
+  tenantId String
+  schoolId String?
+  // Model name, e.g. 'Student'. A string and not an enum: this table is
+  // deliberately entity-agnostic, and an enum would re-import the per-entity
+  // table problem it exists to avoid.
+  entity   String
+  entityId String
+  // The one id shared by every field row of a single logical edit. NO DEFAULT —
+  // see the model comment. Deliberately not a cuid() default, which would group
+  // nothing while appearing to work.
+  groupId  String
+  // Column name, e.g. 'phone'. Checked non-empty in the database.
+  field    String
+  oldValue Json?
+  newValue Json?
+  // Why the change was made. Non-empty is enforced by a DB CHECK, not just by
+  // this NOT NULL: Prisma cannot express CHECK, so the constraint lives only in
+  // the migration SQL, and `''` satisfies NOT NULL perfectly well.
+  reason   String
+  userId     String?
+  user       User?             @relation(fields: [userId], references: [id])
+  operatorId String?
+  operator   PlatformOperator? @relation(fields: [operatorId], references: [id])
+  createdAt DateTime @default(now())
+
+  // "Every amendment ever made to this record" — the question a disputed value
+  // actually asks. Ordered by time so a reader does not sort by hand.
+  @@index([tenantId, entity, entityId, createdAt])
+  // "Everything changed in this school in this period" — the register-wide
+  // report. Separate from the index above because it does not name an entity.
+  @@index([tenantId, schoolId, createdAt])
+  // "Everything this account amended", mirroring AuditLog_operatorId_idx.
+  @@index([userId, createdAt])
+  // Serves the reverse lookup from a group back to its field rows, which is how
+  // one edit is read as one edit. Without it, reading a group is a sequential
+  // scan of the whole table.
+  @@index([groupId])
 }
 
 model Passkey {
