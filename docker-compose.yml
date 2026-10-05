@@ -21,11 +21,18 @@
 # back to an in-process map when those are unset. A tcp/6379 container would be
 # ignored.
 #
-# Prisma migrations are NOT run here on purpose. The checked-in init migration
-# is bare CREATE TABLE/CREATE TYPE statements and the live Neon database was
-# built with `prisma db push`, so it has no _prisma_migrations table. Running
-# `migrate deploy` against it would fail partway and record a partially applied
-# migration. See the migration notes in .github/workflows/ci.yml.
+# Prisma migrations are NOT run here on purpose, for a different reason than
+# this file previously claimed. The earlier comment asserted that the live Neon
+# database was built with `prisma db push` and therefore had no
+# _prisma_migrations table, so `migrate deploy` would fail partway. That is no
+# longer true and was never checked: production Neon DOES have a ledger, with
+# four migrations recorded from 2026-10-03. Verified 2026-10-05.
+#
+# The real reason is the one above this block: the app speaks Neon's
+# SQL-over-HTTP protocol, so a container cannot run the migrations here either.
+# Migrations are applied deliberately, outside compose, through the guarded
+# `bun run db:migrate:deploy`, which requires a verified Supabase failsafe
+# before it will write to a production target. Run it; do not add it here.
 # ============================================================================
 
 name: novastar
