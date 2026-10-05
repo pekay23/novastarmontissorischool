@@ -32,41 +32,41 @@
 -- and disagree. The client asked for `isApproved` to be used, so it is used.
 --
 -- Assessment is NOT given a column either. `isPublished`/`publishedAt` already
-// ARE its lock and have been all along. The defect there is a write path, not a
+-- ARE its lock and have been all along. The defect there is a write path, not a
 -- schema: `POST /api/assessments/[id]/scores` never checks
-// `assessment.isPublished`, so an assessment can be published and then have its
-// marks edited. That is a route fix and belongs to whoever owns the route.
+-- `assessment.isPublished`, so an assessment can be published and then have its
+-- marks edited. That is a route fix and belongs to whoever owns the route.
 --
 -- WHY `Announcement` IS NOT MORE `News`
 -- ------------------------------------
 -- `News` is the public marketing CMS. `apps/public-site/lib/data.ts` renders it,
-// filtered on nothing but `status: 'PUBLISHED'`, and it is read at BUILD time by
-// an `output: 'export'` app. `POST /api/announcements` nonetheless writes staff
-// notices there, so an internal notice addressed to one classroom teacher is one
-// `status` flip away from appearing on the school's public homepage.
-//
-// `News.audience` already exists and is not a containment boundary: nothing on
-// the public path reads it, so it selects nothing there. Hence separate storage,
-// not a shared table with a flag.
-//
-// WHY `AnnouncementStatus` IS NOT `ContentStatus`
-// ----------------------------------------------
-// `ContentStatus` holds the same three values and reusing it would have been less
-// code. It is declared separately because this table's lifecycle is set by a
-// school administrator and is not part of the public publishing workflow: sharing
-// a type would mean a change to how the marketing CMS is moderated could silently
-// change what states an internal notice can be in. The cost is one additional
+-- filtered on nothing but `status: 'PUBLISHED'`, and it is read at BUILD time by
+-- an `output: 'export'` app. `POST /api/announcements` nonetheless writes staff
+-- notices there, so an internal notice addressed to one classroom teacher is one
+-- `status` flip away from appearing on the school's public homepage.
+--
+-- `News.audience` already exists and is not a containment boundary: nothing on
+-- the public path reads it, so it selects nothing there. Hence separate storage,
+-- not a shared table with a flag.
+--
+-- WHY `AnnouncementStatus` IS NOT `ContentStatus`
+-- ----------------------------------------------
+-- `ContentStatus` holds the same three values and reusing it would have been less
+-- code. It is declared separately because this table's lifecycle is set by a
+-- school administrator and is not part of the public publishing workflow: sharing
+-- a type would mean a change to how the marketing CMS is moderated could silently
+-- change what states an internal notice can be in. The cost is one additional
 -- Postgres enum type, which is a smaller problem than a cross-coupling.
-//
-// WHY `tenantId`/`schoolId` ARE PLAIN COLUMNS HERE
-// -------------------------------------------------
-// No relation, no back-relation on `Tenant` or `School`, matching `AuditLog` — the
-// closest sibling, and also an internal record. Every read of this table is scoped
-// by an explicit `where`. A Prisma relation would buy referential integrity the
-// rest of the internal-record surface does not have and would cost a write to
-// derive the school from the tenant.
-//
-// STATUS: WRITTEN BUT NOT APPLIED. Nothing in this file has been executed
+--
+-- WHY `tenantId`/`schoolId` ARE PLAIN COLUMNS HERE
+-- -------------------------------------------------
+-- No relation, no back-relation on `Tenant` or `School`, matching `AuditLog` — the
+-- closest sibling, and also an internal record. Every read of this table is scoped
+-- by an explicit `where`. A Prisma relation would buy referential integrity the
+-- rest of the internal-record surface does not have and would cost a write to
+-- derive the school from the tenant.
+--
+-- STATUS: WRITTEN BUT NOT APPLIED. Nothing in this file has been executed
 -- against any database by its author. Check the live ledger state with
 -- `bun run db:migrate:status` and `bun run db:migrate:verify` from the repo root
 -- rather than assuming either answer. The longer deployment note is in
