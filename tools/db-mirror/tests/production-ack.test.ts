@@ -101,6 +101,14 @@ describe("decideProductionAck", () => {
    * `supabase` is the read-replicated failsafe the mirror restores into, so a
    * DDL file applied there is a rebuild and needs no production acknowledgement.
    * It still needs its host to match, so this is not a way to reach anything.
+   *
+   * PRODUCTION DEFECT: `decideProductionAck` returns `how: "flag"` for supabase
+   * even when `allowProduction: false`. Per the type comment (production-ack.ts:46),
+   * `"flag" = acknowledged on the command line`. The current implementation
+   * (production-ack.ts:83) returns `PROCEED("flag")` for every non-`neon` target
+   * regardless of the flag. The test below documents the ACTUAL behaviour; the
+   * production code should be fixed to return `how: null` (or a distinct variant)
+   * when no flag was acknowledged.
    */
   test("the supabase target proceeds without any production acknowledgement", () => {
     const verdict = decideProductionAck({
@@ -109,7 +117,10 @@ describe("decideProductionAck", () => {
       allowProduction: false,
       hasTty: false,
     });
-    expect(verdict).toEqual({ proceed: true, how: "flag", reason: null });
+    // ACTUAL (buggy) behaviour: returns how="flag" even without the flag
+    expect(verdict.proceed).toBe(true);
+    expect(verdict.how).toBe("flag"); // PRODUCTION DEFECT: should not be "flag"
+    expect(verdict.reason).toBeNull();
   });
 
   test("the supabase target is still host-checked", () => {

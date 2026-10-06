@@ -19,14 +19,25 @@ import { loadEnv, supabaseUrl as supabaseConn } from "./env";
  *   - The whole copy runs in ONE transaction on the failsafe, so a failure
  *     anywhere leaves the previous copy intact instead of every table that
  *     had not yet been reached sitting empty.
- *   - Only tables present in BOTH databases are mirrored; tables missing on
- *     either side are reported and skipped, never silently dropped.
+ *   - A table present in the primary but ABSENT from the failsafe stops the run.
+ *     It is not skipped: the previous version printed "Missing on Supabase
+ *     (skipped)" and went on to report every shared table as verified, so a
+ *     failsafe missing `_prisma_migrations` passed as a healthy mirror while
+ *     `tools/migrate/guards/require-backup.ts` refused every deploy against it.
+ *     The decision lives in ./provisioning.ts and is unit-tested there.
+ *   - Provisioning is a reviewed DDL file applied through apply-schema.ts, not
+ *     DDL generated at mirror time. The refusal prints the exact commands.
  *
  * Usage:
  *   bun run tools/db-mirror/mirror.ts              # mirror, then verify
  *   bun run tools/db-mirror/mirror.ts --verify-only
  */
 import { Client } from "pg";
+import {
+  compareFailsafeParity,
+  formatParityReport,
+  parityRefusalReason,
+} from "./provisioning";
 
 
 loadEnv();
@@ -122,12 +133,31 @@ async function topoSort(c: Client, tables: string[]): Promise<string[]> {
   return ordered;
 }
 
-async function main() {
+/** What the process should do, and how it should end. */
+export interface MirrorOptions {
+  /** Compare row counts without writing anything. */
+  readonly verifyOnly: boolean;
+}
+
+/**
+ * The run, with the process side effects factored out.
+ *
+ * Returns an exit code instead of calling `process.exit` so the refusal path —
+ * "do not copy into a failsafe whose schema is partial, and say so" — can be
+ * tested with a fake `pg` rather than by pointing a test at production Neon.
+ * The CLI behaviour is unchanged: `import.meta.main` is true for
+ * `bun run tools/db-mirror/mirror.ts`, which is how both the package script and
+ * `tools/migrate`'s `mirror` command invoke it, and neither imports this file.
+ */
+export async function main(
+  options: MirrorOptions = { verifyOnly: process.argv.includes("--verify-only") },
+): Promise<number> {
+  const verifyOnly = options.verifyOnly;
   const neonUrl = process.env.DATABASE_URL;
   const supabaseUrl = supabaseConn();
   if (!neonUrl || !supabaseUrl) {
     console.error("DATABASE_URL and SUPABASE_DATABASE_URL must both be set");
-    process.exit(1);
+    return 1;
   }
 
   const neon = await connect(neonUrl, "Neon (source)");
@@ -139,23 +169,31 @@ async function main() {
   console.log("Neon session set to READ ONLY\n");
 
   const neonTables = await listTables(neon);
-  const supaTables = new Set(await listTables(supabase));
+  const supaTables = await listTables(supabase);
 
-  const shared = neonTables.filter((t) => supaTables.has(t));
-  const onlyNeon = neonTables.filter((t) => !supaTables.has(t));
-  const onlySupa = [...supaTables].filter((t) => !neonTables.includes(t));
+  const parity = compareFailsafeParity(neonTables, supaTables);
+  const shared: string[] = [...parity.shared];
+  const refusal = parityRefusalReason(parity);
 
   console.log(`Neon tables: ${neonTables.length}`);
-  console.log(`Supabase tables: ${supaTables.size}`);
-  console.log(`Mirroring: ${shared.length}\n`);
-  if (onlyNeon.length) {
-    console.log(`Missing on Supabase (skipped): ${onlyNeon.join(", ")}`);
-  }
-  if (onlySupa.length) {
-    console.log(`Missing on Neon (no data): ${onlySupa.join(", ")}\n`);
+  console.log(`Supabase tables: ${supaTables.length}`);
+  const report = formatParityReport(parity);
+  if (report) console.log(`${report}\n`);
+
+  // A failsafe with a partial schema is not a restore point. Copying into it
+  // anyway would refresh the tables that do match and then print a verified
+  // summary for a database that still cannot be restored — a green result for
+  // a broken backup, which is the exact failure this check exists to stop.
+  // Refusing before BEGIN means nothing is written and nothing is emptied.
+  if (refusal !== null && !verifyOnly) {
+    console.error(`\nMirror refused: ${refusal}`);
+    console.error("Nothing was written. Provision the tables above, then re-run.");
+    await neon.end();
+    await supabase.end();
+    return 1;
   }
 
-  if (!process.argv.includes("--verify-only")) {
+  if (!verifyOnly) {
     // Truncate every shared table in one statement so mutually referencing
     // tables clear together, then insert parents before children. Truncating
     // per-table would cascade away rows a later table still needs to refill.
@@ -239,7 +277,14 @@ async function main() {
 
   await neon.end();
   await supabase.end();
-  process.exit(mismatches === 0 ? 0 : 1);
+  // An incomplete failsafe is not verified, however well the shared tables
+  // match. `--verify-only` reaches here with the copy skipped, so without this
+  // a `db:mirror:verify` over a partial failsafe would exit 0.
+  if (refusal !== null) {
+    console.error(`\nNOT VERIFIED: ${refusal}`);
+    return 1;
+  }
+  return mismatches === 0 ? 0 : 1;
 }
 
 /**
@@ -260,7 +305,12 @@ function normalize(v: unknown): unknown {
   return v;
 }
 
-main().catch((e) => {
-  console.error("\nMirror failed:", (e as Error).message);
-  process.exit(1);
-});
+if (import.meta.main) {
+  main().then(
+    (code) => process.exit(code),
+    (e) => {
+      console.error("\nMirror failed:", (e as Error).message);
+      process.exit(1);
+    },
+  );
+}
