@@ -67,6 +67,17 @@ function loadRootEnv(): void {
 loadRootEnv()
 
 const nextConfig: NextConfig = {
+  // Mounted under /portal on the single nms domain (see root `vercel.json`).
+  // Next strips this prefix before the request reaches the app, so the proxy's
+  // path comparisons and every internal link stay relative — `/dashboard`,
+  // `/api/finance`, `/settings/admissions` — exactly as written. Without it a
+  // request to `/portal/dashboard` would arrive as `/portal/dashboard`, the
+  // section map would read `portal` as the first segment, and every role would
+  // be denied.
+  //
+  // Dev runs bare on localhost:3000 with no prefix, which is what the matcher
+  // and every `href` in this app assume. Do not derive this from env.
+  basePath: '/portal',
   allowedDevOrigins: [
     '192.168.8.202',
     '192.168.8.226',

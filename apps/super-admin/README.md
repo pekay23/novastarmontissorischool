@@ -284,7 +284,7 @@ repository is a working credential.
 | `RESEND_API_KEY` | yes, to create accounts | The email provider. Without it `POST /api/tenants/:id/users` still creates the account and answers 502 with `setupEmailReason: "not-configured"` — the recipient gets nothing and the operator is told so rather than being shown a success. |
 | `NEXTAUTH_URL` | yes, to create accounts | The **portal's** origin, not this console's. The setup link points at the portal's set-password page, which lives in `apps/portal`; a link built from this app's origin 404s in the recipient's browser. `NEXT_PUBLIC_ORIGIN` is the fallback. |
 | `PLATFORM_OPERATOR_PASSWORD` | no | Read by `tools/tenant-cli operator`. A CLI-time variable, never an app variable: this app has no route that creates an operator. |
-| `NEXT_PUBLIC_SUPER_ADMIN_URL` | no | Canonical URL. Kept distinct from `NEXTAUTH_URL` so the two apps can be deployed on separate hosts and their cookies never share a scope. |
+| `NEXT_PUBLIC_SUPER_ADMIN_URL` | no | Canonical URL of this console. On the single nms domain it is mounted at `/admin` (see root `vercel.json`), so it shares an origin with the portal and the public site. The console's session cookie is still scoped to its own path, so it never collides with a portal session — the two cookies have different names and different paths regardless of origin. |
 
 The console is deny-by-default. With `PLATFORM_SESSION_SECRET` unset, nobody can
 authenticate and every route refuses. With no `PlatformOperator` row, every sign-in is

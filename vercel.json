@@ -1,0 +1,49 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "services": {
+    "portal": {
+      "root": "apps/portal",
+      "framework": "nextjs"
+    },
+    "public-site": {
+      "root": "apps/public-site",
+      "framework": "nextjs"
+    },
+    "super-admin": {
+      "root": "apps/super-admin",
+      "framework": "nextjs"
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/admin/(.*)",
+      "destination": {
+        "service": "super-admin"
+      }
+    },
+    {
+      "source": "/portal/(.*)",
+      "destination": {
+        "service": "portal"
+      }
+    },
+    {
+      "source": "/(.*)",
+      "destination": {
+        "service": "public-site"
+      }
+    }
+  ],
+  "redirects": [
+    {
+      "source": "/admin",
+      "destination": "/admin/",
+      "permanent": true
+    },
+    {
+      "source": "/portal",
+      "destination": "/portal/",
+      "permanent": true
+    }
+  ]
+}

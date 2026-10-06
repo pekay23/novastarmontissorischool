@@ -74,6 +74,16 @@ function loadRootEnv(): void {
 loadRootEnv()
 
 const nextConfig: NextConfig = {
+  // Mounted under /admin on the single nms domain (see root `vercel.json`).
+  // Next strips this prefix before the request reaches the app, so the login
+  // page, the tenant routes and the dashboard all stay relative — `/login`,
+  // `/api/tenants`, `/api/health` — exactly as written. The console's own
+  // session cookie is scoped to its own path regardless, so it never collides
+  // with a portal session on the shared origin.
+  //
+  // Dev runs bare on localhost:3200 with no prefix, which is what the routes
+  // assume. Do not derive this from env.
+  basePath: '/admin',
   allowedDevOrigins: [
     '192.168.8.202',
     '192.168.8.226',

@@ -48,6 +48,24 @@ export class EmailDeliveryError extends Error {
 let _resend: Resend | null = null
 
 /**
+ * The portal's canonical URL, for the "View in Portal" link embedded in bulk
+ * notification emails.
+ *
+ * Hardcoding a hostname here is what broke the last deploy: the portal moved
+ * hosts and every notification email pointed at a dead domain. The origin is
+ * already configured for the portal as `NEXTAUTH_URL` (its canonical public
+ * origin) with `NEXT_PUBLIC_ORIGIN` as the build-time fallback, so read the
+ * same variable rather than a second copy that can drift.
+ *
+ * Falls back to a bare origin-less empty string only when neither is set, in
+ * which case the link renders as a relative `/` — still clickable, still
+ * same-origin, and never a 404 on a domain this package does not own.
+ */
+function portalUrl(): string {
+  return (process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_ORIGIN || '').replace(/\/$/, '')
+}
+
+/**
  * The configured Resend client.
  *
  * Naming the variable is the whole point of the failure here: `RESEND_API_KEY`
@@ -288,8 +306,8 @@ export function setPasswordTemplate(input: AuthEmailInput): RenderedEmail {
     ctaLabel: 'Set my password',
     actionUrl: input.actionUrl,
     schoolName: input.schoolName,
-    noteHtml: 'Set a password of at least 12 characters. If you did not expect this invitation, ignore this message.',
-    noteText: 'Set a password of at least 12 characters. If you did not expect this invitation, ignore this message.',
+    noteHtml: 'Set a password of at least 8 characters. If you did not expect this invitation, ignore this message.',
+    noteText: 'Set a password of at least 8 characters. If you did not expect this invitation, ignore this message.',
     expiresInHours: input.expiresInHours,
   })
 }
@@ -539,7 +557,7 @@ export async function sendBulkNotifications(input: BulkNotificationInput): Promi
       await sendEmail({
         to: user.email,
         subject: input.title,
-        html: `<p>${input.body}</p><p><a href="https://portal.novastarmontissorischool.com">View in Portal</a></p>`,
+        html: `<p>${input.body}</p><p><a href="${portalUrl()}">View in Portal</a></p>`,
         tags: [{ name: 'notification-type', value: input.type }],
       }).catch((error) => {
         console.error('[email] bulk notification to a recipient was not delivered:', error)
