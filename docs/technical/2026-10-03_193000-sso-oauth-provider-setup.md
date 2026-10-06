@@ -140,13 +140,13 @@ it, and do not enable something you do not recognise.
 
    | Where the portal runs | Redirect URI to add |
    | --- | --- |
-   | Local development on your own machine | `http://localhost:3000/api/auth/callback/google` |
-   | A test/staging portal | `https://<your-test-domain>/api/auth/callback/google` |
-   | Production portal | `https://<your-live-domain>/api/auth/callback/google` |
+| Local development on your own machine | `http://localhost:3000/portal/api/auth/callback/google` |
+    | A test/staging portal | `https://<your-test-domain>/portal/api/auth/callback/google` |
+    | Production portal | `https://<your-live-domain>/portal/api/auth/callback/google` |
 
-   Three things that catch people out here:
-   * The path is `/api/auth/callback/google`, **not** `/api/auth/callback` and
-     not `/login/callback`. Copy it from this page; do not retype it from memory.
+    Three things that catch people out here:
+    * The path is `/portal/api/auth/callback/google`, **not** `/portal/api/auth/callback`
+      and not `/login/callback`. Copy it from this page; do not retype it from memory.
    * `https` is required everywhere except `localhost`. Use `http` for localhost
      and nothing else.
    * No trailing slash after `google`.
@@ -256,14 +256,14 @@ Sign in to the Microsoft Entra admin centre at <https://entra.microsoft.com/>.
    * **Name** — `Novastar School Portal`
    * **Supported account types** — see Step 2.3; the default is usually right
    * **Redirect URI** — choose **Web**, then enter
-     `https://<your-live-domain>/api/auth/callback/microsoft-entra-id`
+`https://<your-live-domain>/portal/api/auth/callback/microsoft-entra-id`
 
-     For local development, also add a second **Web** entry:
-     `http://localhost:3000/api/auth/callback/microsoft-entra-id`
-4. Click **Register**.
+      For local development, also add a second **Web** entry:
+      `http://localhost:3000/portal/api/auth/callback/microsoft-entra-id`
+    4. Click **Register**.
 
-**The path is `/api/auth/callback/microsoft-entra-id`.** It is not
-`/api/auth/callback/azure-ad` and not `/login/callback`. Copy it from here.
+    **The path is `/portal/api/auth/callback/microsoft-entra-id`.** It is not
+    `/api/auth/callback/azure-ad` and not `/login/callback`. Copy it from here.
 
 ### Before Step 2.3: what Microsoft does not tell the portal
 
@@ -418,13 +418,15 @@ Rules for handling these four values:
 ### Where the redirect URI comes from
 
 The redirect URI is the portal's own address plus the fixed callback path. To
-work out the first part, look at the origin the portal is served from — it is
-`NEXTAUTH_URL` in the same configuration, or failing that
-`NEXT_PUBLIC_ORIGIN`. For a portal at `https://portal.novastarmontessori.com`,
-the redirect URI is:
+work out the first part, look at `NEXTAUTH_URL` in the same configuration — it
+carries the portal's full auth URL (origin plus `/portal/api/auth`), and the
+redirect URI is that value with `/callback/{provider}` appended. For a portal at
+`https://portal.novastarmontessori.com`, where
+`NEXTAUTH_URL=https://portal.novastarmontessori.com/portal/api/auth`, the redirect
+URI is:
 
 ```text
-https://portal.novastarmontessori.com/api/auth/callback/google
+https://portal.novastarmontessori.com/portal/api/auth/callback/google
 ```
 
 The provider and the portal must agree exactly. A mismatch is the single most
@@ -517,8 +519,8 @@ short.
 | --- | --- | --- |
 | Developer site | <https://console.cloud.google.com/> | <https://entra.microsoft.com/> |
 | App type | OAuth client ID, type **Web application** | App registration |
-| Callback path | `/api/auth/callback/google` | `/api/auth/callback/microsoft-entra-id` |
-| Local development URI | `http://localhost:3000/api/auth/callback/google` | `http://localhost:3000/api/auth/callback/microsoft-entra-id` |
+| Callback path | `/portal/api/auth/callback/google` | `/portal/api/auth/callback/microsoft-entra-id` |
+    | Local development URI | `http://localhost:3000/portal/api/auth/callback/google` | `http://localhost:3000/portal/api/auth/callback/microsoft-entra-id` |
 | Where the id lives | Credentials → your client → Client ID | Overview → Application (client) ID |
 | Where the secret lives | Shown once, in the download-JSON dialog | Certificates & secrets → shown once on creation |
 | Secret recoverable later? | **No** at creation — delete and recreate (some console versions add a later **Download JSON** link) | **No** — delete and recreate |
