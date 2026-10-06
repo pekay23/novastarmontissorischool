@@ -15,7 +15,6 @@ import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Inpu
 export function ForgotPasswordForm() {
   const router = useRouter()
   const [email, setEmail] = useState('')
-  const [schoolCode, setSchoolCode] = useState('')
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
 
@@ -28,7 +27,7 @@ export function ForgotPasswordForm() {
       const res = await fetch('/api/auth/forgot-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, schoolCode: schoolCode || undefined }),
+        body: JSON.stringify({ email }),
       })
 
       if (!res.ok) {
@@ -80,20 +79,6 @@ export function ForgotPasswordForm() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              disabled={busy}
-            />
-          </div>
-          <div>
-            <label htmlFor="schoolCode" className="block text-sm font-medium mb-1">
-              School Code <span className="text-muted-foreground">(optional)</span>
-            </label>
-            <Input
-              id="schoolCode"
-              name="schoolCode"
-              type="text"
-              autoComplete="off"
-              value={schoolCode}
-              onChange={(e) => setSchoolCode(e.target.value)}
               disabled={busy}
             />
           </div>

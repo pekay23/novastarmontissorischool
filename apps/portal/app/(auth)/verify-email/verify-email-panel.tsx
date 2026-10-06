@@ -40,7 +40,6 @@ export function VerifyEmailPanel({ token }: { token: string | null }) {
   const router = useRouter()
   const [state, setState] = useState<State>(token ? 'verifying' : 'invalid')
   const [email, setEmail] = useState('')
-  const [schoolCode, setSchoolCode] = useState('')
   const [notice, setNotice] = useState('')
   const [sending, setSending] = useState(false)
 
@@ -91,7 +90,7 @@ export function VerifyEmailPanel({ token }: { token: string | null }) {
     const res = await fetch('/api/auth/verify-email/resend', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, schoolCode: schoolCode || undefined }),
+      body: JSON.stringify({ email }),
     })
     const body = await res.json().catch(() => null)
     // The same sentence whatever the outcome: the endpoint does not confirm
@@ -145,19 +144,6 @@ export function VerifyEmailPanel({ token }: { token: string | null }) {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     required
-                  />
-                </div>
-                <div>
-                  <label htmlFor="resend-school" className="block text-sm font-medium mb-1">
-                    School Code <span className="text-muted-foreground">(optional)</span>
-                  </label>
-                  <Input
-                    id="resend-school"
-                    name="schoolCode"
-                    type="text"
-                    autoComplete="organization"
-                    value={schoolCode}
-                    onChange={(e) => setSchoolCode(e.target.value)}
                   />
                 </div>
                 {notice && (

@@ -6,7 +6,6 @@ import { getProviders, signIn, type ClientSafeProvider } from 'next-auth/react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Button, Card, CardContent, CardHeader, CardTitle, CardDescription, Input } from '@novastar/shared-ui'
-import { rememberSchoolCodeForSso } from '@/lib/auth/sso-school-code'
 import { ssoProviderLabel, ssoRefusalMessage } from '@/lib/auth/sso'
 
 interface SecretFieldProps {
@@ -127,7 +126,6 @@ function LoginContent() {
 
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [schoolCode, setSchoolCode] = useState('')
   const [totpCode, setTotpCode] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [showTotp, setShowTotp] = useState(false)
@@ -166,7 +164,6 @@ function LoginContent() {
         redirect: false,
         email,
         password,
-        schoolCode,
         totpCode: showTotp ? totpCode : undefined,
         callbackUrl: returnTo,
       })
@@ -181,7 +178,7 @@ function LoginContent() {
           setShowTotp(true)
           setError('')
         } else {
-          setError('Invalid credentials. Check your email, password and school code.')
+          setError('Invalid credentials. Check your email and password.')
         }
       } else {
         router.push(result?.url || callbackUrl)
@@ -277,23 +274,18 @@ function LoginContent() {
     }
   }
 
-  /**
-   * Start a Google or Microsoft sign-in.
-   *
-   * The school code has to reach the server after the round trip, and the
-   * provider's callback carries nothing the visitor typed, so it is recorded in a
-   * short-lived cookie immediately before handing over. The button is disabled
-   * until it is: a school code typed after the redirect has started would be too
-   * late, and the server would refuse with "enter your school code" for something
-   * the visitor believes they did.
-   *
-   * `signIn` here is a full-page navigation rather than a fetch, so the cookie
-   * written in this tick travels to `/api/auth/signin/<provider>`, on to the
-   * provider, and back on the top-level GET that ends the flow.
-   */
+/**
+    * Start a Google or Microsoft sign-in.
+    *
+    * `signIn` here is a full-page navigation rather than a fetch, so it carries
+    * the `callbackUrl` through to the provider and back on the top-level GET that
+    * ends the flow. The school code used to be written into a short-lived cookie
+    * so it could reach the server after the round trip; with a single-school
+    * deployment it resolves from `DEFAULT_SCHOOL_CODE` instead, so nothing is
+    * recorded here.
+    */
   const handleSsoLogin = (providerId: string) => {
     setError('')
-    rememberSchoolCodeForSso(schoolCode)
     void signIn(providerId, { callbackUrl: returnTo })
   }
 
@@ -340,35 +332,20 @@ function LoginContent() {
                   addressable by form name, which the E2E suite relies on.
                 */}
                 <div>
-                  <label htmlFor="schoolCode" className="block text-sm font-medium mb-1">
-                    School Code
+                  <label htmlFor="email" className="block text-sm font-medium mb-1">
+                    Email
                   </label>
                   <Input
-                    id="schoolCode"
-                    name="schoolCode"
-                    type="text"
-                    autoComplete="organization"
-                    placeholder="Enter your school code"
-                    value={schoolCode}
-                    onChange={(e) => setSchoolCode(e.target.value)}
+                    id="email"
+                    name="email"
+                    type="email"
+                    autoComplete="email"
+                    placeholder="Enter your email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
                     required
                   />
                 </div>
-                  <div>
-                    <label htmlFor="email" className="block text-sm font-medium mb-1">
-                      Email
-                    </label>
-                    <Input
-                      id="email"
-                      name="email"
-                      type="email"
-                      autoComplete="email"
-                      placeholder="Enter your email"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      required
-                    />
-                  </div>
                   <div>
                     <div className="mb-2 flex items-center justify-between">
                       <label htmlFor="password" className="block text-sm font-medium">
@@ -490,18 +467,12 @@ function LoginContent() {
                     variant="outline"
                     className="w-full mt-2"
                     onClick={() => handleSsoLogin(provider.id)}
-                    disabled={isLoading || !schoolCode.trim()}
+                    disabled={isLoading}
                     type="button"
                   >
                     Continue with {provider.name}
                   </Button>
                 ))}
-
-                {ssoProviders.length > 0 && !schoolCode.trim() && (
-                  <p className="mt-2 text-center text-xs text-muted-foreground">
-                    Enter your school code above to use single sign-on.
-                  </p>
-                )}
               </>
             )}
           </CardContent>
