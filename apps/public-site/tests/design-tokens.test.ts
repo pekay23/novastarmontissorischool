@@ -104,10 +104,11 @@ const REMOVED_UTILITIES = [
   'shadow-2xl',
 ] as const
 
-/** The six-step type scale. A seventh size is how a scale starts eroding. */
+/** The seven-step type scale. A seventh size is how a scale starts eroding. */
 const TYPE_SCALE = [
   'type-display',
   'type-headline',
+  'type-title-lg',
   'type-title',
   'type-body-lg',
   'type-label',
