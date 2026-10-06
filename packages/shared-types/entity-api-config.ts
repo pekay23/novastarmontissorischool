@@ -13,6 +13,7 @@ import {
   AssessmentTypeConfigSchema,
   GradingLevelCreateSchema,
   GradingLevelUpdateSchema,
+  JsonDateSchema,
   SyllabusSchema,
   PhaseEnum,
   TermStatusEnum,
@@ -50,6 +51,87 @@ const HHMM_REGEX = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Expected HH:mm
  */
 export type CrossRowWriteRuleKind = 'grading_scale_bands'
 
+/**
+ * Sibling-row invariants, named rather than implemented here — the same split as
+ * `CrossRowWriteRuleKind`, and the same reason for it.
+ *
+ * The difference is which rows a write has to be judged against. A cross-row rule
+ * judges the row being written against the rows hanging from ITS parent: one band
+ * against every other band of its scale. A sibling rule judges it against other
+ * rows of its own kind, where there is no parent to hang from: a grading scale
+ * against the school's other grading scales. The two are declared apart because
+ * the readers they need are apart — a scale's bands for one, the tenant's scales
+ * for the other — and a rule handed the wrong reader would be a rule judging the
+ * wrong rows.
+ */
+export type SiblingWriteRuleKind = 'grading_scale_applicability'
+
+/**
+ * The row a write attaches to, declared so the generic route can prove it belongs
+ * to the caller.
+ *
+ * Owning the row being written says nothing about the row it hangs from. That was
+ * true for `grading_level` because the band model is tenant-scoped and the school
+ * that grades a child against a band is the school of the band's SCALE — and it is
+ * true for every other registry entry that names a foreign key, which is most of
+ * them. A `student` row in school A naming school B's `classId` persists a child
+ * on B's register that B can neither see in its list (it filters on schoolId) nor
+ * reach through PATCH or DELETE (those require schoolId = B), and A has no endpoint
+ * that unlinks it.
+ *
+ * `schoolRelation` is the awkward half. `Timetable` and `ClassSubject` have no
+ * `schoolId` column at all — a timetable belongs to a class, not to a school
+ * directly — so for those parents the predicate walks one relation to reach the
+ * school. Naming the relation here rather than branching on a model name in the
+ * route is what keeps the route from knowing any entity.
+ */
+export interface EntityParentRef {
+  /** The field on this entity whose value is the parent row's id. */
+  field: string
+  /** Prisma model the field points at, in the delegate's camelCase. */
+  model: string
+  /**
+   * Relation to follow from the parent to the row carrying `schoolId`, for a
+   * parent model that has none of its own. Empty string when it does have one —
+   * which is most of them, and the case the shared-predicate question applies to.
+   */
+  schoolRelation: string
+  /**
+   * True when a write may legitimately leave the field null or omit it. A null
+   * `AttendanceTaker.classId` is a school-wide grant and a null
+   * `Student.houseId` is a child with no house; neither is a parent to prove, and
+   * treating an absent parent as a foreign one would make both states
+   * unreachable through the endpoint that defines them.
+   */
+  optional: boolean
+}
+
+/**
+ * A sibling-row invariant, judged against other rows of the same entity.
+ *
+ * The reads arrive from the route, for the same reason `CrossRowWriteRule` hands
+ * the route its reader: this module is the lowest layer of the type graph and has
+ * no database client.
+ */
+export interface SiblingWriteContext {
+  operation: 'create' | 'update'
+  /** The row as it will be stored, already Zod-validated. */
+  write: Record<string, unknown>
+  /** The stored row being replaced; null on create. */
+  existing: Record<string, unknown> | null
+  /**
+   * Every row of this entity the caller can see, including the one being written
+   * in whatever state the database currently holds it.
+   *
+   * The caller MUST scope this. An unscoped read would refuse this school's write
+   * for a conflict on another school's rows and print those rows' names in the
+   * 400 that explains why.
+   */
+  readSiblings: () => Promise<readonly Record<string, unknown>[]>
+}
+
+export type SiblingWriteRule = (context: SiblingWriteContext) => Promise<string[]> | string[]
+
 export type EntityApiConfig = {
   /** Entity type key (URL segment) */
   type: string
@@ -81,6 +163,24 @@ export type EntityApiConfig = {
    * looks the rule up, and refuses the write when the rule returns problems.
    */
   writeValidation?: { kind: CrossRowWriteRuleKind }
+  /**
+   * The rows this entity's row hangs from, each proved to be the caller's before
+   * the write. Declared per field because most entities hang from more than one:
+   * a `fee_line_item` from both a structure and a category, and getting either
+   * wrong writes a line into another school's register.
+   *
+   * An entity that declares no `writeValidation` still needs this — it is not a
+   * cross-row entity, it is just a row with foreign keys. `grading_level` is the
+   * one entry that declares neither, because its parent is already part of the
+   * dispatched rule above.
+   */
+  parentRefs?: EntityParentRef[]
+  /**
+   * Set when a write has to be judged against other rows of THIS entity. See
+   * `SiblingWriteRuleKind` for how that differs from `writeValidation`, which
+   * judges against the parent's children instead.
+   */
+  siblingWriteValidation?: { kind: SiblingWriteRuleKind }
 }
 
 /**
@@ -134,8 +234,8 @@ export const ENTITY_CONFIG_MAP: Record<string, EntityApiConfig> = {
     }),
     updateSchema: z.object({
       name: z.string().optional(),
-      startDate: z.date().optional(),
-      endDate: z.date().optional(),
+      startDate: JsonDateSchema.optional(),
+      endDate: JsonDateSchema.optional(),
       isCurrent: z.boolean().optional(),
     }),
     allowedSortFields: ['name', 'startDate', 'endDate', 'isCurrent', 'createdAt'],
@@ -156,8 +256,8 @@ export const ENTITY_CONFIG_MAP: Record<string, EntityApiConfig> = {
     updateSchema: z.object({
       name: z.string().optional(),
       academicYearId: z.string().optional(),
-      startDate: z.date().optional(),
-      endDate: z.date().optional(),
+      startDate: JsonDateSchema.optional(),
+      endDate: JsonDateSchema.optional(),
       isCurrent: z.boolean().optional(),
       status: TermStatusEnum.optional(),
       weeks: z.number().int().positive().optional(),
@@ -168,6 +268,13 @@ export const ENTITY_CONFIG_MAP: Record<string, EntityApiConfig> = {
     // ACTIVE, …), which is the lifecycle a term actually has and is edited through
     // the field below. DELETE removes the row, and its `Term` rows cascade with it.
     softDelete: false,
+    // `TermSchema` requires `academicYearId`, so every term write names one. It was
+    // not on the review's list of entities with an unproven parent, but it has the
+    // same shape of hole: a term created against another school's year inherits
+    // that year's dates, and every report defaulting to the year resolves it.
+    parentRefs: [
+      { field: 'academicYearId', model: 'academicYear', schoolRelation: '', optional: false },
+    ],
   },
 
   class_level: {
@@ -246,6 +353,14 @@ export const ENTITY_CONFIG_MAP: Record<string, EntityApiConfig> = {
     schoolScoped: true,
     // No `isActive` column on `GradingScale` — see the comment above the entry.
     softDelete: false,
+    // A scale is its own parent: it hangs from nothing, so `parentRefs` is empty by
+    // omission rather than by an empty array. What it cannot be is unambiguous in
+    // company — `appliesToLevels` is how a class level picks the scale that grades
+    // it, and two scales claiming one level makes that choice a function of row
+    // order. `findGradingScaleApplicabilityProblems` says which configuration is
+    // at fault and by how much; the route supplies the sibling read it needs and
+    // refuses before the write rather than after a child has been graded.
+    siblingWriteValidation: { kind: 'grading_scale_applicability' },
   },
 
   fee_category: {
@@ -410,6 +525,14 @@ export const ENTITY_CONFIG_MAP: Record<string, EntityApiConfig> = {
     allowedSortFields: ['title', 'status', 'termId', 'classSubjectId', 'createdAt'],
     schoolScoped: true,
     softDelete: false,
+    // `Syllabus.schoolId` is nullable, so a syllabus can be tenant-wide, and its
+    // school has to be proved through the row it is really about. `ClassSubject`
+    // has no `schoolId` column — a class subject belongs to a class — so the
+    // predicate follows `class` to reach the school rather than assuming one.
+    parentRefs: [
+      { field: 'classSubjectId', model: 'classSubject', schoolRelation: 'class', optional: false },
+      { field: 'termId', model: 'term', schoolRelation: '', optional: false },
+    ],
   },
 
   // Neither Timetable nor TimetableEntry has a schoolId column, so both are
@@ -433,6 +556,15 @@ export const ENTITY_CONFIG_MAP: Record<string, EntityApiConfig> = {
     allowedSortFields: ['name', 'isPublished', 'createdAt'],
     schoolScoped: false,
     softDelete: false,
+    // Both parents are proven even though the row carrying them is not
+    // school-scoped. That asymmetry is the whole reason this check exists: a
+    // timetable has no school of its own, so the school whose register and reports
+    // it affects is the school of its class, and a tenant-scoped row is exactly
+    // the kind that can be attached to the wrong one without anyone noticing.
+    parentRefs: [
+      { field: 'classId', model: 'class', schoolRelation: '', optional: false },
+      { field: 'termId', model: 'term', schoolRelation: '', optional: false },
+    ],
   },
 
   timetable_entry: {
@@ -461,6 +593,14 @@ export const ENTITY_CONFIG_MAP: Record<string, EntityApiConfig> = {
     allowedSortFields: ['dayOfWeek', 'startTime', 'endTime', 'createdAt'],
     schoolScoped: false,
     softDelete: false,
+    // Neither parent has a `schoolId` column, so both are proved through the class
+    // they belong to. A tenant-wide caller — `schoolId` null, which this
+    // tenant-scoped entry does allow — reaches neither, and is refused rather than
+    // let write an entry into a school it cannot name.
+    parentRefs: [
+      { field: 'timetableId', model: 'timetable', schoolRelation: 'class', optional: false },
+      { field: 'classSubjectId', model: 'classSubject', schoolRelation: 'class', optional: false },
+    ],
   },
 
   // Has both a schoolId column and an isActive column, so it is school-scoped
@@ -485,6 +625,15 @@ export const ENTITY_CONFIG_MAP: Record<string, EntityApiConfig> = {
     allowedSortFields: ['staffId', 'classId', 'isActive', 'createdAt'],
     schoolScoped: true,
     softDelete: true,
+    // A null `classId` is a school-wide grant — every pupil, every class — so it is
+    // optional and a write that omits it, or clears it explicitly, is a legitimate
+    // parent state rather than an unproven parent. `staffId` is the other half of
+    // the row and is required by both schemas: a grant to a member of another
+    // school's staff would let that person mark this school's register.
+    parentRefs: [
+      { field: 'classId', model: 'class', schoolRelation: '', optional: true },
+      { field: 'staffId', model: 'staff', schoolRelation: '', optional: false },
+    ],
   },
 
   branding: {
@@ -536,7 +685,7 @@ export const ENTITY_CONFIG_MAP: Record<string, EntityApiConfig> = {
       featuredImage: z.string().url().nullable().optional(),
       audience: z.array(z.string()).optional(),
       status: ContentStatusEnum.default('DRAFT'),
-      publishedAt: z.date().nullable().optional(),
+      publishedAt: JsonDateSchema.nullable().optional(),
     }),
     updateSchema: z.object({
       title: z.string().optional(),
@@ -548,7 +697,7 @@ export const ENTITY_CONFIG_MAP: Record<string, EntityApiConfig> = {
       featuredImage: z.string().url().nullable().optional(),
       audience: z.array(z.string()).optional(),
       status: ContentStatusEnum.optional(),
-      publishedAt: z.date().nullable().optional(),
+      publishedAt: JsonDateSchema.nullable().optional(),
     }),
     allowedSortFields: ['title', 'publishedAt', 'status', 'createdAt'],
     schoolScoped: true,
@@ -563,8 +712,8 @@ export const ENTITY_CONFIG_MAP: Record<string, EntityApiConfig> = {
       title: z.string().min(1),
       descriptionEn: z.string().optional(),
       descriptionTw: z.string().optional(),
-      startDate: z.date(),
-      endDate: z.date(),
+      startDate: JsonDateSchema,
+      endDate: JsonDateSchema,
       location: z.string().optional(),
       audience: z.array(z.string()).optional(),
       isAllDay: z.boolean().default(false),
@@ -575,8 +724,8 @@ export const ENTITY_CONFIG_MAP: Record<string, EntityApiConfig> = {
       title: z.string().optional(),
       descriptionEn: z.string().optional(),
       descriptionTw: z.string().optional(),
-      startDate: z.date().optional(),
-      endDate: z.date().optional(),
+      startDate: JsonDateSchema.optional(),
+      endDate: JsonDateSchema.optional(),
       location: z.string().optional(),
       audience: z.array(z.string()).optional(),
       isAllDay: z.boolean().optional(),
@@ -651,6 +800,13 @@ export const ENTITY_CONFIG_MAP: Record<string, EntityApiConfig> = {
     // different row, because that is the promotion state rather than the class's
     // existence. DELETE removes the class row.
     softDelete: false,
+    // A class is a section OF a level. Proving the level is the caller's is what
+    // makes the class theirs: without it, one school can open a section in another
+    // school's level, and that level's promotion and reporting rules then decide
+    // the fate of children who were never enrolled in it.
+    parentRefs: [
+      { field: 'levelId', model: 'classLevel', schoolRelation: '', optional: false },
+    ],
   },
 
   subject_level: {
@@ -674,6 +830,15 @@ export const ENTITY_CONFIG_MAP: Record<string, EntityApiConfig> = {
     // `SubjectLevel` has no `isActive` column. `isRequired` says whether a school
     // teaches the subject at the level, not whether the row is still wanted.
     softDelete: false,
+    // The row itself is tenant-scoped, so this is the same asymmetry as a band: the
+    // school whose curriculum changes is not the school of the row, it is the
+    // schools of both parents. Either one belonging to another school would put
+    // another school's subject on this school's timetable, or this school's
+    // subject on another school's.
+    parentRefs: [
+      { field: 'subjectId', model: 'subject', schoolRelation: '', optional: false },
+      { field: 'classLevelId', model: 'classLevel', schoolRelation: '', optional: false },
+    ],
   },
 
   fee_structure: {
@@ -697,6 +862,16 @@ export const ENTITY_CONFIG_MAP: Record<string, EntityApiConfig> = {
     allowedSortFields: ['name', 'academicYearId', 'termId', 'createdAt'],
     schoolScoped: true,
     softDelete: true,
+    // Three parents, and a fee structure is only as good as the weakest of them: it
+    // decides which invoices a class is raised. `FeeStructure.termId` is nullable
+    // in the database but required by both schemas here, so it is proved like the
+    // other two — a structure whose term turned out to be another school's would
+    // raise that school's term.
+    parentRefs: [
+      { field: 'academicYearId', model: 'academicYear', schoolRelation: '', optional: false },
+      { field: 'termId', model: 'term', schoolRelation: '', optional: false },
+      { field: 'classLevelId', model: 'classLevel', schoolRelation: '', optional: false },
+    ],
   },
 
   fee_line_item: {
@@ -723,6 +898,13 @@ export const ENTITY_CONFIG_MAP: Record<string, EntityApiConfig> = {
     // and qualify the line, they do not retire it. DELETE removes the line from its
     // structure; invoices already raised keep their stored amounts.
     softDelete: false,
+    // Tenant-scoped row, so the structure that raises the invoice is the school
+    // that matters. `categoryId` is proved too: a line priced into another school's
+    // fee category is reported under that category's name in this school's books.
+    parentRefs: [
+      { field: 'feeStructureId', model: 'feeStructure', schoolRelation: '', optional: false },
+      { field: 'categoryId', model: 'feeCategory', schoolRelation: '', optional: false },
+    ],
   },
 
   staff: {
@@ -736,7 +918,7 @@ export const ENTITY_CONFIG_MAP: Record<string, EntityApiConfig> = {
       gender: GenderEnum,
       phone: z.string().optional(),
       email: z.string().email().optional(),
-      hireDate: z.date().optional(),
+      hireDate: JsonDateSchema.optional(),
       status: StaffStatusEnum.default('ACTIVE'),
       roleId: z.string(),
       departmentId: z.string().nullable().optional(),
@@ -748,7 +930,7 @@ export const ENTITY_CONFIG_MAP: Record<string, EntityApiConfig> = {
       gender: GenderEnum.optional(),
       phone: z.string().optional(),
       email: z.string().email().optional(),
-      hireDate: z.date().optional(),
+      hireDate: JsonDateSchema.optional(),
       status: StaffStatusEnum.optional(),
       roleId: z.string().optional(),
       departmentId: z.string().nullable().optional(),
@@ -756,6 +938,15 @@ export const ENTITY_CONFIG_MAP: Record<string, EntityApiConfig> = {
     allowedSortFields: ['employeeId', 'firstName', 'lastName', 'status', 'createdAt'],
     schoolScoped: true,
     softDelete: false,
+    // `roleId` decides what this person may do — `StaffRole` carries the permission
+    // list — so a staff row created against another school's role is a privilege
+    // that school granted and this one inherited. `departmentId` is genuinely
+    // optional (the column is nullable and both schemas say so), so a staff member
+    // with no department is a real state and not an unproven parent.
+    parentRefs: [
+      { field: 'roleId', model: 'staffRole', schoolRelation: '', optional: false },
+      { field: 'departmentId', model: 'department', schoolRelation: '', optional: true },
+    ],
   },
 
   student: {
@@ -767,8 +958,8 @@ export const ENTITY_CONFIG_MAP: Record<string, EntityApiConfig> = {
       firstName: z.string().min(1),
       lastName: z.string().min(1),
       gender: GenderEnum,
-      dateOfBirth: z.date(),
-      admissionDate: z.date(),
+      dateOfBirth: JsonDateSchema,
+      admissionDate: JsonDateSchema,
       status: StudentStatusEnum.default('ACTIVE'),
       classId: z.string(),
       houseId: z.string().nullable().optional(),
@@ -779,8 +970,8 @@ export const ENTITY_CONFIG_MAP: Record<string, EntityApiConfig> = {
       firstName: z.string().optional(),
       lastName: z.string().optional(),
       gender: GenderEnum.optional(),
-      dateOfBirth: z.date().optional(),
-      admissionDate: z.date().optional(),
+      dateOfBirth: JsonDateSchema.optional(),
+      admissionDate: JsonDateSchema.optional(),
       status: StudentStatusEnum.optional(),
       classId: z.string().optional(),
       houseId: z.string().nullable().optional(),
@@ -789,6 +980,18 @@ export const ENTITY_CONFIG_MAP: Record<string, EntityApiConfig> = {
     allowedSortFields: ['admissionNumber', 'firstName', 'lastName', 'admissionDate', 'status', 'createdAt'],
     schoolScoped: true,
     softDelete: false,
+    // Three parents and the first is the serious one. A `Student` has its own
+    // `schoolId`, so the row is provably this school's — but `classId` decides
+    // whose register the child appears on, whose promotion plan runs, and whose
+    // report is printed, and a child enrolled in another school's class is
+    // invisible to that school in its own lists and unremovable through its
+    // PATCH/DELETE. `houseId` and `parentId` are optional by schema and by column,
+    // and are proved when present.
+    parentRefs: [
+      { field: 'classId', model: 'class', schoolRelation: '', optional: false },
+      { field: 'houseId', model: 'house', schoolRelation: '', optional: true },
+      { field: 'parentId', model: 'parent', schoolRelation: '', optional: true },
+    ],
   },
 
   parent: {
@@ -816,3 +1019,128 @@ export const ENTITY_CONFIG_MAP: Record<string, EntityApiConfig> = {
     softDelete: false,
   },
 }
+
+// ---------------------------------------------------------------------------
+// The registry, checked against a schema describing it
+// ---------------------------------------------------------------------------
+
+/**
+ * A schema that accepts any Zod schema.
+ *
+ * The registry holds Zod schemas rather than plain data, and it holds them as
+ * opaque `z.ZodType<Record<string, unknown>>` values: this package is the lowest
+ * layer of the type graph, so an entry cannot say anything more specific about its
+ * own create schema than "some object schema". `instanceof` is the whole test —
+ * the shape is what the route calls `.safeParse` on, so a value that is not one
+ * fails at the first request instead of at boot.
+ */
+const AnyObjectSchema = z.custom<z.ZodType<Record<string, unknown>>>(
+  (value) => value instanceof z.ZodType,
+  'expected a Zod schema',
+)
+
+/**
+ * One registry entry, as the route consumes it.
+ *
+ * This existed only as `EntityApiConfig`, a TypeScript type, and a type checks
+ * nothing: the map was declared `Record<string, EntityApiConfig>` with no parse
+ * anywhere, so a misspelled kind, a `softDelete` on a model that has no such
+ * column, or a `parentRefs` field naming a foreign key nothing declares was
+ * invisible until a request hit it. Nothing here loosens an entry to make it fit —
+ * every rule below is one the route already relies on.
+ */
+const EntityApiConfigShape = z.object({
+  type: z.string().min(1),
+  model: z.string().min(1),
+  fields: z.array(z.string().min(1)).min(1),
+  createSchema: AnyObjectSchema,
+  updateSchema: AnyObjectSchema,
+  allowedSortFields: z.array(z.string().min(1)),
+  schoolScoped: z.boolean(),
+  softDelete: z.boolean(),
+  writeValidation: z.object({ kind: z.enum(['grading_scale_bands']) }).optional(),
+  parentRefs: z
+    .array(
+      z.object({
+        field: z.string().min(1),
+        model: z.string().min(1),
+        schoolRelation: z.string(),
+        optional: z.boolean(),
+      }),
+    )
+    .optional(),
+  siblingWriteValidation: z.object({ kind: z.enum(['grading_scale_applicability']) }).optional(),
+})
+
+/**
+ * The registry, validated.
+ *
+ * Three cross-field rules, each of which a single entry cannot satisfy alone:
+ *
+ * 1. An entry's `type` is its key. The route reads the URL segment and looks the
+ *    entry up by it, then reads `entityConfig.type` back — so a mismatch means the
+ *    registry describes an entity under a name nothing routes to.
+ * 2. Every `allowedSortFields` entry is a field of the model. The route filters
+ *    `?sort=` against this list and the search term against `fields`; a sort on a
+ *    column the entry never listed would be accepted and then have nothing to
+ *    validate it against.
+ * 3. Every `parentRefs.field` is a field of the model too, and appears exactly
+ *    once. This is the one that matters: the parent check reads
+ *    `write[field]`, so a field name that is not on the model can never resolve a
+ *    parent, and a repeated field would prove the same parent twice while
+ *    silently skipping another.
+ *
+ * `z.record` rather than `z.object` because the map is keyed by string and grows.
+ */
+export const EntityConfigMapSchema = z
+  .record(z.string().min(1), EntityApiConfigShape)
+  .superRefine((map, ctx) => {
+    for (const [key, config] of Object.entries(map)) {
+      if (config.type !== key) {
+        ctx.addIssue({
+          code: 'custom',
+          path: [key, 'type'],
+          message: `entry keyed "${key}" declares type "${config.type}"`,
+        })
+      }
+      const fields = new Set(config.fields)
+      for (const sortField of config.allowedSortFields) {
+        if (!fields.has(sortField)) {
+          ctx.addIssue({
+            code: 'custom',
+            path: [key, 'allowedSortFields'],
+            message: `"${sortField}" is not a field of ${config.model}`,
+          })
+        }
+      }
+      const proven = new Set<string>()
+      for (const ref of config.parentRefs ?? []) {
+        if (!fields.has(ref.field)) {
+          ctx.addIssue({
+            code: 'custom',
+            path: [key, 'parentRefs'],
+            message: `parent field "${ref.field}" is not a field of ${config.model}`,
+          })
+        }
+        if (proven.has(ref.field)) {
+          ctx.addIssue({
+            code: 'custom',
+            path: [key, 'parentRefs'],
+            message: `parent field "${ref.field}" is declared twice`,
+          })
+        }
+        proven.add(ref.field)
+      }
+    }
+  })
+
+/**
+ * Validate the registry at import.
+ *
+ * A bad entry is a mistake in this file, not a runtime condition, and every
+ * consequence of one is a request doing the wrong thing rather than a request
+ * failing: an unprovable `parentRefs` field means a cross-school write is
+ * silently allowed, which is the defect this check exists to make impossible to
+ * ship. Throwing here turns that into a boot failure the moment it is written.
+ */
+EntityConfigMapSchema.parse(ENTITY_CONFIG_MAP)

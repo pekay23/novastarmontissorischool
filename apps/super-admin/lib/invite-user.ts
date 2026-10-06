@@ -91,6 +91,20 @@ export interface InviteTenantUserOutcome {
  * it. An operator who sees the account in the directory but no entry in the audit log
  * can re-issue; what they must never see is the reverse, an entry claiming a delivery
  * that did not happen.
+ *
+ * SUSPENDED TENANTS GET NO ACCOUNTS
+ * ---------------------------------
+ * The suspension gate lives in `getSchoolInTenant`, which is the first statement
+ * below — so nothing is created, sent or audited against a suspended tenant, and a
+ * suspended tenant cannot even be used to confirm which school ids it holds.
+ *
+ * It is a single gate there rather than one here as well, on purpose. Two checks in
+ * this path would raise the same error at the same point, so the second could not be
+ * told apart from the first by any test — an assertion nobody can fail is not
+ * evidence. And the coupling is structural rather than a promise: `lib/queries.ts` is
+ * the only module in this app permitted to call Prisma (asserted in
+ * `tests/tenant-scope.test.ts`), and the account itself is created by
+ * `createInvitedUser`, which is reached from here through this one lookup.
  */
 export async function inviteTenantUser(
   input: InviteTenantUserInput,

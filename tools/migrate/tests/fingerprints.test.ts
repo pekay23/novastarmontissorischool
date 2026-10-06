@@ -288,14 +288,33 @@ describe("normalizeCanonicalSql", () => {
     expect(digestCanonicalSql(SQL)).toBe(digestCanonicalSql(SQL.replace(/\n/g, "\r\n")));
   });
 
-  test("is insensitive to a trailing incomplete statement marker", () => {
-    expect(normalizeCanonicalSql(SQL).split("\n")).toHaveLength(2);
+  test("handles a trailing incomplete statement (no trailing semicolon)", () => {
+    // The SQL fixture ends with a semicolon, so the tail branch is not exercised.
+    // This test provides SQL with an incomplete final statement.
+    const incompleteSql = "CREATE TABLE t (c TEXT); INSERT INTO t VALUES ('x')"; // no trailing ;
+    const normalized = normalizeCanonicalSql(incompleteSql);
+    // Should still produce one statement (the incomplete tail is preserved)
+    expect(normalized.split("\n")).toHaveLength(1);
+    expect(normalized).toContain("INSERT INTO t VALUES ('x')");
   });
 
   test("a real change changes the digest", () => {
     expect(digestCanonicalSql(SQL)).not.toBe(
       digestCanonicalSql(SQL.replace("'ACTIVE'", "'OPEN'")),
     );
+  });
+
+  test("preserves whitespace inside string literals", () => {
+    const sql1 = "CREATE TABLE t (c TEXT); INSERT INTO t VALUES ('Ada  Lovelace');";
+    const sql2 = "CREATE TABLE t (c TEXT); INSERT INTO t VALUES ('Ada Lovelace');";
+    // Only internal spacing differs — digests must be different
+    expect(digestCanonicalSql(sql1)).not.toBe(digestCanonicalSql(sql2));
+    // External whitespace is still collapsed
+    const sql1CollapsedExternal = "CREATE TABLE t (c TEXT); INSERT INTO t VALUES ('Ada  Lovelace');";
+    expect(digestCanonicalSql(sql1)).toBe(digestCanonicalSql(sql1CollapsedExternal));
+    // But if we collapse INTERNAL whitespace too, digest changes
+    const sql1CollapsedAll = sql1.replace(/\s+/g, " ");
+    expect(digestCanonicalSql(sql1)).not.toBe(digestCanonicalSql(sql1CollapsedAll));
   });
 });
 

@@ -11,8 +11,39 @@
  */
 import { chromium } from "@playwright/test";
 
+/**
+ * The two helpers this file injects into the page with `addInitScript`.
+ *
+ * Without these declarations every `page.evaluate` that calls them failed to
+ * compile — `Property '__contrast' does not exist on type Window` — which is why
+ * this script was recorded as not compiling at all. The functions are injected
+ * as strings, so TypeScript cannot see them; this is the honest way to say so.
+ */
+declare global {
+  interface Window {
+    __toSrgb: (color: string) => [number, number, number, number] | null;
+    __contrast: (fg: string, bg: string) => number | null;
+  }
+}
+
 const BASE = process.argv[2] ?? "http://localhost:3000";
 const PAGES = ["/", "/about", "/academics", "/admissions", "/fees", "/news", "/events", "/contact"];
+
+/**
+ * Navigate and wait until the page is measurable.
+ *
+ * These call sites used `waitUntil: "networkidle"`, which never fires for
+ * `/contact`: it embeds a Google Maps iframe, so third-party requests keep the
+ * network busy past any practical timeout. Measuring a page does not require the
+ * map tiles, so wait for parsed HTML and resolved fonts instead. Kept local rather
+ * than imported from tools/ui-audit/shared.mjs so this script stays runnable on
+ * its own with a single `npx tsx` invocation.
+ */
+async function gotoMeasurable(page: import("@playwright/test").Page, url: string): Promise<void> {
+  await page.goto(url, { waitUntil: "domcontentloaded" });
+  await page.evaluate(() => document.fonts.ready.then(() => undefined));
+  await page.waitForTimeout(600);
+}
 
 interface ColorReport {
   element: string;
@@ -24,36 +55,9 @@ interface ColorReport {
 }
 
 /**
- * Converts any CSS colour to sRGB using the browser itself, via a 1x1 canvas.
- *
- * Hand-rolled Lab-to-sRGB matrices are easy to get subtly wrong (D50 vs D65
- * adaptation), and a wrong ratio produces a confident but false accessibility
- * verdict. Tailwind v4 also emits oklch()/lab() rather than rgb(), so there is
- * no rgb() string left to parse. Letting the engine normalise is both simpler
- * and correct.
+ * Relative luminance and the ratio are computed in-page, in Node-free browser
+ * context, so the numbers come from the same engine that renders the pixels.
  */
-const CONVERTER = `
-  window.__toSrgb = (color) => {
-    const c = document.createElement('canvas');
-    c.width = c.height = 1;
-    const ctx = c.getContext('2d', { willReadFrequently: true });
-    if (!ctx) return null;
-    ctx.clearRect(0, 0, 1, 1);
-    ctx.fillStyle = '#000000';
-    ctx.fillStyle = color;
-    // A fully transparent colour leaves the pixel at 0,0,0,0.
-    ctx.fillRect(0, 0, 1, 1);
-    const d = ctx.getImageData(0, 0, 1, 1).data;
-    return [d[0], d[1], d[2], d[3]];
-  };
-`;
-
-async function installConverter(page: import("@playwright/test").Page) {
-  await page.addInitScript(CONVERTER);
-}
-
-// Relative luminance and the ratio are computed in-page, in Node-free browser
-// context, so the numbers come from the same engine that renders the pixels.
 const LUMINANCE_AND_CONTRAST = `
   window.__contrast = (fg, bg) => {
     const a = window.__toSrgb(fg);
@@ -75,6 +79,15 @@ const LUMINANCE_AND_CONTRAST = `
   };
 `;
 
+/**
+ * Converts any CSS colour to sRGB using the browser itself, via a 1x1 canvas.
+ *
+ * Hand-rolled Lab-to-sRGB matrices are easy to get subtly wrong (D50 vs D65
+ * adaptation), and a wrong ratio produces a confident but false accessibility
+ * verdict. Tailwind v4 also emits oklch()/lab() rather than rgb(), so there is
+ * no rgb() string left to parse. Letting the engine normalise is both simpler
+ * and correct.
+ */
 const CONVERTER = `
   window.__toSrgb = (color) => {
     const c = document.createElement('canvas');
@@ -118,7 +131,7 @@ async function main() {
   });
   void tokens;
 
-  await page.goto(BASE, { waitUntil: "networkidle" });
+  await gotoMeasurable(page, BASE);
   const t = await page.evaluate(() => {    const cs = getComputedStyle(document.documentElement);
     const names = [
       "--color-primary", "--color-secondary", "--color-accent",
@@ -135,7 +148,7 @@ async function main() {
   for (const [k, v] of Object.entries(t)) console.log(`  ${k.padEnd(22)} ${v}`);
 
   for (const path of PAGES) {
-    await page.goto(`${BASE}${path}`, { waitUntil: "networkidle" });
+    await gotoMeasurable(page, `${BASE}${path}`);
     const data: ColorReport[] = await page.evaluate(() => {
       const pick = (sel: string) => document.querySelector(sel) as HTMLElement | null;
       const info = (el: HTMLElement | null, name: string) => {
@@ -169,7 +182,12 @@ async function main() {
 
     console.log(`\n--- ${path} ---`);
     for (const d of data) {
-      const c = contrast(d.color, d.background);
+      // Use the ratio the page already computed. This used to call a bare
+      // `contrast(d.color, d.background)`, which does not exist outside the
+      // browser — `__contrast` is injected into the page by `addInitScript` — so
+      // the line threw `ReferenceError: contrast is not defined` the moment this
+      // script reached its first real output, after doing all the work.
+      const c = d.contrast;
       const font = d.fontFamily.split(",")[0].replace(/["']/g, "");
       const flag =
         c !== null && c < 4.5 && d.fontSize < 24 ? "  <-- CONTRAST BELOW 4.5:1" : "";
@@ -178,7 +196,7 @@ async function main() {
   }
 
   // Fonts actually loaded
-  await page.goto(BASE, { waitUntil: "networkidle" });
+  await gotoMeasurable(page, BASE);
   const fonts = await page.evaluate(() =>
     Array.from(document.fonts).map((f) => `${f.family} ${f.weight} ${f.status}`),
   );

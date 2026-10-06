@@ -115,7 +115,7 @@ export async function getContactInfo(): Promise<{
         address: branding.address || '',
         phone: branding.phone || '',
         email: branding.email || '',
-        hours: 'Mon-Fri: 7:30 AM - 5:30 PM',
+        hours: 'Monday – Friday: 7:00 AM – 4:00 PM',
         socialLinks: (branding.socialLinks as Record<string, string>) || {},
       }
     },

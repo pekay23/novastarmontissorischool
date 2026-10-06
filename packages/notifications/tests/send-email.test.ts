@@ -1,3 +1,10 @@
+// The unconfigured-key case lives in `send-email-unconfigured.test.ts`, and it
+// has to. `getResend()` caches its client in a module-level variable for the
+// lifetime of the module, so within one file the not-configured assertion is
+// only reachable until the first successful send — declared first, it passes by
+// luck of ordering, and declared last it fails. Bun gives each test file its own
+// module registry, so a file of its own is not order-sensitive at all; both
+// orders were run and both pass.
 import { describe, it, expect, beforeEach, mock, afterEach } from 'bun:test'
 
 // Set RESEND_API_KEY before any imports so getResend() doesn't throw
@@ -37,31 +44,6 @@ beforeEach(async () => {
 
 afterEach(() => {
   delete process.env.MAIL_FROM
-})
-
-// This test MUST run first: getResend() caches its client for the process lifetime,
-// so the one assertion that depends on the key being ABSENT has to run before
-// anything in this file sends anything.
-describe('sendEmail throws EmailDeliveryError when RESEND_API_KEY is unset', () => {
-  it('throws not-configured with variable name', async () => {
-    const saved = process.env.RESEND_API_KEY
-    delete process.env.RESEND_API_KEY
-
-    try {
-      const mod = await import('@novastar/notifications')
-      const err = await mod.sendEmail({
-        to: 'x@example.test',
-        subject: 's',
-        text: 't',
-      }).then(() => null, (e: unknown) => e)
-
-      expect(err).toBeInstanceOf(mod.EmailDeliveryError)
-      expect((err as InstanceType<typeof mod.EmailDeliveryError>).reason).toBe('not-configured')
-      expect((err as Error).message).toContain('RESEND_API_KEY')
-    } finally {
-      process.env.RESEND_API_KEY = saved
-    }
-  })
 })
 
 describe('sendEmail from-address resolution', () => {

@@ -27,10 +27,11 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from '@novastar/shared-ui'
-import { Plus, Search, Edit2, Trash2, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Loader2, MoreHorizontal, Eye } from 'lucide-react'
+import { Plus, Search, Edit2, Trash2, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Loader2, MoreHorizontal, Eye, Lock } from 'lucide-react'
 import { EntityType, DEFAULT_ENTITY_REGISTRY } from '@novastar/shared-types'
 import { formatDate } from '@novastar/shared-utils'
 import { EntityForm } from './entity-form'
+import { isLockedRecord, withAmendmentReason } from './amendment'
 
 interface EntityListProps {
   entityType: EntityType
@@ -108,6 +109,10 @@ export function EntityList({ entityType }: EntityListProps) {
   const [showForm, setShowForm] = useState(false)
   const [editMode, setEditMode] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // The amendment reason for the row being edited. Held here, not inside
+  // `EntityForm`, because `handleFormSubmit` is what composes the PATCH body and
+  // it must not save without the key when the row is locked.
+  const [amendmentReason, setAmendmentReason] = useState('')
   const confirm = useConfirm()
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -200,20 +205,33 @@ export function EntityList({ entityType }: EntityListProps) {
     setSelectedId(null)
     setEditMode(false)
     setError(null)
+    // Cleared on close, never on open: a reason belonging to the row just edited
+    // would otherwise be sitting in the box when the next locked row is opened,
+    // and would be sent as THAT row's justification without anybody typing it.
+    setAmendmentReason('')
   }
 
   const handleFormSubmit = async (formData: Record<string, unknown>) => {
+    // The row as it is stored, which is what decides whether a reason is owed.
+    // Read from `data`, not from the submitted form, because the form's values are
+    // the edit being requested and cannot themselves say whether this row is locked.
+    const target = selectedId ? data.find((row) => row.id === selectedId) ?? null : null
+    const body = withAmendmentReason(formData, {
+      locked: isLockedRecord(target),
+      reason: amendmentReason,
+    })
+
     try {
       const res = editMode && selectedId
         ? await fetch(`/api/config/${entityType}/${selectedId}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(formData),
+            body: JSON.stringify(body),
           })
         : await fetch(`/api/config/${entityType}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(formData),
+            body: JSON.stringify(body),
           })
 
       if (res.ok) {
@@ -296,19 +314,27 @@ export function EntityList({ entityType }: EntityListProps) {
                     </div>
                   </TableHead>
                 ))}
+                <TableHead className="w-10">
+                  {/*
+                    A dedicated Lock column rather than a badge inside a data
+                    column, so lock state is visible while SCROLLING a wide table
+                    instead of only on the first few fields.
+                  */}
+                  <span className="sr-only">Lock state</span>
+                </TableHead>
                 <TableHead className="w-40">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={displayFields.length + 1} className="text-center py-8">
+                  <TableCell colSpan={displayFields.length + 2} className="text-center py-8">
                     <Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" />
                   </TableCell>
                 </TableRow>
               ) : data.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={displayFields.length + 1} className="text-center py-8 text-muted-foreground">
+                  <TableCell colSpan={displayFields.length + 2} className="text-center py-8 text-muted-foreground">
                     No {registry?.namePlural?.toLowerCase() || 'records'} found
                   </TableCell>
                 </TableRow>
@@ -328,6 +354,24 @@ export function EntityList({ entityType }: EntityListProps) {
                         )}
                       </TableCell>
                     ))}
+                    {/*
+                      Locked means "cannot be edited silently", NOT "cannot be
+                      edited", so the row is not disabled and the Edit item is not
+                      removed: the lock migration is explicit that converting a
+                      data-entry mistake into a support escalation is the worse
+                      outcome. What this cell carries is the promise that an edit
+                      will be recorded, with a reason.
+                    */}
+                    <TableCell>
+                      {isLockedRecord(item) ? (
+                        <Badge variant="outline" className="gap-1">
+                          <Lock className="h-3 w-3" aria-hidden="true" />
+                          Locked
+                        </Badge>
+                      ) : (
+                        <span className="sr-only">Not locked</span>
+                      )}
+                    </TableCell>
                     <TableCell>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
@@ -419,6 +463,8 @@ export function EntityList({ entityType }: EntityListProps) {
               onSubmit={handleFormSubmit}
               onClose={handleFormClose}
               readOnly={!editMode}
+              amendmentReason={amendmentReason}
+              onAmendmentReasonChange={setAmendmentReason}
             />
           </DialogContent>
         </Dialog>

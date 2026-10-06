@@ -129,6 +129,13 @@ describe('POST /api/tenants/:tenantId/users — the capability is required', () 
     const response = await post()
 
     expect(response.status).toBe(403)
+    // The refusal names the capability that was missing. It must not name anything
+    // about the tenant: this is the one refusal an *authenticated* operator reaches
+    // with a URL naming a real tenant, so anything extra here is disclosure to a
+    // caller who is not allowed to create accounts.
+    const body = await readJson(response)
+    expect(body.error).toBe('This operator cannot tenant:user:create.')
+    expect(JSON.stringify(body)).not.toContain(TENANT_ROW.code)
     expect(mocks.tenantFindFirst).toHaveBeenCalledTimes(0)
     expect(mocks.userCreate).toHaveBeenCalledTimes(0)
   })
@@ -157,6 +164,12 @@ describe('POST /api/tenants/:tenantId/users — the tenant is the URL, and only 
     // another school while the operator watched a URL naming this one.
     expect(mocks.userCreate).toHaveBeenCalledTimes(0)
     expect(sentEmails).toHaveLength(0)
+    // And the body names both sides of the conflict. A 409 with no details cannot be
+    // acted on: the operator cannot tell which of the two ids the request disagreed
+    // about, and a client cannot recover without guessing.
+    const body = await readJson(response)
+    expect(body.details).toEqual({ urlTenantId: TENANT_ROW.id, bodyTenantId: 'tenant-b' })
+    expect(String(body.error)).toContain('URL segment')
   })
 
   it('should refuse a school belonging to another tenant, having written nothing', async () => {
@@ -173,6 +186,12 @@ describe('POST /api/tenants/:tenantId/users — the tenant is the URL, and only 
       id: 'school-of-another-tenant',
       tenantId: TENANT_ROW.id,
     })
+    // The refused school id is echoed, and the refusal says it was refused *in this
+    // tenant* — which is the whole point: a school id from another tenant is
+    // indistinguishable from one that does not exist, by design.
+    const body = await readJson(response)
+    expect(String(body.error)).toContain('school-of-another-tenant')
+    expect(String(body.error)).toContain('in this tenant')
     // The role lookup never ran, so the escalation surface is not even reachable.
     expect(mocks.roleFindFirst).toHaveBeenCalledTimes(0)
     expect(mocks.userCreate).toHaveBeenCalledTimes(0)
@@ -185,6 +204,10 @@ describe('POST /api/tenants/:tenantId/users — the tenant is the URL, and only 
     const response = await post(BODY, 'tenant-ghost')
 
     expect(response.status).toBe(404)
+    // The body names the id that missed, so a stale bookmark is diagnosable — and
+    // names nothing else, so a 404 cannot be used to probe ids with a different
+    // reason attached to each answer.
+    expect(String((await readJson(response)).error)).toContain('tenant-ghost')
     expect(mocks.userCreate).toHaveBeenCalledTimes(0)
   })
 
@@ -214,6 +237,13 @@ describe('POST /api/tenants/:tenantId/users — what it validates', () => {
     const response = await post({ ...BODY, email: 'not-an-address' })
 
     expect(response.status).toBe(400)
+    // The body carries the offending field by name. A 400 with no detail tells an
+    // operator their request was wrong without telling them which part, and the
+    // schema issues are the only thing here that knows.
+    const body = await readJson(response)
+    const details = body.details as Array<{ path: string; message: string }>
+    expect(details.map((issue) => issue.path)).toContain('email')
+    expect(details.every((issue) => issue.message.length > 0)).toBe(true)
     expect(mocks.userCreate).toHaveBeenCalledTimes(0)
   })
 
@@ -224,6 +254,9 @@ describe('POST /api/tenants/:tenantId/users — what it validates', () => {
     const response = await post({ ...BODY, roleName: 'SUPREME_LEADER' })
 
     expect(response.status).toBe(400)
+    // The refused name is echoed. Naming the vocabulary back is safe — it is seeded,
+    // not tenant data — and it tells the operator which value to pick instead.
+    expect(String((await readJson(response)).error)).toContain('SUPREME_LEADER')
     // Refused before the role lookup, so the refusal cannot be used to discover which
     // roles this school actually has.
     expect(mocks.roleFindFirst).toHaveBeenCalledTimes(0)
@@ -239,6 +272,11 @@ describe('POST /api/tenants/:tenantId/users — what it validates', () => {
     const response = await post({ ...BODY, roleId: 'role-of-another-tenant' })
 
     expect(response.status).toBe(400)
+    // The message names `roleName` as the accepted alternative, so the refusal is an
+    // instruction rather than a dead end.
+    const error = String((await readJson(response)).error)
+    expect(error).toContain('roleId')
+    expect(error).toContain('roleName')
     expect(mocks.userCreate).toHaveBeenCalledTimes(0)
   })
 
@@ -250,6 +288,13 @@ describe('POST /api/tenants/:tenantId/users — what it validates', () => {
     const response = await post({ ...BODY, roleName: 'HEADMASTER' })
 
     expect(response.status).toBe(400)
+    // The refusal says a role does not exist *in the school named*, which is what
+    // distinguishes it from the unknown-role 400 above. It deliberately does not
+    // echo the role name: the shared function's own message does, and the route
+    // narrows it, so a caller cannot use this to enumerate the school's roles.
+    expect(String((await readJson(response)).error)).toBe(
+      'That role does not exist in the school named.',
+    )
     expect(mocks.userCreate).toHaveBeenCalledTimes(0)
   })
 
@@ -265,6 +310,33 @@ describe('POST /api/tenants/:tenantId/users — what it validates', () => {
     expect(response.status).toBe(409)
     expect(mocks.userCreate).toHaveBeenCalledTimes(0)
     expect(sentEmails).toHaveLength(0)
+    // "in this tenant" is the claim, and the duplicate read below is what makes it
+    // true: the check is scoped by `tenantId`, not by email alone.
+    expect(String((await readJson(response)).error)).toContain(
+      'already exists in this tenant',
+    )
+  })
+
+  it('should scope the duplicate-address check to the tenant the URL named', async () => {
+    // The predicate behind that sentence. `User`'s uniqueness is
+    // `@@unique([tenantId, email])`, so per-tenant uniqueness is a property of the
+    // READ as much as of the constraint: without `tenantId` in the `where`, an
+    // address that exists in any tenant anywhere in the fleet refuses an invite
+    // here, and one tenant's roster becomes a cross-tenant denial of service on
+    // account creation. Compared with `toEqual` because `toContain` would pass for a
+    // predicate naming the tenant and nothing else.
+    signIn()
+    givenTenant()
+
+    await post()
+
+    expect(mocks.userFindFirst).toHaveBeenCalledTimes(1)
+    expect(mocks.userFindFirst.mock.calls[0][0].where).toEqual({
+      tenantId: TENANT_ROW.id,
+      // Normalised, so the check and the `@@unique` constraint agree on what "the
+      // same address" means.
+      email: 'new.teacher@novastar.test',
+    })
   })
 })
 

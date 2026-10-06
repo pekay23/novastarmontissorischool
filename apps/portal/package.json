@@ -14,7 +14,8 @@
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.3",
-    "@prisma/client": "^7.10.0",
+    "@aws-sdk/client-s3": "^3.1146.0",
+    "@aws-sdk/s3-request-presigner": "^3.1146.0",
     "@hookform/resolvers": "^5.9.1",
     "@novastar/auth": "workspace:*",
     "@novastar/database": "workspace:*",
@@ -27,6 +28,7 @@
     "@novastar/shared-utils": "workspace:*",
     "@novastar/sync-engine": "workspace:*",
     "@novastar/testing": "workspace:*",
+    "@prisma/client": "^7.10.0",
     "@radix-ui/react-dialog": "^1.1.23",
     "@simplewebauthn/server": "^13.3.3",
     "@tanstack/react-table": "^8.21.3",

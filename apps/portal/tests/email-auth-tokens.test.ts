@@ -171,7 +171,7 @@ const prisma = {
       where.name === 'HEADMASTER' ? { id: 'role-head', name: 'HEADMASTER' } : null,
   },
    auditLog: { create: async () => ({ id: 'audit-1' }) },
-    $transaction: async (fn: (tx: any) => Promise<unknown>) => fn(prisma),
+    $transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn(prisma),
 }
 
 // The `server-only`, `resend`, `@/lib/prisma`, `@novastar/database`,

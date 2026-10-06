@@ -1,19 +1,35 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@novastar/shared-ui'
-import { requireCapabilityPage, requireTenantScope } from '@/lib/admin-context'
+import { requireCapabilityPage, requireExistingTenant } from '@/lib/admin-context'
 import { hasOperatorCapability } from '@/lib/permissions'
 import { listSchoolsForTenant } from '@/lib/queries'
 import { parsePagination } from '@/lib/http'
 import { AuditLogTable } from '@/components/audit-log-table'
 import { TenantActions } from '@/components/tenant-actions'
 import { TenantStatusBadge } from '@/components/tenant-status-badge'
+import { TenantSuspendedNotice } from '@/components/tenant-suspended-notice'
 import { auditForTenant } from '@/lib/queries'
 
 /**
  * `/tenants/:tenantId` — one tenant in full.
  *
  * Every read below is scoped to `tenantId`, which came from the URL segment and is
- * re-read from the database by `requireTenantScope`. A tenant id that does not
- * exist is a 404 rendered by `not-found.tsx`, never the fleet.
+ * re-read from the database here. A tenant id that does not exist is a 404 rendered by
+ * `not-found.tsx`, never the fleet.
+ *
+ * A SUSPENDED TENANT STILL RENDERS, AND READS NOTHING
+ * --------------------------------------------------
+ * This page resolves with `requireExistingTenant` rather than `requireTenantScope`,
+ * because it is the console's only "Reactivate tenant" control and a gate on
+ * `isActive` would put that control behind the gate it exists to open. It refuses
+ * exactly as much as the gate would: the suspension branch below returns before a
+ * single tenant-scoped read runs, so a suspended tenant gets the notice and no
+ * schools, no users, no settings and no audit rows. `requireExistingTenant` is
+ * exported for the same reason on this page and its three children (`schools`,
+ * `users`, `settings`) — and all four are held to it by the type rather than by
+ * review: its result is a discriminated union whose suspended arm carries only
+ * `identity` (id and code), so the `tenant` this page reads below is not in scope
+ * until `status === 'suspended'` has been answered. Every drill-down *route* goes
+ * through `requireTenantScope` and inherits its refusal.
  */
 export const dynamic = 'force-dynamic'
 
@@ -29,13 +45,24 @@ export default async function TenantDetailPage({
 }) {
   const context = await requireCapabilityPage('tenant:read')
   const { tenantId } = await params
-  const tenant = await requireTenantScope(tenantId)
+  const resolved = await requireExistingTenant(tenantId)
+  const canUpdate = hasOperatorCapability(context.operator.capabilities, 'tenant:update')
+
+  if (resolved.status === 'suspended') {
+    return (
+      <TenantSuspendedNotice
+        tenantId={resolved.identity.id}
+        tenantCode={resolved.identity.code}
+        canUpdate={canUpdate}
+      />
+    )
+  }
+
+  const { tenant } = resolved
   const [schools, audit] = await Promise.all([
     listSchoolsForTenant(tenant.id),
     auditForTenant(tenant.id, parsePagination('http://internal/?take=10')),
   ])
-
-  const canUpdate = hasOperatorCapability(context.operator.capabilities, 'tenant:update')
 
   return (
     <div className="space-y-6">

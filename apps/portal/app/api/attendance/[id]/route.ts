@@ -1,58 +1,39 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { getTenantContext } from '@/lib/tenant'
 import { hasPermission } from '@novastar/auth'
 import {
   resolveVisibility,
-  attendanceVisibilityWhere,
   visibilityDeniesAll,
-  type Visibility,
 } from '@/lib/visibility'
 import { normaliseNullableText, normalisePeriod } from '../route'
+import {
+  AMENDMENT_REASON_KEY,
+  planAmendments,
+  readAmendmentReason,
+} from '@/lib/amendments'
+import {
+  ATTENDANCE_MODEL,
+  lockFieldRefusal,
+  scopedAttendanceWhere,
+  unfinalizePath,
+  writeAttendanceCorrection,
+} from '../correction'
 import { isUniqueConstraintViolation, duplicateResponse } from '@/lib/prisma-conflict'
 import { z } from 'zod'
 import { logError } from '@/lib/logger'
 
 /**
- * The one predicate every handler in this file reads and writes through.
+ * The fields a correction may carry, and nothing else.
  *
- * Two things have to be in it, and the mutation handlers used to carry only the
- * first:
- *
- * - school scope, which for `AttendanceStudent` arrives through the `class`
- *   relation because the model has no `schoolId` column of its own;
- * - row scope, which is the caller's resolved `Visibility`.
- *
- * The row scope composes under `AND` rather than as a spread. A spread lets any
- * later property on the object silently overwrite the scope, so the filter a
- * caller can be trusted with stops being the filter that runs; under `AND` an
- * out-of-scope record simply does not match.
- *
- * Built once and shared by GET, PATCH and DELETE so the three cannot drift: the
- * defect this exists to close was that the mutation handlers applied a weaker
- * `where` than the read handler in the same file, and a single builder makes
- * that divergence impossible to reintroduce silently. The returned type is the
- * unique-where input, so the same object can be handed to `findFirst`, `update`
- * and `delete` — the write carries the scope rather than merely trusting the
- * read that preceded it.
+ * `AMENDMENT_REASON_KEY` is NOT one of them, and it is stripped from the body
+ * before this schema runs rather than relied on to be dropped: the difference
+ * between "this route decided the body carries no reason" and "the schema
+ * happened not to mention the key" is the difference between a decision and an
+ * accident. The lock columns are refused outright before this point — see
+ * `lockFieldRefusal` — so that a settled register cannot be unlocked by a body
+ * that zod would quietly drop.
  */
-function scopedAttendanceWhere(input: {
-  id: string
-  tenantId: string
-  schoolId: string
-  visibility: Visibility
-}): Prisma.AttendanceStudentWhereUniqueInput {
-  const where: Prisma.AttendanceStudentWhereUniqueInput = {
-    id: input.id,
-    tenantId: input.tenantId,
-    class: { schoolId: input.schoolId },
-  }
-  const scope = attendanceVisibilityWhere(input.visibility)
-  if (Object.keys(scope).length > 0) where.AND = [scope]
-  return where
-}
-
 const UpdateAttendanceSchema = z.object({
   status: z.enum(['PRESENT', 'ABSENT', 'LATE', 'EXCUSED', 'HALF_DAY']).optional(),
   period: z.string().nullable().optional(),
@@ -127,7 +108,29 @@ export async function PATCH(
 
     const { id } = await params
     const body = await req.json()
-    const parseResult = UpdateAttendanceSchema.safeParse(body)
+
+    // A body that tries to move the lock itself is REFUSED, not stripped. zod
+    // would drop `finalizedAt` without a word and the caller would leave
+    // believing they unlocked a settled register; the unlock is a deliberate act
+    // with its own authority and its own written reason, so this says where that
+    // is instead of quietly discarding the request.
+    const lockRefusal = lockFieldRefusal(body, unfinalizePath(id))
+    if (lockRefusal) {
+      return NextResponse.json({ error: 'Invalid input', details: lockRefusal }, { status: 400 })
+    }
+
+    // The amendment reason is parsed HERE, at the boundary, and REFUSED below
+    // beside the other refusals. Parsing now is what keeps an operator's free
+    // text out of everything downstream: by the time the plan is built the value
+    // is either a trimmed string this codebase minted a bound for, or nothing.
+    const amendmentReason = readAmendmentReason(body)
+
+    // Strip the reserved key before the schema sees it, so it can never become a
+    // column. `AttendanceStudent` has no `amendmentReason` column, and relying on
+    // zod to drop an unknown key is the difference between a decision and an
+    // accident.
+    const { [AMENDMENT_REASON_KEY]: _reservedReason, ...patch } = body as Record<string, unknown>
+    const parseResult = UpdateAttendanceSchema.safeParse(patch)
     if (!parseResult.success) {
       return NextResponse.json({ error: 'Invalid input', details: parseResult.error.issues }, { status: 400 })
     }
@@ -145,16 +148,58 @@ export async function PATCH(
     // second row for the same student/day.
     if (data.period !== undefined) updateData.period = normalisePeriod(data.period)
     if (data.notes !== undefined) updateData.notes = normaliseNullableText(data.notes)
-    updateData.markedById = userId
+
+    // `markedById` is DELIBERATELY ABSENT. It used to be set to `userId` here,
+    // which is the whole defect: a correction overwrote the only attribution the
+    // row had, so "changed after the fact" became indistinguishable from "always
+    // wrong". Who changed this, and when, is answered by the `RecordAmendment`
+    // rows written below — a place that holds the correction without destroying
+    // the author.
+    if (Object.keys(updateData).length === 0) {
+      return NextResponse.json(
+        { error: 'Invalid input', details: ['A correction must change at least one of: status, period, notes'] },
+        { status: 400 },
+      )
+    }
+
+    // What this edit owes the trail, and whether it is owed at all. Pure, and
+    // judged against the stored row because that is what decides whether the row
+    // is reason-gated — a body cannot unlock itself by submitting a blank
+    // `finalizedAt`, and `lockFieldRefusal` above already refused that.
+    //
+    // The refusal this returns for a settled record is `MISSING_AMENDMENT_REASON`,
+    // which is the lock doing its job: "cannot be edited SILENTLY", not "cannot be
+    // edited". A correction to a settled register is legitimate and carries its
+    // justification; a correction with no justification is what the lock exists to
+    // refuse.
+    const plan = planAmendments({
+      reason: amendmentReason,
+      write: updateData,
+      stored: existing as Record<string, unknown>,
+      model: ATTENDANCE_MODEL,
+      entityId: id,
+      tenantId,
+      schoolId,
+      userId,
+    })
+    if (plan.refusal) {
+      return NextResponse.json({ error: 'Invalid input', details: plan.refusal }, { status: 400 })
+    }
 
     // The same scoped predicate, not `{ id, tenantId }`. An existence check that
     // was scoped but a write that was not is the defect this closes: the record
-    // would have been proved in scope and then rewritten regardless.
-    const updated = await prisma.attendanceStudent.update({
-      where,
-      data: updateData,
+    // would have been proved in scope and then rewritten regardless. Both
+    // branches below go through `writeAttendanceCorrection`, so this `where` is
+    // the only clause either of them can issue.
+    const updated = await writeAttendanceCorrection({ where, data: updateData, plan })
+    return NextResponse.json({
+      success: true,
+      attendance: updated,
+      // The fields the trail now carries, so a client can tell an amended edit
+      // from a plain one without reading the trail back. Empty for an unlocked
+      // edit with no reason, which is the correct answer for that request.
+      amendedFields: plan.rows.map((row) => row.field),
     })
-    return NextResponse.json({ success: true, attendance: updated })
   } catch (error) {
     if (error instanceof Error && error.name === 'UnauthorizedError') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

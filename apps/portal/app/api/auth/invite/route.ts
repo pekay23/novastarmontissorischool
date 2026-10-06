@@ -57,8 +57,9 @@ const INVITE_WINDOW_MS = 60 * 60 * 1000
 const InviteSchema = z.object({
   email: z.string().email().max(320),
   name: z.string().max(160).optional(),
-  /** A seeded role name, resolved within the caller's tenant and school. */
   roleName: z.string().min(1).max(64),
+  childStudentId: z.string().optional(),
+  phone: z.string().optional(),
 })
 
 export async function POST(req: Request) {
@@ -98,18 +99,66 @@ export async function POST(req: Request) {
 
     let invite: Awaited<ReturnType<typeof createInvitedUser>>
     try {
-      // The role *name* is handed over, not a `roleId`: the shared function
-      // narrows it through the seeded vocabulary and resolves it against this
-      // caller's tenant and school, so a role row belonging to another school
-      // cannot be named here at all.
-      invite = await createInvitedUser({
-        tenantId,
-        schoolId,
-        roleName: parsed.data.roleName,
-        email: parsed.data.email,
-        name: parsed.data.name ?? null,
-        // The ceiling: this caller may not mint an account that outranks them.
-        authority: { kind: 'school-role', roleName: role },
+      invite = await prisma.$transaction(async (tx) => {
+        const result = await createInvitedUser(
+          {
+            tenantId,
+            schoolId,
+            roleName: parsed.data.roleName,
+            email: parsed.data.email,
+            name: parsed.data.name ?? null,
+            authority: { kind: 'school-role', roleName: role },
+          },
+          tx,
+        )
+
+        if (result.roleName === 'PARENT') {
+          const existingParent = await tx.parent.findFirst({
+            where: { tenantId, schoolId, email: result.email },
+          })
+          if (existingParent) {
+            if (!existingParent.userId) {
+              await tx.parent.update({
+                where: { id: existingParent.id },
+                data: { userId: result.userId },
+              })
+            }
+          } else {
+            const nameParts = (parsed.data.name || '').split(' ')
+            await tx.parent.create({
+              data: {
+                tenantId,
+                schoolId,
+                userId: result.userId,
+                firstName: nameParts[0] || result.email,
+                lastName: nameParts.slice(1).join(' ') || '',
+                phone: parsed.data.phone || result.email,
+                email: result.email,
+              },
+            })
+          }
+
+          if (parsed.data.childStudentId) {
+            const student = await tx.student.findFirst({
+              where: { id: parsed.data.childStudentId, tenantId, schoolId },
+            })
+            if (!student) {
+              throw new Error('Student not found')
+            }
+            const parent = await tx.parent.findFirst({
+              where: { tenantId, schoolId, email: result.email },
+            })
+            if (!parent) {
+              throw new Error('Parent not found')
+            }
+            await tx.student.update({
+              where: { id: student.id },
+              data: { parentId: parent.id },
+            })
+          }
+        }
+
+        return result
       })
     } catch (error) {
       if (error instanceof InviteError) {

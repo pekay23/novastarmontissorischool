@@ -1,6 +1,7 @@
-import Link from 'next/link'
-import { Button } from '@novastar/shared-ui'
 import { cn } from '@novastar/shared-ui'
+
+import { Card, CardTitle } from '@/components/marketing'
+import { MarketingButton } from '@/components/marketing-button'
 import { ageRange, phaseBadge, PhaseIcon, programSlug } from '@/lib/programs'
 
 interface ProgramCardProps {
@@ -12,34 +13,53 @@ interface ProgramCardProps {
   }
 }
 
+/**
+ * Programme teaser.
+ *
+ * The 16:9 placeholder frame was a `from-primary/10 to-secondary/10` gradient
+ * with a 48px ghosted icon — a maroon-to-navy wash that carried no information
+ * and put two brand hues behind every card. `ProgramCard` is used by the
+ * admissions flow, where a student is choosing a phase, so the frame now states
+ * the phase in text at a size that is actually readable, and the icon fills the
+ * panel instead of floating in the middle of it.
+ */
 export function ProgramCard({ program }: ProgramCardProps) {
   return (
-    <div className="overflow-hidden rounded-lg border border-border bg-card shadow-sm transition-shadow hover:shadow-md">
-      <div className="flex aspect-video items-center justify-center bg-gradient-to-br from-primary/10 to-secondary/10">
-        <PhaseIcon phase={program.phase} className="h-12 w-12 text-primary/40" />
+    <Card interactive className="flex h-full flex-col overflow-hidden">
+      <div className="relative flex aspect-video items-center justify-center bg-tint-warm">
+        <PhaseIcon phase={program.phase} className="h-14 w-14 text-primary/25" />
+        <span className="absolute inset-x-0 bottom-0 p-4">
+          <span
+            className={cn(
+              'inline-block rounded-xs border px-2 py-1 text-xs font-medium',
+              phaseBadge(program.phase),
+            )}
+          >
+            {program.phase}
+          </span>
+        </span>
       </div>
-      <div className="p-6">
-        <h3 className="mb-1 font-heading text-xl font-semibold text-primary">
-          {program.name}
-        </h3>
-        <p className="mb-2 text-sm text-muted-foreground">
+
+      <div className="flex flex-1 flex-col p-6">
+        <CardTitle>{program.name}</CardTitle>
+        <p className="mt-1.5 text-sm text-muted-foreground">
           {ageRange(program.ageMin, program.ageMax)}
         </p>
-        <span
-          className={cn(
-            'mb-4 inline-block rounded-full px-2 py-1 text-xs font-medium',
-            phaseBadge(program.phase)
-          )}
-        >
-          {program.phase}
-        </span>
-        <p className="mb-4 text-foreground/80">
-          Authentic Montessori education integrated with GES/NaCCA curriculum standards.
+
+        <p className="mt-4 flex-1 text-sm leading-relaxed text-muted-foreground">
+          Authentic Montessori education integrated with GES/NaCCA curriculum
+          standards, in a mixed-age self-directed classroom.
         </p>
-        <Button variant="outline" size="sm" className="w-full" asChild>
-          <Link href={`/academics#${programSlug(program.name)}`}>Learn More</Link>
-        </Button>
+
+        <MarketingButton
+          href={`/academics#${programSlug(program.name)}`}
+          variant="outline"
+          size="sm"
+          className="mt-6 w-full"
+        >
+          See the curriculum
+        </MarketingButton>
       </div>
-    </div>
+    </Card>
   )
 }

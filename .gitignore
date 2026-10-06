@@ -20,6 +20,17 @@ packages/**/*.d.ts
 # Turbo
 .turbo/
 
+# Stray JVM/Kotlin compiler output. This is a Bun/TypeScript monorepo, so a
+# `*.class` file or a `META-INF/` at the repository root can only be the residue
+# of a `kotlinc`/`javac` run pointed at the wrong directory. `Q1.class`,
+# `Q2.class` and `META-INF/main.kotlin_module` all appeared that way, and no
+# source file in this repository references any of them.
+#
+# `/META-INF/` is anchored rather than bare so a legitimately tracked
+# `META-INF` inside a Java resource directory elsewhere would not be swallowed.
+/META-INF/
+*.class
+
 # Environment files — NEVER commit secrets
 .env
 .env.local
@@ -58,6 +69,15 @@ logs/
 # Uploads
 uploads/
 public/uploads/
+# Root-level uploaded photos. These land in `public/images/` at the
+# repository root (e.g. `children/`, `logos/`) when content is staged
+# for the site, but they are uploads, not source: they belong in object
+# storage (see the S3_* variables in .env.example), never in git, where
+# they would be permanent in history. That is especially true of the
+# `children/` set — photographs of minors. The leading `/` anchors the
+# rule to the repository root so the apps' own asset directories, such
+# as `apps/public-site/public/images/placeholders/`, stay tracked.
+/public/images/
 
 # Cache
 .cache/

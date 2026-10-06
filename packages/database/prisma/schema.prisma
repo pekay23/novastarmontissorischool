@@ -42,6 +42,7 @@ model Tenant {
   departments           Department[]
   students              Student[]
   parents               Parent[]
+  healthDocuments       StudentHealthDocument[]
   assessments           Assessment[]
   news                  News[]
   events                Event[]
@@ -74,6 +75,7 @@ model School {
   classes          Class[]
   staff            Staff[]
   students         Student[]
+  healthDocuments StudentHealthDocument[]
   feeStructures    FeeStructure[]
   subjects         Subject[]
   classLevels      ClassLevel[]
@@ -587,6 +589,7 @@ model User {
   messages            Message[]
   notifications       Notification[]
   leaveRequests       LeaveRequest[]
+  uploadedHealthDocuments StudentHealthDocument[]
    auditLogs           AuditLog[]
     // Every value change this account made that had to carry a reason. The
     // trail outlives the account: an account that has made an amendment cannot be
@@ -817,15 +820,95 @@ model Student {
   finalizedById String?
   finalizedBy   User?                @relation("FinalizedStudents", fields: [finalizedById], references: [id])
 
+  // --- Health declarations (see the StudentHealthDocument model below) ---
+  // Free text, deliberately, not normalised tables. The policy asks three
+  // questions — any known condition or allergy, any food or meal concern, and
+  // the supplied report — and the answers are free prose written by a parent or
+  // a clinician ("mild asthmatic; uses a blue inhaler before PE", not a coded
+  // condition list). Splitting them into rows would force a vocabulary the
+  // school does not have and would lose the sentence that carries the
+  // instruction. Read them; do not pattern-match them.
+  //
+  // NULL means "nothing declared". That is NOT the same as "nothing wrong" —
+  // it means no declaration has been captured, which is why the two are kept
+  // distinguishable via `healthDeclaredAt`.
+  medicalConditions String?
+  allergies         String?
+  dietaryConcerns   String?
+  // When the declaration was captured, and whether it came from the parent.
+  // The policy makes the parent the source of truth: a condition "found out
+  // later" carries a withdrawal consequence, so who said it and when is part of
+  // the record rather than an audit detail.
+  healthDeclaredAt        DateTime?
+  healthDeclaredByParent  Boolean   @default(false)
+
   enrollments        Enrollment[]
   scores             Score[]
   attendanceStudents AttendanceStudent[]
   feeInvoices        FeeInvoice[]
   payments           Payment[]
   bookLoans          BookLoan[]
+  healthDocuments    StudentHealthDocument[]
 
   @@unique([tenantId, schoolId, studentId])
   @@unique([tenantId, schoolId, admissionNumber])
+}
+
+/// A health document belonging to a child — in practice the medical officer's or
+/// paediatrician's report that the school policy requires alongside any declared
+/// condition, allergy or erratic attack.
+///
+/// Modelled as its own model rather than a column on Student because the file
+/// lives in object storage and only its metadata belongs in the database. The
+/// database never sees the bytes, so there is no `BYTEA` to grow without bound
+/// and no way to serve a cached copy from a query.
+///
+/// There is no `deletedAt` and no delete route. A superseded report is replaced
+/// by uploading a newer one — see `supersedesId` — because removing a clinical
+/// record from a child's file is a retention decision for the school, not a
+/// capability to hand to a role. Nothing in the product may quietly drop one.
+model StudentHealthDocument {
+  id        String  @id @default(cuid())
+  tenantId  String
+  tenant    Tenant  @relation(fields: [tenantId], references: [id])
+  schoolId  String
+  school    School  @relation(fields: [schoolId], references: [id])
+  studentId String
+  student   Student @relation(fields: [studentId], references: [id])
+
+  /// Object key in the bucket, never a public URL. The bucket is private and
+  /// reads go through a short-lived presigned URL, so this key must not be
+  /// derivable into a permanent address. It is tenant-prefixed at write time so
+  /// a bug in one tenant's key builder cannot address another tenant's objects.
+  storageKey String @unique
+
+  /// The name the parent uploaded it under, kept for display only and never
+  /// used to build a path — a filename is attacker-controlled.
+  fileName    String
+  contentType String
+  /// Bytes. Denormalised so the UI can show a size and the route can reject an
+  /// oversized upload without a round trip to storage.
+  sizeBytes Int
+  /// SHA-256 of the bytes, hex. Lets the school prove a report has not been
+  /// swapped, and makes re-uploading the identical file detectable.
+  checksum String?
+
+  /// Set when this document replaces an earlier one. Self-relation, so a chain
+  /// of reports is reconstructible and the current one is the tip.
+  supersedesId String?
+  supersedes   StudentHealthDocument?  @relation("HealthDocumentSupersedes", fields: [supersedesId], references: [id])
+  supersededBy StudentHealthDocument[] @relation("HealthDocumentSupersedes")
+
+  uploadedById String
+  uploadedBy   User      @relation(fields: [uploadedById], references: [id])
+  uploadedAt   DateTime  @default(now())
+
+  // The audit trail for health data access lives in the audit log, not here:
+  // reads of the bytes happen through a presigned URL and cannot be observed by
+  // this table. `uploadedBy`/`uploadedAt` record only who supplied the file.
+
+  @@index([tenantId, studentId])
+  @@index([tenantId, studentId, uploadedAt])
 }
 
 enum StudentStatus {

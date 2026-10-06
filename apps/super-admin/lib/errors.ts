@@ -1,6 +1,6 @@
 /**
- * The four failure types this app distinguishes, and the one place each becomes
- * a status code.
+ * The failure types this app distinguishes, and the one place each becomes a
+ * status code.
  *
  * Deliberately NOT shared with `apps/portal/lib/tenant.ts`. That module resolves
  * the *caller's* tenant from their own database row; the failure types there are
@@ -32,6 +32,50 @@ export class NotFoundError extends Error {
   constructor(message = 'Not found') {
     super(message)
     this.name = 'NotFoundError'
+  }
+}
+
+/**
+ * A stable, machine-readable refusal code.
+ *
+ * Exported rather than inlined at the throw site because the value is a contract:
+ * it is what an operator's tooling, or a future client, matches on to tell "this
+ * tenant is switched off" apart from every other 403 this app can produce — a
+ * missing capability reads as `This operator cannot <grant>.`, which is a
+ * different problem with a different remedy. A code that only one call site
+ * spells out is a code that drifts.
+ */
+export const TENANT_SUSPENDED_CODE = 'tenant-suspended'
+
+/**
+ * A tenant that exists, and has been switched off.
+ *
+ * 403 rather than 404, and that is the whole reason this is a class of its own
+ * instead of a `NotFoundError`. A suspended tenant is still a row: the roster still
+ * lists it, it still has every school and user, and reactivation is a normal
+ * operation. Answering 404 would tell an operator the school they suspended an hour
+ * ago had ceased to exist, and would make the console's own history of the tenant
+ * unreadable at exactly the moment somebody needs to read it.
+ *
+ * A sibling of `ForbiddenError` and not a subclass, for the reason
+ * `toErrorResponse` checks `UnauthorizedError` first: the ordering comment there
+ * is about a refusal that must not confirm a resource exists to a caller who has
+ * not proved who they are. That is not this case — suspension is only ever decided
+ * after the operator's session and capability have both been resolved — so this
+ * error adds a body field rather than borrowing an existing one.
+ *
+ * It carries the tenant id and nothing else. Naming the tenant the operator
+ * selected is not disclosure; anything about a tenant they did not select is.
+ */
+export class TenantSuspendedError extends Error {
+  /** The stable, machine-readable code this refusal is answered with. */
+  readonly code = TENANT_SUSPENDED_CODE
+  readonly tenantId: string
+
+  constructor(tenantId: string) {
+    super(`Tenant "${tenantId}" is suspended.`)
+    this.name = 'TenantSuspendedError'
+    this.tenantId = tenantId
   }
 }
 
@@ -70,6 +114,12 @@ export class RequestError extends Error {
  * about which capability they were missing: a 403 on an unauthenticated request
  * confirms that the resource exists and that only a role check stands in the
  * way.
+ *
+ * `TenantSuspendedError` is matched before the unhandled fallback for a different
+ * reason: it is the only refusal here that carries a code, so it has to be
+ * recognised as itself rather than collapsed into the 500 that would otherwise
+ * swallow a deliberate policy decision and answer a client's question with a
+ * fault report.
  */
 export function toErrorResponse(error: unknown): Response {
   if (error instanceof UnauthorizedError) {
@@ -77,6 +127,12 @@ export function toErrorResponse(error: unknown): Response {
   }
   if (error instanceof ForbiddenError) {
     return json({ error: error.message }, 403)
+  }
+  if (error instanceof TenantSuspendedError) {
+    // `error` for prose, `code` for machines, `tenantId` so a client can say which
+    // tenant is suspended without parsing a sentence. Nothing else: this body must
+    // not become a way to ask about a tenant other than the one the URL named.
+    return json({ error: error.message, code: error.code, tenantId: error.tenantId }, 403)
   }
   if (error instanceof NotFoundError) {
     return json({ error: error.message }, 404)

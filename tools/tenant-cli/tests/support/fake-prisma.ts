@@ -45,7 +45,15 @@ function canonical(value: unknown): string {
 /** A `where` made of plain column equality, as used by `findFirst` / `count`. */
 function matches(row: Row, where: Record<string, unknown> | undefined): boolean {
   if (!where) return true;
-  return Object.entries(where).every(([column, expected]) => canonical(row[column]) === canonical(expected));
+  return Object.entries(where).every(([column, expected]) => {
+    // `OR` is the one operator beyond equality, because the scope predicates read
+    // from `@novastar/shared-utils` produce it: a list of clauses, matched when any
+    // one of them matches the row.
+    if (column === "OR" && Array.isArray(expected)) {
+      return expected.some((clause) => matches(row, clause as Record<string, unknown>));
+    }
+    return canonical(row[column]) === canonical(expected);
+  });
 }
 
 function orderBy(spec: unknown): (a: Row, b: Row) => number {

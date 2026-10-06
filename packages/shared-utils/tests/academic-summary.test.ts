@@ -100,12 +100,20 @@ describe("resolveAssessmentWeight", () => {
 
 describe("computeAcademicSummary — the two percentages", () => {
   test("weightedPercentage is the mean mark and overallPercentage is the mean of subjects", () => {
-    // English: one FINAL at 100 weighted 3. Maths: three HOMEWORK at 50, 50, 50
-    // weighted 1 each. The mean mark is dominated by the three homework rows;
-    // the mean of subjects is not, because Maths counts once.
+    // English: one FINAL at 100 weighted 3. Maths: five HOMEWORK at 50 weighted
+    // 1 each, so Maths carries 5 points of weight to English's 3.
+    //
+    // The two rules must not agree here, or the test cannot tell them apart:
+    // mean mark = (100*3 + 50*5) / 8 = 68.75, but mean of subjects is
+    // (100 + 50) / 2 = 75 because Maths counts once however many rows it has.
+    // The earlier fixture had three homework rows, which put Maths on exactly
+    // English's weight of 3 and made both rules answer 75 — a fixture in which
+    // redefining `overallPercentage` as the weighted mean changes nothing.
     const summary = computeAcademicSummary(
       [
         row({ subjectId: "english", percentage: 100, weight: 3 }),
+        row({ subjectId: "maths", percentage: 50, weight: 1 }),
+        row({ subjectId: "maths", percentage: 50, weight: 1 }),
         row({ subjectId: "maths", percentage: 50, weight: 1 }),
         row({ subjectId: "maths", percentage: 50, weight: 1 }),
         row({ subjectId: "maths", percentage: 50, weight: 1 }),
@@ -113,11 +121,9 @@ describe("computeAcademicSummary — the two percentages", () => {
       scale(),
     );
 
-    // (100*3 + 50 + 50 + 50) / 6 = 75
-    expect(summary.weightedPercentage).toBe(75);
-    // (100 + 50) / 2 = 75 too — so this fixture does NOT separate the rules.
+    expect(summary.weightedPercentage).toBe(68.75);
     expect(summary.overallPercentage).toBe(75);
-    expect(summary.gradedAssessments).toBe(4);
+    expect(summary.gradedAssessments).toBe(6);
     expect(summary.subjectCount).toBe(2);
   });
 

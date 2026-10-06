@@ -61,12 +61,36 @@ function fakeRemote(
 }
 
 describe('SyncEngine storage injection', () => {
-  test('the no-argument constructor still works (backwards compatibility)', () => {
+  test('the no-argument constructor still works (backwards compatibility)', async () => {
     const engine = new SyncEngine()
     expect(engine).toBeInstanceOf(SyncEngine)
-    expect(new SyncEngine({ strategy: 'merge', retryAttempts: 1, retryDelayMs: 0, batchSize: 5 })).toBeInstanceOf(
-      SyncEngine,
+    // And it substitutes the browser storage rather than nothing at all. The
+    // version of this test that only asked `toBeInstanceOf` twice passed against
+    // a constructor body that stored hardcoded wrong values, because nothing
+    // downstream of it was consulted.
+    expect(engine.count(TENANT_A)).rejects.toThrow(/requires IndexedDB/)
+  })
+
+  test('the constructor stores the config it was given, field for field', async () => {
+    const storage = new MemorySyncStorage()
+    for (let index = 0; index < 60; index += 1) {
+      await storage.put(record({ id: `s${index}`, tenantId: TENANT_A }))
+    }
+
+    // No config: DEFAULT_SYNC_CONFIG.batchSize, and `batchSize` is the default
+    // limit `getPendingChanges` passes to storage.
+    const defaults = new SyncEngine(undefined, storage)
+    expect(await defaults.getPendingChanges(TENANT_A)).toHaveLength(50)
+
+    // A supplied config replaces it — 5, not the default 50. One field read so
+    // wrong and this fails; a stored-but-ignored config would not.
+    const custom = new SyncEngine(
+      { strategy: 'merge', retryAttempts: 1, retryDelayMs: 0, batchSize: 5 },
+      storage,
     )
+    expect(await custom.getPendingChanges(TENANT_A)).toHaveLength(5)
+    // And an explicit limit still wins over the configured one.
+    expect(await custom.getPendingChanges(TENANT_A, 3)).toHaveLength(3)
   })
 
   test('getPendingChanges returns the records an injected storage queued', async () => {

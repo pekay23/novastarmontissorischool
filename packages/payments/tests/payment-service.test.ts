@@ -563,7 +563,13 @@ describe("reconcilePayments", () => {
 
     expect(result.matched).toBe(0);
     expect(result.unmatched).toBe(1);
-    expect(Number.isNaN(0.1 + 0.2 - 0.3)).toBe(false);
+    // `expected` is the bank statement's figure and `actual` the ledger's, so
+    // this states the defect rather than restating it: 0.30000000000000004
+    // against 0.3. A closed `Number.isNaN(0.1 + 0.2 - 0.3)` assertion sat here
+    // before, which constrains no production symbol and could not fail.
+    expect(result.discrepancies).toEqual([
+      { reference: "BANK-1", expected: 0.1 + 0.2, actual: 0.3 },
+    ]);
   });
 
   test("an amount mismatch counts as unmatched, so `unmatched` is not a count of missing rows", async () => {

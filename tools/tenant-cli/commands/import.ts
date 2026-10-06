@@ -9,9 +9,28 @@
  * The document is the inverse of `config export`: rows are addressed by their
  * natural keys, resolved against the target tenant, then written with the same
  * `isSystem` rule `clone` uses.
+ *
+ * A row the API would refuse is refused here too, on the same terms and through the
+ * same helpers — most visibly a grading band, which is the one row in this document a
+ * bad value in silently mis-grades a child rather than merely looking wrong. Refusal
+ * follows the convention already in this file: the row is counted `skipped`, the reason
+ * is pushed onto `problems`, and the rest of the document is applied. Nothing is
+ * rolled back and nothing is fatal, because that is what a row with a missing parent
+ * already does and what the operator reading the report expects to see.
  */
 import { readFileSync } from "node:fs";
 import type { Prisma } from "@novastar/database";
+// The band rules live in `@novastar/shared-utils` and this command must not grow a
+// second copy of them. Declared as a dependency of this package, so it is reached
+// by package name like every other cross-package import in the repo.
+import {
+  gradeBandWriteProblems,
+  gradingScaleScopeWhere,
+} from "@novastar/shared-utils";
+import {
+  GradingLevelCreateSchema,
+  GradingLevelPositionSetSchema,
+} from "@novastar/shared-types";
 import { getPrisma } from "../config";
 import { out } from "../output";
 import { ValidationError, formatIssues } from "../validate";
@@ -138,6 +157,33 @@ interface Scope {
 }
 
 /**
+ * A band as the import needs it to judge a scale: the two bounds the cross-row rule
+ * reads, plus the two columns that are unique within a scale.
+ *
+ * Structurally a `NamedGradeBand`, which is what `gradeBandWriteProblems` takes, so
+ * the rule that refuses a band here is the one the HTTP write path calls.
+ *
+ * `id` is never null. `gradeBandWriteProblems` drops the row being edited by comparing
+ * ids, so an entry with no id would be dropped by an `editedId` of null and silently
+ * removed from the judgement — the row nobody was editing. A band that exists only in
+ * the document therefore gets a synthetic id, and a scale the database holds gives its
+ * own.
+ */
+interface ImportBand {
+  readonly id: string;
+  readonly key: string;
+  readonly minScore: number;
+  readonly maxScore: number;
+  readonly order: number;
+}
+
+/**
+ * Marks an id that the database has not issued, so a band added by this document is
+ * still distinguishable from the row it replaces. A cuid cannot contain a colon.
+ */
+const DOCUMENT_BAND_ID = "document:";
+
+/**
  * Writes the document into one tenant, reporting what each model did.
  *
  * The same `isSystem` rule as `clone`: a target row that is already
@@ -153,6 +199,18 @@ export async function applyDocument(
   const classLevelIds = new Map<string, string>();
   const subjectIds = new Map<string, string>();
   const scaleIds = new Map<string, string>();
+  /**
+   * Every band each scale will hold once the document is applied, keyed by scale id.
+   *
+   * Seeded from the scale's own stored bands and extended as bands are accepted, so a
+   * row is judged against the whole scale this document is about to leave behind — and
+   * so it is judged the same way in a dry run, where nothing is written and re-reading
+   * would keep returning the pre-import set. The stored read is scoped to this tenant,
+   * because a band the caller cannot see has to read as absent: a conflict with another
+   * school's band is not this band's conflict, and naming those bands in the refusal
+   * would send an operator to fix a scale that was never wrong.
+   */
+  const scaleBands = new Map<string, ImportBand[]>();
 
   const record = (model: string, result: keyof ImportCounts): void => {
     counts[model] ??= { created: 0, updated: 0, skipped: 0 };
@@ -340,6 +398,31 @@ export async function applyDocument(
     record("GradingScale", createOnly ? "created" : "updated");
   }
 
+  /**
+   * The bands a scale holds, read once and then extended as this document's bands are
+   * accepted. Scoped to `scope.tenantId`: a band belonging to another tenant is not
+   * this scale's band, and a conflict with one is not this write's conflict.
+   */
+  const bandsOf = async (gradingScaleId: string): Promise<ImportBand[]> => {
+    const loaded = scaleBands.get(gradingScaleId);
+    if (loaded) return loaded;
+    const stored = await tx.gradingLevel.findMany({
+      where: { gradingScaleId, tenantId: scope.tenantId },
+      select: { id: true, key: true, minScore: true, maxScore: true, order: true },
+    });
+    const bands: ImportBand[] = stored.map((row) => ({
+      id: row.id,
+      key: row.key,
+      minScore: row.minScore,
+      maxScore: row.maxScore,
+      order: row.order,
+    }));
+    scaleBands.set(gradingScaleId, bands);
+    return bands;
+  };
+
+  const seenBandKeys = new Set<string>();
+
   for (const row of config.gradingLevels ?? []) {
     const scaleName = text(row, "scale", problems);
     const key = text(row, "key", problems);
@@ -350,16 +433,113 @@ export async function applyDocument(
       problems.push(`GradingLevel ${scaleName}/${key}: the scale was not in the document.`);
       continue;
     }
+
+    // 1. The row's own shape, through the schema the HTTP create path parses it with.
+    //    That is the `0-100` bounds, integer percentages, `minScore <= maxScore`, and
+    //    the `#rrggbb` colour — a colour the report's `contrastTextColor` cannot act on
+    //    is a badge the report card cannot draw, so it is refused here rather than
+    //    discovered on a child's report. No default stands in for a missing bound any
+    //    more: the old `?? 0` turned a mistyped `"minScore": "80"` into a band of
+    //    0-0, which is a valid-looking row and a band that claims nothing.
+    const parsed = GradingLevelCreateSchema.safeParse({
+      gradingScaleId,
+      key,
+      label: text(row, "label") ?? key,
+      minScore: integer(row, "minScore"),
+      maxScore: integer(row, "maxScore"),
+      color: text(row, "color") ?? "#000000",
+      description: text(row, "description"),
+      order: integer(row, "order") ?? 0,
+    });
+    if (!parsed.success) {
+      record("GradingLevel", "skipped");
+      problems.push(`GradingLevel ${scaleName}/${key}: ${zodIssues(parsed.error)}`);
+      continue;
+    }
+
+    // 2. `key` is `@@unique([gradingScaleId, key])`, so two document rows claiming one
+    //    key would leave the surviving row decided by document order. The index would
+    //    refuse the second write part-way through the transaction and say so as a
+    //    driver error; here it is a refusal that names the two rows.
+    const documentKey = `${gradingScaleId}/${key}`;
+    if (seenBandKeys.has(documentKey)) {
+      record("GradingLevel", "skipped");
+      problems.push(`GradingLevel ${scaleName}/${key}: the document claims this key twice.`);
+      continue;
+    }
+    seenBandKeys.add(documentKey);
+
+    // 3. The parent is proved, not inherited from the map. A `grading_level` row has no
+    //    `schoolId` of its own, so the school that grades a child against a band is the
+    //    school of the band's SCALE — a band whose own `tenantId` is this import's can
+    //    still hang from another school's scale, and it is then invisible to the school
+    //    whose grading it has changed. The predicate is `gradingScaleScopeWhere`, the one
+    //    the HTTP write path's `gradingScaleParentScopeWriteRule` uses, so the two
+    //    cannot drift. Only an applying import can mis-attach a band and only an
+    //    applying import has a stored scale to prove: a dry run writes nothing, so its
+    //    parent is the scale the loop above is about to create under this school.
+    if (!scope.dryRun && !(await ownsScale(tx, gradingScaleId, scope))) {
+      record("GradingLevel", "skipped");
+      problems.push(`GradingLevel ${scaleName}/${key}: the scale is not this tenant's or this school's.`);
+      continue;
+    }
+
+    // 4. The scale this band would leave behind, never the band alone: no band is
+    //    exhaustive by itself, so `0-49` on its own is a hole and a valid bottom half of
+    //    a scale, and a rule applied per row would either refuse every partial scale or
+    //    miss every conflict. `gradeBandWriteProblems` is the whole-scale rule the HTTP
+    //    write path applies, called with the same arguments, and it accepts fewer than
+    //    two bands — which is what keeps a school able to build a scale one band at a
+    //    time through this command as well.
+    const bands = await bandsOf(gradingScaleId);
+    const editedId = bands.find((candidate) => candidate.key === key)?.id ?? null;
+    const band: ImportBand = {
+      id: editedId ?? `${DOCUMENT_BAND_ID}${gradingScaleId}/${key}`,
+      key,
+      minScore: parsed.data.minScore,
+      maxScore: parsed.data.maxScore,
+      order: parsed.data.order,
+    };
+    const survivors = bands.filter((candidate) => candidate.id !== editedId);
+
+    const conflicts = gradeBandWriteProblems({ write: band, stored: survivors, editedId });
+    if (conflicts.length > 0) {
+      record("GradingLevel", "skipped");
+      problems.push(`GradingLevel ${scaleName}/${key}: ${conflicts.join("; ")}`);
+      continue;
+    }
+
+    // 5. `order` is `@@unique([gradingScaleId, order])` for the same reason `key` is:
+    //    the report renders the band that comes first, so two bands at one position
+    //    make the winner a function of row order. Judged over the merged set, because
+    //    the collision that matters may be with a band already stored.
+    const positions = GradingLevelPositionSetSchema.safeParse(
+      [...survivors, band].map((entry) => ({ key: entry.key, order: entry.order })),
+    );
+    if (!positions.success) {
+      record("GradingLevel", "skipped");
+      problems.push(`GradingLevel ${scaleName}/${key}: ${zodIssues(positions.error)}`);
+      continue;
+    }
+
+    // Replace rather than append. `band` carries `editedId`, so appending it to a list
+    // that still holds the stored row would leave the scale holding that band twice, and
+    // the NEXT row in the document would be judged against a duplicate of the band just
+    // replaced — reporting a conflict between a band and itself.
+    const replaced = bands.findIndex((candidate) => candidate.id === editedId);
+    if (replaced === -1) bands.push(band);
+    else bands[replaced] = band;
+
     const where = { gradingScaleId_key: { gradingScaleId, key } };
     const existing = await tx.gradingLevel.findUnique({ where, select: { id: true } });
     const createOnly = existing === null;
     const data = {
-      label: text(row, "label") ?? key,
-      minScore: integer(row, "minScore") ?? 0,
-      maxScore: integer(row, "maxScore") ?? 0,
-      color: text(row, "color") ?? "#000000",
-      description: text(row, "description"),
-      order: integer(row, "order") ?? 0,
+      label: parsed.data.label,
+      minScore: parsed.data.minScore,
+      maxScore: parsed.data.maxScore,
+      color: parsed.data.color,
+      description: parsed.data.description,
+      order: parsed.data.order,
     };
     if (!scope.dryRun) {
       await tx.gradingLevel.upsert({
@@ -561,4 +741,43 @@ function integer(row: Record<string, unknown>, key: string): number | undefined 
 function strings(row: Record<string, unknown>, key: string): string[] {
   const value = row[key];
   return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : [];
+}
+
+/**
+ * Whether a scale is this tenant's and this school's to hang bands from.
+ *
+ * The predicate is `gradingScaleScopeWhere` — the one
+ * `gradingScaleParentScopeWriteRule` hands the HTTP write path — read here rather than
+ * retyped, so the two paths cannot drift apart on what a caller owns. `schoolId: null`
+ * counts, because a tenant-wide scale is a legitimate parent shared by every school in
+ * the tenant, and refusing it would refuse every band written against a shared scale.
+ */
+async function ownsScale(
+  tx: Prisma.TransactionClient,
+  gradingScaleId: string,
+  scope: Scope,
+): Promise<boolean> {
+  const scale = await tx.gradingScale.findFirst({
+    where: gradingScaleScopeWhere({
+      id: gradingScaleId,
+      tenantId: scope.tenantId,
+      schoolId: scope.schoolId,
+    }),
+    select: { id: true },
+  });
+  return scale !== null;
+}
+
+/**
+ * Zod's issues as one clause, so a refusal reads as one sentence naming the field an
+ * operator would have to open. Deliberately not a throw: a row that fails here is
+ * reported alongside every other skipped row, like a row with a missing parent.
+ */
+function zodIssues(error: { issues: readonly { path: PropertyKey[]; message: string }[] }): string {
+  return error.issues
+    .map((issue) => {
+      const path = issue.path.map(String).join(".");
+      return path.length > 0 ? `${path}: ${issue.message}` : issue.message;
+    })
+    .join("; ");
 }

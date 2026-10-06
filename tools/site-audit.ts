@@ -7,7 +7,7 @@
  *
  * Usage: bun run tools/site-audit.ts [baseUrl] [outDir]
  */
-import { chromium, devices, type ConsoleMessage, type Page } from "@playwright/test";
+import { chromium, devices, type BrowserContext, type ConsoleMessage, type Page } from "@playwright/test";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -63,7 +63,7 @@ async function checkUnresolvedColors(page: Page) {
   });
 }
 
-async function auditPage(context: Page, pageDef: { path: string; name: string }, vp: string) {
+async function auditPage(context: BrowserContext, pageDef: { path: string; name: string }, vp: string) {
   const page = await context.newPage();
   const errors: string[] = [];
   const failedRequests: string[] = [];
@@ -82,7 +82,14 @@ async function auditPage(context: Page, pageDef: { path: string; name: string },
 
   const url = `${BASE}${pageDef.path}`;
   try {
-    const res = await page.goto(url, { waitUntil: "networkidle", timeout: 45000 });
+    // Not `networkidle`: `/contact/` embeds a Google Maps iframe, so the network
+    // never goes idle within any useful timeout and this reports a navigation
+    // failure for a page that loaded fine. `domcontentloaded` plus a short settle
+    // is what the audit actually needs. See `gotoMeasurable` in
+    // tools/ui-audit/shared.mjs.
+    const res = await page.goto(url, { waitUntil: "domcontentloaded", timeout: 45000 });
+    await page.evaluate(() => document.fonts.ready.then(() => undefined));
+    await page.waitForTimeout(600);
     if (res && res.status() >= 400) {
       record(pageDef.name, vp, "error", `HTTP ${res.status()} for ${pageDef.path}`);
     }
@@ -102,12 +109,39 @@ async function auditPage(context: Page, pageDef: { path: string; name: string },
   for (const e of errors) record(pageDef.name, vp, "error", e);
   for (const f of failedRequests) record(pageDef.name, vp, "error", f);
 
-  // Broken images
-  const brokenImages = await page.evaluate(() =>
-    Array.from(document.images)
-      .filter((i) => !i.complete || i.naturalWidth === 0)
-      .map((i) => i.currentSrc || i.src || "(no src)"),
-  );
+  // Broken images.
+  //
+  // This used to be `!i.complete || i.naturalWidth === 0`, and the `naturalWidth`
+  // half was dismissed as a false positive: it reported the site logo as broken on
+  // every route, `logo.svg` served 200, and the claim was assumed to be an SVG
+  // intrinsic-size quirk.
+  //
+  // It was not. The logo was genuinely broken — invalid XML, because its comment
+  // spelled CSS custom property names and an XML comment cannot contain a double
+  // hyphen — so Chromium refused to parse it. `naturalWidth: 0` was the only
+  // honest signal in the entire run, and overriding it silenced the one true
+  // finding. Rewriting a detector because its output is inconvenient is how a
+  // broken logo ships.
+  //
+  // `img.decode()` is the right test because it separates the two cases that
+  // `naturalWidth` conflates: it rejects when the bytes are not a decodable image,
+  // and resolves for a valid SVG that simply has no intrinsic size. A painted-
+  // nothing image is caught by `apps/public-site/e2e/design.spec.ts`, which also
+  // checks ink coverage.
+  const brokenImages = await page.evaluate(async () => {
+    const out: string[] = [];
+    for (const i of Array.from(document.images)) {
+      const src = i.currentSrc || i.src || "(no src)";
+      try {
+        if ("decode" in i) await i.decode();
+        else if (!i.complete) out.push(`${src} never finished loading`);
+      } catch {
+        const r = i.getBoundingClientRect();
+        out.push(`${src} failed to decode (rendered ${Math.round(r.width)}x${Math.round(r.height)}, natural ${i.naturalWidth}x${i.naturalHeight})`);
+      }
+    }
+    return out;
+  });
   for (const b of brokenImages) record(pageDef.name, vp, "error", `broken image: ${b}`);
 
   // Unresolved design tokens

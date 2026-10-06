@@ -35,6 +35,7 @@ const OPERATOR = fakeOperator()
 const {
   getOperatorOrNull,
   getSelectedTenantId,
+  requireCapability,
   requireOperator,
   requireOperatorPage,
   requireTenantScope,
@@ -170,19 +171,34 @@ describe('getOperatorOrNull — the narrow catch', () => {
   })
 
   it('should not be able to swallow a redirect signal', async () => {
-    // `redirect()` works in this module graph — it throws Next's own signal rather
-    // than returning. That signal is an Error with a `digest`, and it is none of the
-    // types the catch absorbs, so it propagates. Asserting the type is the whole
-    // guarantee: widen the catch and this is the test that fails.
+    // The guarantee is about `getOperatorOrNull`, so `getOperatorOrNull` has to be
+    // the thing under test. It is made to meet Next's signal on the way through
+    // `requireOperator` — a `redirect()` raised inside the live operator read, which
+    // `requireOperator` deliberately does not catch.
+    //
+    // Asserting the *type* of `redirect()`'s throw proves only that the signal is
+    // what the comment says it is; it says nothing about whether this function's
+    // catch absorbs it. A blanket `catch { return null }` — or even one that catches
+    // every `Error` — passes the type check and swallows the signal, and the
+    // operator is shown the signed-out page while holding a valid session.
+    signedIn()
+    mocks.platformOperatorFindUnique.mockImplementation(async () => {
+      redirect('/login')
+    })
+
+    // Rejects, rather than resolving to `null`.
+    await expect(getOperatorOrNull()).rejects.toThrow()
+
     let signal: unknown
     try {
-      redirect('/login')
+      await getOperatorOrNull()
     } catch (error) {
       signal = error
     }
-
     expect(signal).toBeInstanceOf(Error)
     expect((signal as { digest?: string }).digest).toContain('NEXT_REDIRECT')
+    // Which is exactly why the catch in this module is narrowed to the two
+    // refusal types and rethrows everything else.
     expect(signal).not.toBeInstanceOf(UnauthorizedError)
     expect(signal).not.toBeInstanceOf(ForbiddenError)
   })
@@ -221,6 +237,46 @@ describe('requireOperatorPage — the rendering surface', () => {
 })
 
 describe('the selection cookie is a hint, not a grant', () => {
+  it('should not widen a narrowed grant set because a tenant is selected', async () => {
+    // The claim in the module docstring, made falsifiable. The row is reduced to
+    // one capability and the token still carries the whole vocabulary; the cookie
+    // says a tenant is drilled into. If cookie presence could stand in for a grant,
+    // then browsing a tenant would hand the operator the entire vocabulary — which
+    // is the difference between a UI preference and a privilege.
+    const row = fakeOperator({ capabilities: ['tenant:read'] })
+    givenLiveOperator(row)
+    setCookies({
+      [ADMIN_SESSION_COOKIE]: createSessionToken(operatorClaims(OPERATOR)),
+      [ADMIN_TENANT_COOKIE]: 'tenant-a',
+    })
+
+    const context = await requireOperator()
+
+    // The cookie is still honoured for what it is: what the operator is looking at.
+    expect(context.selectedTenantId).toBe('tenant-a')
+    // And it granted nothing. The intersection with the live row is unchanged by
+    // its presence.
+    expect(context.operator.capabilities).toEqual(['tenant:read'])
+    // Named concretely rather than left to the equality above, so an implementation
+    // that returned an empty set — which would also "not widen" — cannot pass.
+    expect(await requireCapability('tenant:read')).toBeDefined()
+    await expect(requireCapability('tenant:user:create')).rejects.toBeInstanceOf(
+      ForbiddenError,
+    )
+    await expect(requireCapability('tenant:provision')).rejects.toBeInstanceOf(
+      ForbiddenError,
+    )
+  })
+
+  it('should grant nothing at all from the cookie alone, with no session', async () => {
+    // The same claim from the other end: a cookie an unauthenticated caller can set
+    // must not produce a context at all.
+    setCookies({ [ADMIN_TENANT_COOKIE]: 'tenant-a' })
+
+    expect(await getOperatorOrNull()).toBeNull()
+    await expect(requireOperator()).rejects.toBeInstanceOf(UnauthorizedError)
+  })
+
   it('should read back exactly what it was given', async () => {
     setCookies({ [ADMIN_TENANT_COOKIE]: 'tenant-a' })
     expect(await getSelectedTenantId()).toBe('tenant-a')

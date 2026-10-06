@@ -236,7 +236,6 @@ describe('a custom school scale works with no code change', () => {
    * against its own bands, with nothing in the application edited.
    */
   it('reports a percentage under the custom bands, not either default', () => {
-    const SCALE_NAME = "Osei-Tutu House Scale (head teacher's own)"
     const customBands: GradeBand[] = [
       // Deliberately unlike either default: odd boundaries, a 20-point top band,
       // house-worded labels, and keys that mean nothing to the product.
@@ -256,10 +255,15 @@ describe('a custom school scale works with no code change', () => {
     expect(labelFor(PRIMARY_BANDS, 72)).toBe('Level 5 — Proficient')
     expect(labelFor(JHS_BANDS, 72)).toBe('Grade 2 (Very Good)')
 
-    // The band's own colour is carried through, because the report colours by
+// The band's own colour is carried through, because the report colours by
     // band and never by the magnitude of the score.
     expect(resolveGradeBand(72, customBands)?.color).toBe('#0d9488')
-    expect(SCALE_NAME).not.toBe('')
+    // A scale is identified by its bands and nothing else. There is deliberately no
+    // scale NAME in this call — no such argument exists — so a school renaming
+    // "Osei-Tutu House Scale (head teacher's own)" cannot change a single child's
+    // band. That used to be asserted with a local string compared against `''`,
+    // which proved nothing: the string reached no production code and the
+    // assertion would have passed whatever the name was.
   })
 
   it('needs no direction of its own to be reported correctly', () => {
@@ -324,6 +328,10 @@ describe('the report surface reports percentages and nothing grade-pointed', () 
   )
   const listPageSrc = readFileSync(
     join(PORTAL, 'app', '(portal)', 'reports', 'page.tsx'),
+    'utf-8',
+  )
+  const bandBadgeSrc = readFileSync(
+    join(PORTAL, 'components', 'reports', 'band-badge.tsx'),
     'utf-8',
   )
 
@@ -405,8 +413,15 @@ describe('the report surface reports percentages and nothing grade-pointed', () 
     // A magnitude threshold in the markup is the defect: the JHS default is
     // better the lower the grade number, so 95% is the best result there.
     expect(studentPageSrc).not.toMatch(/percentage\s*>=\s*\d/)
-    expect(studentPageSrc).toContain('backgroundColor: band.color')
-    expect(listPageSrc).toContain('backgroundColor: band.color')
+    expect(listPageSrc).not.toMatch(/percentage\s*>=\s*\d/)
+
+    // The colour rule lives in the one component both pages render, so it is
+    // asserted there. Both pages are also asserted to hold no second copy of
+    // the badge, which is the thing that would let the two drift apart — the
+    // list page once did, and printed a bare "-" for every state the card names.
+    expect(bandBadgeSrc).toContain('backgroundColor: band.color')
+    expect(studentPageSrc).not.toContain('const BandBadge')
+    expect(listPageSrc).not.toContain('const BandBadge')
   })
 
   it('quotes the scale description rather than assuming a direction', () => {

@@ -43,6 +43,21 @@ export default function RootLayout({
     <html
       lang="en"
       className={`${jakarta.variable} ${playfair.variable}`}
+      /*
+       * `globals.css:224` sets `scroll-behavior: smooth` on this element, and
+       * Next.js warned about exactly that combination on every dev request:
+       *
+       *   Detected `scroll-behavior: smooth` on the `<html>` element. To
+       *   disable smooth scrolling during route transitions, add
+       *   `data-scroll-behavior="smooth"` to your <html> element.
+       *
+       * Without it, a client-side navigation waits out the previous scroll
+       * animation before starting the new one, which reads as a sluggish route
+       * change on a site whose whole premise is calm pacing. With it, Next
+       * switches the behaviour to `auto` for the duration of the transition and
+       * restores smooth scrolling afterwards.
+       */
+      data-scroll-behavior="smooth"
     >
       <head>
         <link rel="icon" href="/favicon.svg" type="image/svg+xml" />

@@ -29,6 +29,7 @@
     "@novastar/auth": "workspace:*",
     "@novastar/database": "workspace:*",
     "@novastar/shared-types": "workspace:*",
+    "@novastar/shared-utils": "workspace:*",
     "dotenv": "^17.2.3",
     "zod": "^4.4.3"
   },

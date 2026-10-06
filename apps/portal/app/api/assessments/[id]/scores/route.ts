@@ -196,6 +196,25 @@ export async function POST(
       return NextResponse.json({ error: 'Assessment not found' }, { status: 404 })
     }
 
+    // `Assessment.isPublished` is the lock on this assessment, and it is the one
+    // bound the write path was missing entirely. Publishing is what puts marks on
+    // the report card — `reports/academic/[studentId]` reads scores through
+    // `isPublished: true` — so a mark entered or changed after publication lands
+    // on a report the school may already have circulated to parents, with nothing
+    // recording that it moved. This route previously accepted the write.
+    //
+    // Refused rather than silently accepted, and before the mark is parsed, so the
+    // refusal cannot be mistaken for a complaint about the number.
+    if (!assessment.isPublished) {
+      return NextResponse.json(
+        {
+          error:
+            'This assessment is not published, so marks cannot be entered. Publish the assessment first.',
+        },
+        { status: 409 },
+      )
+    }
+
     const body = await req.json()
     const parseResult = SaveScoreSchema.safeParse(body)
     if (!parseResult.success) {
@@ -286,6 +305,23 @@ export async function POST(
     // Upsert the score. `grade` and `gradingScaleId` are set on BOTH
     // branches: the update branch previously hardcoded `grade: null`,
     // which blanked any stored grade on every save.
+
+    // Approval attests to the mark, so changing the mark withdraws it. The
+    // STORED mark is read to decide that, rather than assumed: saving a note or
+    // re-saving the identical number must not withdraw an approval, and a blind
+    // "clear approval on every write" would do exactly that — silently
+    // unapproving work nobody touched, and leaving the approver's name on a
+    // report that no longer reflects what they signed.
+    const existingScore = await prisma.score.findFirst({
+      where: { tenantId, assessmentId, studentId },
+      select: { rawScore: true, isApproved: true },
+    })
+    const markChanged =
+      existingScore !== null && Number(existingScore.rawScore) !== rawScore
+    const withdrawal = existingScore?.isApproved && markChanged
+      ? { isApproved: false, approvedById: null, approvedAt: null }
+      : {}
+
     const score = await prisma.score.upsert({
       where: {
         tenantId_assessmentId_studentId: {
@@ -300,6 +336,7 @@ export async function POST(
         grade,
         gradingScaleId,
         notes: notes || undefined,
+        ...withdrawal,
       },
       create: {
         tenantId,

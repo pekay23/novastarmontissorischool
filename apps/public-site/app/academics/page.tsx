@@ -1,16 +1,17 @@
-import Link from 'next/link'
-import { Button, cn } from '@novastar/shared-ui'
-import {
-  ArrowRight,
-  Award,
-  BookOpen,
-  Calculator,
-  Landmark,
-  Mic,
-  Sparkles,
-} from 'lucide-react'
+import { cn } from '@novastar/shared-ui'
+import { Award, BookOpen, Calculator, Landmark, Mic, Sparkles } from 'lucide-react'
 
-import { SectionHeading, Stat } from '@/components/marketing'
+import {
+  Card,
+  CARD_PAD,
+  CardTitle,
+  SectionHeading,
+  SectionShell,
+  SectionTitle,
+  Stat,
+} from '@/components/marketing'
+import { ArrowLink, MarketingButton } from '@/components/marketing-button'
+import { Photo } from '@/components/photo'
 import { PreparedEnvironments, type EnvironmentPanel } from '@/components/prepared-environments'
 import { getAcademicPrograms, getAdmissionsStatus } from '@/lib/data'
 import { ageRange, phaseBadge, PhaseIcon, programSlug } from '@/lib/programs'
@@ -261,45 +262,46 @@ export default async function AcademicsPage() {
         so the strip carries the GES and NaCCA alignment that the existing page
         already asserted and that the programme data backs.
       */}
-      <section className="border-b border-border bg-gradient-to-b from-primary-soft to-background">
-        <div className="container pt-32 pb-16 lg:pt-40 lg:pb-20">
-          <div className="mb-8 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-border bg-surface-container-low p-3.5">
+      <section className="border-b border-border bg-gradient-to-b from-tint-warm to-background">
+        <div className="container pt-28 pb-16 lg:pt-36 lg:pb-20">
+          <div className="mb-10 flex flex-wrap items-center justify-between gap-4 rounded-md border border-border bg-surface-container-lowest p-4 shadow-hairline">
             <p className="flex items-center gap-3">
-              <span className="rounded bg-primary px-2.5 py-1 text-label-sm uppercase tracking-[0.08em] text-primary-foreground">
+              <span className="rounded-xs bg-primary px-2.5 py-1 type-eyebrow uppercase text-primary-foreground">
                 Aligned
               </span>
               <span className="text-sm font-semibold">
                 Ghana Education Service and NaCCA curriculum standards
               </span>
             </p>
-            <p className="flex items-center gap-2 text-label-sm font-bold text-primary">
+            <p className="flex items-center gap-2 text-sm font-semibold text-primary">
               <Landmark className="h-4 w-4" aria-hidden="true" />
               Ayeduase campus · Kumasi
             </p>
           </div>
 
-          <div className="grid items-center gap-10 lg:grid-cols-12 lg:gap-14">
+          <div className="grid items-center gap-12 lg:grid-cols-12 lg:gap-16">
             <div className="flex flex-col gap-6 lg:col-span-7">
               {/*
-                `--color-accent-warm-dark` rather than `--color-tertiary-container`
-                here. This kicker is 12px bold, which is not large text under
-                WCAG, so it needs 4.5:1; the terracotta measures 4.48:1 against the
-                hero tint. The display-size `<em>` below does clear the bar on the
-                lighter threshold and keeps the accent.
+                `text-accent-warm-dark`, not `#b94c25`. This kicker is 12px bold,
+                which is not large text under WCAG, so it needs 4.5:1 — and
+                `#b94c25` measures 4.61:1 on `--color-surface`, i.e. 0.11 of
+                margin. The dark terracotta measures 7.11:1 on the canvas and
+                6.26:1 on the tint. Terracotta as a *fill* is fine; as 12px text
+                it is not, so that use is banned outright.
               */}
-              <p className="flex items-center gap-2 text-label-md uppercase tracking-[0.06em] text-accent-warm-dark">
-                <span className="h-0.5 w-6 bg-tertiary-container" aria-hidden="true" />
+              <p className="flex items-center gap-2 type-label uppercase text-accent-warm-dark">
+                <span className="h-0.5 w-6 bg-accent-warm" aria-hidden="true" />
                 Pedagogical continuum
               </p>
 
-              <h1 className="text-display-hero">
+              <h1 className="type-display max-w-[18ch]">
                 Authentic Montessori, sequenced{' '}
-                <em className="font-normal text-tertiary-container">
+                <em className="font-normal italic text-primary-dark/85">
                   from the first work cycle to the final exam
                 </em>
               </h1>
 
-              <p className="max-w-2xl text-lg leading-relaxed text-muted-foreground">
+              <p className="max-w-[58ch] text-lg leading-relaxed text-muted-foreground">
                 We hold the Montessori method together with the Ghanaian
                 curriculum: mixed-age classrooms and uninterrupted work periods on
                 one side, National Council for Curriculum and Assessment
@@ -307,16 +309,13 @@ export default async function AcademicsPage() {
                 Junior High without changing school.
               </p>
 
-              <div className="flex flex-wrap gap-4 pt-2">
-                <Button size="lg" asChild>
-                  <Link href="#environments">
-                    Explore the environments
-                    <ArrowRight className="h-4 w-4" aria-hidden="true" />
-                  </Link>
-                </Button>
-                <Button size="lg" variant="outline" asChild>
-                  <Link href="/admissions">Admissions and entry criteria</Link>
-                </Button>
+              <div className="flex flex-wrap gap-3 pt-2">
+                <ArrowLink href="#environments" size="lg" className="group">
+                  Explore the environments
+                </ArrowLink>
+                <MarketingButton href="/admissions" variant="outline" size="lg">
+                  Admissions and entry criteria
+                </MarketingButton>
               </div>
             </div>
 
@@ -342,12 +341,12 @@ export default async function AcademicsPage() {
                     tone: 'tertiary' as const,
                   },
                 ].map((metric) => (
-                  <div
-                    key={metric.label}
-                    className="rounded-xl border border-border bg-surface-container-low p-4"
-                  >
-                    <Stat {...metric} className="items-start border-0 bg-transparent p-0 text-left" />
-                  </div>
+                  // `1:6` and `2` are the largest figures in the hero, so they
+                  // take the display step. `Stat` defaults to `headline` because a
+                  // stat in a grid is not a hero.
+                  <Card key={metric.label} className={cn(CARD_PAD, 'p-5')}>
+                    <Stat {...metric} scale="display" />
+                  </Card>
                 ))}
               </div>
             </div>
@@ -356,18 +355,22 @@ export default async function AcademicsPage() {
       </section>
 
       {/* Prepared environments */}
-      <section id="environments" className="bg-surface-container-low">
-        <div className="container section-y">
-          <SectionHeading
-            eyebrow="Curriculum environments"
-            title="Five prepared environments"
-            lede="Each room is built with materials that isolate one kind of work, so a child can begin at any point and still find a task that holds their attention."
-          />
-          <div className="mt-10">
-            <PreparedEnvironments panels={ENVIRONMENTS} />
-          </div>
+      <SectionShell id="environments" tone="band">
+        <SectionHeading
+          eyebrow="Curriculum environments"
+          title="Five prepared environments"
+          lede="Each room is built with materials that isolate one kind of work, so a child can begin at any point and still find a task that holds their attention."
+        />
+        <div className="mt-12">
+          <PreparedEnvironments panels={ENVIRONMENTS} />
         </div>
-      </section>
+        {/* Placeholder photography — see `lib/placeholder-images.ts`. */}
+        <Photo
+          id="environment"
+          ratio="aspect-[3/2]"
+          className="mx-auto mt-12 max-w-4xl"
+        />
+      </SectionShell>
 
       {/*
         The programme list the rest of the site links into. The footer deep-links
@@ -377,58 +380,66 @@ export default async function AcademicsPage() {
         an empty heading.
       */}
       {programs.length > 0 && (
-        <section className="container section-y">
+        <SectionShell tone="canvas">
           <SectionHeading
             eyebrow="Programmes"
             title="Programmes and subjects"
             lede="Every programme below lists the subjects taught in that phase."
           />
-          <div className="mt-10 grid gap-6 lg:grid-cols-2">
+          <div className="mt-12 grid gap-5 lg:grid-cols-2">
             {programs.map((program) => (
               <ProgramSection key={program.id} program={program} />
             ))}
           </div>
-        </section>
+        </SectionShell>
       )}
 
       {/* Traditions */}
-      <section className="border-y border-border bg-surface-container-low">
-        <div className="container section-y">
-          <SectionHeading
-            eyebrow="Institutional culture"
-            title="Traditions the school keeps"
-            lede="Practice that a child can expect every year, rather than an occasional event."
-          />
-          <div className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-            {TRADITIONS.map((tradition) => (
-              <article
-                key={tradition.title}
-                className="flex flex-col justify-between rounded-2xl border border-border bg-card p-6 shadow-sm transition-shadow hover:-translate-y-1 hover:shadow-md"
-              >
-                <div>
-                  <span className="mb-5 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-                    <tradition.icon className="h-6 w-6" aria-hidden="true" />
-                  </span>
-                  <h3 className="text-title-lg text-foreground">{tradition.title}</h3>
-                  <p className="mt-2.5 text-sm leading-relaxed text-muted-foreground">
-                    {tradition.body}
-                  </p>
-                </div>
-                <p className="mt-6 flex items-center justify-between border-t border-border pt-4 text-xs font-semibold text-primary">
-                  Montessori practice
-                  <Award className="h-4 w-4" aria-hidden="true" />
+      <SectionShell tone="band">
+        <SectionHeading
+          eyebrow="Institutional culture"
+          title="Traditions the school keeps"
+          lede="Practice built into the week, rather than an occasional event."
+        />
+        {/*
+          The previous lede read "Practice that a child can expect every year,
+          rather than an occasional event", and one of these four cards is a
+          reading and storytelling circle. The comment above TRADITIONS records
+          that the frequencies were deliberately dropped because nothing in this
+          repository substantiates them — "every year" put the frequency back in
+          frequency-free words. See
+          docs/technical/2026-10-04_222000-public-site-ui-refinement.md §7.3.
+        */}
+        <div className="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+          {TRADITIONS.map((tradition) => (
+            <Card
+              key={tradition.title}
+              interactive
+              className={cn(CARD_PAD, 'flex flex-col justify-between gap-6')}
+            >
+              <div>
+                <span className="mb-5 inline-flex h-11 w-11 items-center justify-center rounded-sm bg-tint-warm text-accent-warm-dark">
+                  <tradition.icon className="h-5 w-5" aria-hidden="true" />
+                </span>
+                <CardTitle>{tradition.title}</CardTitle>
+                <p className="mt-2.5 text-sm leading-relaxed text-muted-foreground">
+                  {tradition.body}
                 </p>
-              </article>
-            ))}
-          </div>
+              </div>
+              <p className="flex items-center justify-between border-t border-border pt-4 text-sm font-medium text-primary">
+                Montessori practice
+                <Award className="h-4 w-4" aria-hidden="true" />
+              </p>
+            </Card>
+          ))}
         </div>
-      </section>
+      </SectionShell>
 
       {/* Continuum matrix */}
-      <section className="container section-y">
+      <SectionShell tone="canvas">
         <SectionHeading
           align="center"
-          eyebrow="Curriculum continuums"
+          eyebrow="Curriculum continua"
           title="How a subject develops across the environments"
           lede="The same strand of knowledge, traced from the first concrete material to work the child reasons about rather than recalls."
         />
@@ -437,13 +448,17 @@ export default async function AcademicsPage() {
             viewport on narrow screens. A scroll container that is not focusable
             cannot be scrolled with the keyboard, so the content becomes
             unreachable without a pointer. The label gives the landmark a name.
+            The visible `aria-hidden` hint is the non-pointer equivalent: a
+            focusable scroll region that gives no clue what scrolls is the WCAG
+            2.1.1 keyboard trap in all but name.
           */}
-          <div
-            tabIndex={0}
-            role="region"
-            aria-label="Curriculum continuum by domain and environment"
-            className="mt-10 overflow-x-auto rounded-2xl border border-border bg-surface shadow-sm"
-          >
+        <div
+          tabIndex={0}
+          role="region"
+          aria-label="Curriculum continuum by domain and environment"
+          className="mt-12 overflow-x-auto rounded-md border border-border bg-surface shadow-raised"
+        >
+          <p className="sr-only">Scroll horizontally to see all three environments.</p>
           <table className="w-full min-w-[52rem] border-collapse text-left">
             {/*
               Without a caption the table is announced only as "table" and the
@@ -454,26 +469,26 @@ export default async function AcademicsPage() {
               to abstract reasoning across the five prepared environments.
             </caption>
             <thead>
-              <tr className="border-b border-border bg-surface-container text-foreground">
-                <th scope="col" className="w-1/4 p-5 text-title-md">
+              <tr className="border-b border-border bg-surface-container-low">
+                <th scope="col" className="w-1/4 px-5 py-4 type-label uppercase text-muted-foreground">
                   Domain and method
                 </th>
-                <th scope="col" className="p-5 text-title-md">
+                <th scope="col" className="px-5 py-4 type-label uppercase text-muted-foreground">
                   Early environments
                 </th>
-                <th scope="col" className="p-5 text-title-md">
+                <th scope="col" className="px-5 py-4 type-label uppercase text-muted-foreground">
                   Middle environments
                 </th>
-                <th scope="col" className="p-5 text-title-md">
+                <th scope="col" className="px-5 py-4 type-label uppercase text-muted-foreground">
                   Advanced environments
                 </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border text-sm">
-              {CONTINUUM.map((row, i) => (
-                <tr key={row.domain} className={cn(i % 2 === 1 && 'bg-surface-container-low')}>
-                  <th scope="row" className="p-5 font-semibold">
-                    <span className="flex items-center gap-2 text-title-md text-primary">
+              {CONTINUUM.map((row) => (
+                <tr key={row.domain}>
+                  <th scope="row" className="px-5 py-4 font-semibold">
+                    <span className="flex items-center gap-2 text-primary">
                       <BookOpen className="h-4 w-4" aria-hidden="true" />
                       {row.domain}
                     </span>
@@ -481,96 +496,91 @@ export default async function AcademicsPage() {
                       {row.method}
                     </span>
                   </th>
-                  <td className="p-5 align-top text-muted-foreground">{row.early}</td>
-                  <td className="p-5 align-top text-muted-foreground">{row.middle}</td>
-                  <td className="p-5 align-top text-muted-foreground">{row.advanced}</td>
+                  <td className="px-5 py-4 align-top leading-relaxed text-muted-foreground">
+                    {row.early}
+                  </td>
+                  <td className="px-5 py-4 align-top leading-relaxed text-muted-foreground">
+                    {row.middle}
+                  </td>
+                  <td className="px-5 py-4 align-top leading-relaxed text-muted-foreground">
+                    {row.advanced}
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
-      </section>
+      </SectionShell>
 
       {/* GES alignment */}
-      <section className="border-t border-border bg-surface-container-low">
-        <div className="container section-y">
-          <div className="mx-auto flex max-w-3xl flex-col items-center gap-6 text-center">
-            <h2 className="text-headline-lg">GES and NaCCA aligned</h2>
-            <p className="text-muted-foreground">
-              The Montessori sequence runs alongside the national curriculum, so
-              children work through its requirements inside a self-directed
-              classroom rather than alongside a separate taught syllabus.
-            </p>
-            <dl className="grid w-full grid-cols-2 gap-4 md:grid-cols-4">
-              {[
-                /*
-                  Every other programme-dependent block on this page is guarded on
-                  `programs.length > 0`. This one was not, so a build with no
-                  database published "Programmes 0" directly under "GES and NaCCA
-                  aligned" — a factual claim that the school runs no programmes at
-                  all. The count is omitted instead.
-                */
-                ...(programs.length > 0
-                  ? [{ term: 'Programmes', value: String(programs.length) }]
-                  : []),
-                { term: 'Terms per year', value: '3' },
-                { term: 'Languages', value: 'English and Twi' },
-                { term: 'Approach', value: 'Mixed-age' },
-              ].map((stat) => (
-                /*
-                  dt must precede dd, or assistive tech announces the value
-                  before the label ("3 Terms per year" -> "3, Terms").
-                */
-                <div key={stat.term}>
-                  <dt className="text-sm text-muted-foreground">{stat.term}</dt>
-                  <dd className="text-2xl font-bold text-primary">{stat.value}</dd>
-                </div>
-              ))}
-            </dl>
-          </div>
+      <SectionShell tone="band">
+        <div className="mx-auto flex max-w-3xl flex-col items-center gap-8 text-center">
+          <SectionTitle>GES and NaCCA aligned</SectionTitle>
+          <p className="max-w-[58ch] text-lg leading-relaxed text-muted-foreground">
+            The Montessori sequence runs alongside the national curriculum, so
+            children work through its requirements inside a self-directed
+            classroom rather than alongside a separate taught syllabus.
+          </p>
+          <dl className="grid w-full grid-cols-2 gap-4 md:grid-cols-4">
+            {[
+              /*
+                Every other programme-dependent block on this page is guarded on
+                `programs.length > 0`. This one was not, so a build with no
+                database published "Programmes 0" directly under "GES and NaCCA
+                aligned" — a factual claim that the school runs no programmes at
+                all. The count is omitted instead.
+              */
+              ...(programs.length > 0
+                ? [{ term: 'Programmes', value: String(programs.length) }]
+                : []),
+              { term: 'Terms per year', value: '3' },
+              { term: 'Languages', value: 'English and Twi' },
+              { term: 'Approach', value: 'Mixed-age' },
+            ].map((stat) => (
+              /*
+                dt must precede dd, or assistive tech announces the value
+                before the label ("3 Terms per year" -> "3, Terms").
+              */
+              <Card key={stat.term} className={cn(CARD_PAD, 'p-5 text-center')}>
+                <dt className="text-sm text-muted-foreground">{stat.term}</dt>
+                <dd className="mt-1.5 type-headline text-primary">{stat.value}</dd>
+              </Card>
+            ))}
+          </dl>
         </div>
-      </section>
+      </SectionShell>
 
       {/* Closing call to action */}
-      <section className="bg-primary">
-        <div className="container flex flex-col items-center justify-between gap-8 py-14 lg:flex-row">
+      <div className="bg-primary">
+        <div className="container flex flex-col items-center justify-between gap-10 py-16 lg:flex-row lg:gap-14 lg:py-20">
           <div className="max-w-2xl text-center lg:text-left">
             {open ? (
-              <span className="mb-3 inline-block rounded-full border border-primary-foreground/20 bg-primary-container px-3 py-1 text-label-sm uppercase tracking-[0.06em] text-primary-foreground">
+              <span className="mb-4 inline-block rounded-xs border border-primary-foreground/25 px-3 py-1 type-eyebrow uppercase text-primary-foreground">
                 Admissions open · 2026/2027
               </span>
             ) : (
-              <span className="mb-3 inline-block rounded-full border border-primary-foreground/20 bg-primary-container px-3 py-1 text-label-sm uppercase tracking-[0.06em] text-primary-foreground">
+              <span className="mb-4 inline-block rounded-xs border border-primary-foreground/25 px-3 py-1 type-eyebrow uppercase text-primary-foreground">
                 Admissions closed — enquire for future intake
               </span>
             )}
-            <h2 className="text-headline-lg text-primary-foreground">
+            <h2 className="type-headline text-balance text-primary-foreground">
               See the classroom before you decide
             </h2>
-            <p className="mt-2 text-sm text-primary-foreground/85">
+            <p className="mt-3 max-w-[52ch] text-base leading-relaxed text-primary-foreground/85">
               Enquiry groups are kept small so each child gets adult attention
               during the work cycle. Schedule a visit and observe a work cycle.
             </p>
           </div>
-          <div className="flex shrink-0 flex-col items-center gap-4 sm:flex-row">
-            <Button
-              size="lg"
-              asChild
-              className="bg-surface text-primary hover:bg-surface-container-high"
-            >
-              <Link href="/contact">Schedule a classroom visit</Link>
-            </Button>
-            <Button
-              size="lg"
-              variant="outline"
-              asChild
-              className="border-primary-foreground/40 bg-transparent text-primary-foreground hover:bg-primary-foreground/10 hover:text-primary-foreground"
-            >
-              <Link href="/fees">Tuition and fees</Link>
-            </Button>
+          <div className="flex shrink-0 flex-col items-center gap-3 sm:flex-row">
+            <MarketingButton href="/contact" variant="onDark" size="lg">
+              Schedule a classroom visit
+            </MarketingButton>
+            <MarketingButton href="/fees" variant="onDarkOutline" size="lg">
+              Tuition and fees
+            </MarketingButton>
           </div>
         </div>
-      </section>
+      </div>
     </div>
   )
 }
@@ -582,25 +592,22 @@ export default async function AcademicsPage() {
  */
 function ProgramSection({ program }: { program: Program }) {
   return (
-    <article
-      id={programSlug(program.name)}
-      className="rounded-xl border border-border bg-card p-6"
-    >
+    <Card id={programSlug(program.name)} className={cn(CARD_PAD, 'scroll-mt-32')}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex items-center gap-4">
-          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-primary-soft">
-            <PhaseIcon phase={program.phase} className="h-6 w-6 text-primary" />
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-sm bg-tint-warm">
+            <PhaseIcon phase={program.phase} className="h-5 w-5 text-primary" />
           </span>
           <div>
-            <h3 className="text-headline-sm text-foreground">{program.name}</h3>
-            <p className="text-sm text-muted-foreground">
+            <CardTitle>{program.name}</CardTitle>
+            <p className="mt-1 text-sm text-muted-foreground">
               {ageRange(program.ageMin, program.ageMax)}
             </p>
           </div>
         </div>
         <span
           className={cn(
-            'inline-block rounded-full px-2 py-1 text-xs font-medium',
+            'inline-block rounded-xs border px-2 py-1 text-xs font-medium',
             phaseBadge(program.phase),
           )}
         >
@@ -608,7 +615,7 @@ function ProgramSection({ program }: { program: Program }) {
         </span>
       </div>
 
-      <p className="mt-4 text-muted-foreground">
+      <p className="mt-5 leading-relaxed text-muted-foreground">
         {/*
           Phase-specific copy only. This block repeats for every programme, and it
           used to assert the 1:6 ratio "in the early years" on each card — which
@@ -621,17 +628,17 @@ function ProgramSection({ program }: { program: Program }) {
       </p>
 
       {program.subjects.length > 0 && (
-        <ul className="mt-4 flex flex-wrap gap-2">
+        <ul className="mt-5 flex flex-wrap gap-2">
           {program.subjects.slice(0, 8).map((subject) => (
             <li
               key={subject.id}
-              className="rounded-md bg-muted px-3 py-1 text-sm text-muted-foreground"
+              className="rounded-xs bg-surface-container px-3 py-1 text-sm text-muted-foreground"
             >
               {subject.name}
             </li>
           ))}
         </ul>
       )}
-    </article>
+    </Card>
   )
 }

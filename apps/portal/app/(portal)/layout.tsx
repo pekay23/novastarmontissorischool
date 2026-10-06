@@ -11,8 +11,10 @@ import {
   Calendar, Clock, FileText, Settings, LogOut, Menu,
   Bell, Search, Shield, School, LibraryBig, Package,
   CalendarDays, NotebookText, TrendingUp,
+  type LucideIcon,
 } from 'lucide-react'
 import { Button, cn, ToastProvider, ConfirmProvider, useToast } from '@novastar/shared-ui'
+import { reachableNavigation } from '@/lib/portal-sections'
 import { useState } from 'react'
 
 const navigation = [
@@ -67,37 +69,24 @@ export default function PortalLayout({
   const schoolName = (session?.user as { schoolName?: string })?.schoolName ||
     session?.user?.name?.split(' ')[0] || 'School Portal'
 
-  // Settings is restricted to roles that manage the school itself.
+  // The sidebar shows exactly the sections the proxy admits for this role.
   //
-  // This used to test for 'admin' and 'super_admin', neither of which the seed
-  // ever assigns: tools/seed/index.ts creates HEADMASTER, ASSISTANT_HEAD,
-  // HEAD_TEACHER, CLASSROOM_TEACHER, ACCOUNTANT, ADMIN_STAFF and PARENT. So no
-  // provisioned user could ever see Settings, and the school could not manage
-  // itself. Gate on the roles that actually exist.
+  // It used to keep its own answer: a `SETTINGS_ROLES` set plus an
+  // unconditional `return true`, which meant every role except the three in that
+  // set saw all sixteen links. A `CLASSROOM_TEACHER` could open four of them and
+  // was bounced from the rest by the proxy; `ASSISTANT_HEAD` was shown a Settings
+  // link the proxy always refused, because `SETTINGS_ROLES` admitted it and the
+  // proxy's section list never did. Two lists answering one question is the whole
+  // defect — each new role made it worse, and neither list could be read as
+  // authoritative next to the other.
   //
-  // 'admin'/'super_admin' are kept for a future super-admin surface, which is
-  // what apps/super-admin is intended to become.
-  const SETTINGS_ROLES = new Set([
-    'HEADMASTER',
-    'ASSISTANT_HEAD',
-    'admin',
-    'super_admin',
-  ])
-
-  const visibleNav = navigation.filter((item) => {
-    if (SETTINGS_ROLES.has(userRole)) return true
-    if (item.href === '/settings') return false
-    // Timetable, Syllabus and Promotions are deliberately NOT gated
-    // here. The nav is not an authorization boundary — every one of
-    // those pages' data routes is permission-gated (`timetable:read`
-    // for the timetable, which `CLASSROOM_TEACHER` holds with
-    // class-level scope), exactly as Grades and Attendance already
-    // appear for every role while their APIs refuse unauthorized
-    // callers. Hiding them here would need a second role-keyed
-    // mechanism alongside `SETTINGS_ROLES`; the existing single
-    // mechanism gates only Settings.
-    return true
-  })
+  // `reachableNavigation` applies the same function the proxy calls, so a link
+  // that renders here is a path the proxy admits by construction. It is still only
+  // the coarse filter: whether the caller may read this particular record is
+  // decided by the route handler, which is what the pages' empty and error states
+  // have always been written against. A role the section map has never heard of
+  // renders no links at all, which matches the proxy sending it to `/login`.
+  const visibleNav = reachableNavigation(userRole, navigation)
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -186,7 +175,11 @@ export default function PortalLayout({
             </h1>
           </div>
 
-          <HeaderActions userName={session?.user?.name} userRole={userRole} />
+          <HeaderActions
+            userName={session?.user?.name}
+            userRole={userRole}
+            pages={visibleNav}
+          />
         </header>
 
         {/* Page content */}
@@ -205,17 +198,23 @@ export default function PortalLayout({
 function HeaderActions({
   userName,
   userRole,
+  pages,
 }: {
   userName?: string | null
   userRole: string
+  pages: readonly { name: string; href: string; icon: LucideIcon }[]
 }) {
   const { toast } = useToast()
   const router = useRouter()
   const [searchOpen, setSearchOpen] = useState(false)
   const [query, setQuery] = useState('')
 
+  // The same list the sidebar renders. It used to search the unfiltered
+  // `navigation`, so a role that could not open a section still found it by typing
+  // its name — the sidebar's filtering was invisible to anyone who searched
+  // rather than clicked.
   const matches = query.trim()
-    ? navigation.filter((item) =>
+    ? pages.filter((item) =>
         item.name.toLowerCase().includes(query.trim().toLowerCase())
       )
     : []

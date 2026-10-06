@@ -7,6 +7,7 @@ const routes = [
   '/academics',
   '/admissions',
   '/fees',
+  '/policies',
   '/news',
   '/events',
   '/contact',

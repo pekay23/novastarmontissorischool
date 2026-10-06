@@ -1,6 +1,7 @@
-import { requireCapabilityPage, requireTenantScope } from '@/lib/admin-context'
+import { requireCapabilityPage, requireExistingTenant } from '@/lib/admin-context'
 import { hasOperatorCapability } from '@/lib/permissions'
 import { SettingsEditor } from '@/components/settings-editor'
+import { TenantSuspendedNotice } from '@/components/tenant-suspended-notice'
 
 /**
  * `/tenants/:tenantId/settings` — mutable tenant fields and the settings document.
@@ -8,6 +9,14 @@ import { SettingsEditor } from '@/components/settings-editor'
  * This is where `Tenant.settings` belongs: on the page for the tenant it describes,
  * for an operator who has already selected that tenant. It is not on the roster,
  * because a fleet-wide list is not the place to read a school's configuration.
+ *
+ * A suspended tenant renders `TenantSuspendedNotice` instead, before anything is read
+ * out of the stored document. `writeTenantSetting` refuses a suspended tenant, so this
+ * branch is not what stops a write — it is what stops the page offering an editor that
+ * would only ever answer 403. The branch is guaranteed rather than remembered because
+ * `requireExistingTenant` hands back a union whose suspended arm carries only `identity`
+ * (id and code): `tenant.settings` is not in scope until `status === 'suspended'` has
+ * been answered, so the editor cannot be reached for a suspended tenant at all.
  */
 export const dynamic = 'force-dynamic'
 
@@ -22,8 +31,20 @@ export default async function TenantSettingsPage({
 }) {
   const context = await requireCapabilityPage('tenant:config')
   const { tenantId } = await params
-  const tenant = await requireTenantScope(tenantId)
+  const resolved = await requireExistingTenant(tenantId)
   const canWrite = hasOperatorCapability(context.operator.capabilities, 'tenant:config')
+
+  if (resolved.status === 'suspended') {
+    return (
+      <TenantSuspendedNotice
+        tenantId={resolved.identity.id}
+        tenantCode={resolved.identity.code}
+        canUpdate={hasOperatorCapability(context.operator.capabilities, 'tenant:update')}
+      />
+    )
+  }
+
+  const { tenant } = resolved
 
   return (
     <div className="space-y-6">

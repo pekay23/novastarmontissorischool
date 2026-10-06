@@ -1,34 +1,4 @@
 {
-  "home": {
-    "hero": {
-      "title": "Novastar Montessori School",
-      "subtitle": "Authentic Montessori Education from Creche to Junior High in Kumasi, Ghana",
-      "cta": "Apply Now",
-      "secondaryCta": "Learn More"
-    },
-    "stats": {
-      "students": "Students Enrolled",
-      "teachers": "Qualified Teachers",
-      "programs": "Academic Programs",
-      "years": "Years of Excellence"
-    },
-    "features": {
-      "title": "Why Choose Novastar?",
-      "subtitle": "We combine Montessori philosophy with Ghanaian curriculum standards",
-      "montessori": {
-        "title": "Montessori Method",
-        "desc": "Child-centered learning through hands-on materials and practical activities"
-      },
-      "ges": {
-        "title": "GES Curriculum",
-        "desc": "Aligned with Ghana Education Service and NaCCA standards"
-      },
-      "staff": {
-        "title": "Qualified Staff",
-        "desc": "Montessori-trained teachers with PEN certification"
-      }
-    }
-  },
   "navigation": {
     "home": "Home",
     "about": "About Us",
@@ -40,67 +10,6 @@
     "events": "Events",
     "gallery": "Gallery",
     "contact": "Contact",
-    "applyNow": "Apply Now",
-    "languageToggle": "Switch to Twi"
-  },
-  "about": {
-    "title": "About Novastar Montessori School",
-    "subtitle": "Bringing quality care and experience to learning through authentic Montessori education",
-    "mission": "Our Mission",
-    "vision": "Our Vision",
-    "history": "Our History"
-  },
-  "academics": {
-    "title": "Academic Programs",
-    "subtitle": "From Creche to Junior High School",
-    "programs": {
-      "creche": {
-        "title": "Creche & Nursery",
-        "age": "6 months – 3 years"
-      },
-      "kindergarten": {
-        "title": "Kindergarten",
-        "age": "4-5 years (KG1, KG2)"
-      },
-      "lowerPrimary": {
-        "title": "Lower Primary",
-        "age": "6-8 years (B1, B2, B3)"
-      },
-      "upperPrimary": {
-        "title": "Upper Primary",
-        "age": "9-11 years (B4, B5, B6)"
-      },
-      "jhs": {
-        "title": "Junior High School",
-        "age": "12-15 years (JHS 1-3)"
-      }
-    }
-  },
-  "admissions": {
-    "title": "Admissions",
-    "subtitle": "Join our learning community",
-    "process": {
-      "step1": "Apply Online",
-      "step2": "Document Submission",
-      "step3": "Entrance Assessment",
-      "step4": "Acceptance & Registration"
-    },
-    "requirements": "Admission Requirements",
-    "form": "Application Form"
-  },
-  "fees": {
-    "title": "Fee Structure",
-    "subtitle": "Transparent, competitive fees for quality education",
-    "payment": "Payment Options",
-    "momo": "MTN Mobile Money",
-    "bank": "Bank Transfer",
-    "cash": "Cash at School"
-  },
-  "contact": {
-    "title": "Contact Us",
-    "address": "Ayeduase New Site, K-5 Junction, Ayeduase Road, Kumasi, Ashanti Region, Ghana",
-    "phone": "+233 24 493 5251",
-    "email": "info@novastarmontissorischool.com",
-    "hours": "Mon-Fri: 7:30 AM - 5:30 PM"
+    "applyNow": "Apply Now"
   }
 }

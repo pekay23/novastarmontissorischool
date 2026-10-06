@@ -1,4 +1,8 @@
 import { describe, it, expect } from 'bun:test'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
 import {
   addTopic,
   canMoveTopic,
@@ -7,6 +11,12 @@ import {
   removeTopic,
   updateTopic,
 } from '../app/(portal)/syllabus/topic-list'
+import {
+  emptySyllabusForm,
+  syllabusFormProblem,
+  type SyllabusFormState,
+} from '../app/(portal)/syllabus/syllabus-form-dialog'
+import { TopicEditor } from '../app/(portal)/syllabus/topic-editor'
 
 /**
  * The syllabus topic editor's list operations.
@@ -21,7 +31,56 @@ import {
  * in a textarea editor: an out-of-bounds reorder must not corrupt the list,
  * and a no-op must return the same array reference so React does not rebuild
  * the editor and steal focus mid-keystroke.
+ *
+ * The last block is about the OTHER half of the editor: what the page hands it
+ * when a stored syllabus comes back with no topics. That expression lives in a
+ * client component with hooks and no test harness, so it is read out of the
+ * source and evaluated rather than re-implemented here — see
+ * `openedTopicsFor`.
  */
+
+const PAGE = join(import.meta.dir, '..', 'app', '(portal)', 'syllabus', 'page.tsx')
+
+/**
+ * The topic list the page's edit handler builds for a stored syllabus.
+ *
+ * Read out of `page.tsx` and evaluated, NOT restated here. A copy of the
+ * expression is a copy of the *intent*; restating it in a test proves only that
+ * the copy works, so the production handler could hand the editor an empty list
+ * — zero textareas, no visible control, a form that cannot be repaired — and
+ * the test would still pass. Evaluating the real expression makes the assertion
+ * about what the editor is actually given.
+ *
+ * If the handler is ever extracted into an exported helper, point this at the
+ * helper and delete the source read; the failure mode stays the same either way.
+ */
+function openedTopicsFor(stored: readonly string[]): readonly string[] {
+  const source = readFileSync(PAGE, 'utf-8')
+  const handlerStart = source.indexOf('const handleEdit')
+  if (handlerStart === -1) throw new Error(`handleEdit not found in ${PAGE}`)
+  const handler = source.slice(handlerStart, source.indexOf('const handleDelete', handlerStart))
+  const property = /\btopics:\s*(.+?),\r?\n/.exec(handler)
+  if (!property) throw new Error(`the topics property of handleEdit's setForm call was not found in ${PAGE}`)
+
+  const evaluate = new Function('syllabus', `return (${property[1]})`) as (
+    syllabus: { topics: readonly string[] },
+  ) => readonly string[]
+  return evaluate({ topics: stored })
+}
+
+/** What the user is shown for `topics`: one row per textarea. */
+const renderEditor = (topics: readonly string[]) =>
+  renderToStaticMarkup(createElement(TopicEditor, { topics, onChange: () => {} }))
+
+/** A complete, submittable form, so only the topics field varies. */
+function formWith(topics: readonly string[]): SyllabusFormState {
+  return {
+    ...emptySyllabusForm([{ id: 'term-1', name: 'Autumn', isCurrent: true, academicYear: { name: '2026' } }]),
+    classSubjectId: 'cs-1',
+    title: 'Number bonds to 10',
+    topics,
+  }
+}
 
 describe('normaliseTopics', () => {
   it('trims each topic and keeps the order', () => {
@@ -174,11 +233,47 @@ describe('editor invariants', () => {
   })
 
   it('keeps a stored syllabus valid after a load that left no topics', () => {
-    // A row saved before topics were required can come back with an empty
-    // list. The editor must still offer somewhere to type.
-    const loaded: readonly string[] = []
-    const opened = loaded.length > 0 ? loaded : addTopic(loaded)
+    // A row saved before topics were required can come back with an empty list.
+    // The editor must still offer somewhere to type — and it is the PAGE's
+    // expression that decides, so this runs that expression.
+    const opened = openedTopicsFor([])
+
     expect(opened).toEqual([''])
     expect(normaliseTopics(updateTopic(opened, 0, 'Number bonds'))).toEqual(['Number bonds'])
+  })
+
+  it('opens a stored syllabus with exactly one row to type into, not zero', () => {
+    // The user-visible consequence, through the real editor component: one
+    // textarea. Zero would leave nothing to type into, and the one control that
+    // could add a row is what the user would have to find first.
+    const html = renderEditor(openedTopicsFor([]))
+
+    expect(html.split('aria-label="Topic ').length - 1).toBe(1)
+    expect(html).toContain('Add topic')
+  })
+
+  it('does not report a form the user cannot fix as submittable', () => {
+    // Why the page cannot hand the editor an empty list and leave it there:
+    // with no rows at all there is nothing to judge, so the form reports no
+    // problem and the submit button stays live — the guard has to be the page's.
+    expect(syllabusFormProblem(formWith([]))).toBeNull()
+    // One blank row is what makes the missing topic visible instead.
+    expect(syllabusFormProblem(formWith(['']))).toBe('Add at least one topic')
+  })
+
+  it('hands a stored list over as a detached copy, so an edit is never a silent write', () => {
+    // The stored array belongs to the fetched row; the editor edits rows in
+    // place through its own `setState`. Aliasing it would make React skip the
+    // re-render for an edit that did change the list.
+    const stored = ['Number bonds', 'Making ten']
+    const opened = openedTopicsFor(stored)
+
+    expect(opened).toEqual(stored)
+    expect(opened).not.toBe(stored)
+  })
+
+  it('starts a NEW syllabus with one blank row, the same state an empty load produces', () => {
+    expect(emptySyllabusForm([]).topics).toEqual([''])
+    expect(openedTopicsFor([])).toEqual(emptySyllabusForm([]).topics)
   })
 })

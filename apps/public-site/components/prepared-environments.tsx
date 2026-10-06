@@ -4,6 +4,8 @@ import { useId, useState } from 'react'
 
 import { cn } from '@novastar/shared-ui'
 
+import { Card, CARD_PAD } from '@/components/marketing'
+
 export interface EnvironmentPanel {
   id: string
   tab: string
@@ -90,7 +92,7 @@ export function PreparedEnvironments({ panels }: PreparedEnvironmentsProps) {
         role="tablist"
         aria-label="Prepared environments"
         onKeyDown={onKeyDown}
-        className="flex flex-wrap gap-1.5 rounded-xl border border-border bg-surface p-1.5"
+        className="flex flex-wrap gap-1 rounded-md border border-border bg-surface-container-lowest p-1.5 shadow-hairline"
       >
         {panels.map((panel, i) => (
           <button
@@ -103,10 +105,10 @@ export function PreparedEnvironments({ panels }: PreparedEnvironmentsProps) {
             tabIndex={i === active ? 0 : -1}
             onClick={() => setActive(i)}
             className={cn(
-              'rounded-lg px-4 py-2.5 text-sm font-semibold transition-colors',
+              'rounded-xs px-4 py-2.5 text-sm font-semibold transition-colors',
               i === active
-                ? 'bg-primary text-primary-foreground shadow-sm'
-                : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+                ? 'bg-primary text-primary-foreground shadow-hairline'
+                : 'text-muted-foreground hover:bg-surface-container hover:text-foreground',
             )}
           >
             {panel.tab}
@@ -127,33 +129,37 @@ export function PreparedEnvironments({ panels }: PreparedEnvironmentsProps) {
         tabIndex={0}
         className="mt-8"
       >
-        <article className="rounded-2xl border border-border bg-surface p-8 shadow-sm lg:p-10">
-          <div className="flex flex-col gap-6">
-            <div className="flex flex-col gap-2">
-              <p className="text-label-md uppercase tracking-[0.06em] text-tertiary-container">
-                {current.plane}
+        <Card className={cn(CARD_PAD, 'p-8 lg:p-12')}>
+          <div className="flex flex-col gap-7">
+            <div className="flex flex-col gap-3">
+              <p className="type-label uppercase text-accent-warm-dark">{current.plane}</p>
+              <h3 className="type-headline max-w-[22ch] text-balance text-foreground">
+                {current.heading}
+              </h3>
+              <p className="max-w-[62ch] text-lg leading-relaxed text-muted-foreground">
+                {current.body}
               </p>
-              <h3 className="text-headline-md text-foreground">{current.heading}</h3>
-              <p className="max-w-3xl leading-relaxed text-muted-foreground">{current.body}</p>
             </div>
 
-            <ul className="grid gap-4 sm:grid-cols-2">
+            <ul className="grid gap-3 sm:grid-cols-2">
               {current.focus.map((item) => (
                 <li
                   key={item.title}
-                  className="rounded-xl border border-border bg-surface-container-low p-4"
+                  className="rounded-md border border-border bg-surface-container-lowest p-5"
                 >
                   <p className="font-semibold text-foreground">{item.title}</p>
-                  <p className="mt-1 text-sm text-muted-foreground">{item.body}</p>
+                  <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
+                    {item.body}
+                  </p>
                 </li>
               ))}
             </ul>
 
-            <p className="border-t border-border pt-4 text-label-sm uppercase tracking-[0.08em] text-muted-foreground">
+            <p className="border-t border-border pt-5 type-label uppercase text-muted-foreground">
               {current.schedule}
             </p>
           </div>
-        </article>
+        </Card>
       </div>
     </div>
   )

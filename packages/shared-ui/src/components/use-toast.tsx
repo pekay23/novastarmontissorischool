@@ -114,6 +114,38 @@ export function PortalToastProvider({ children }: { children: React.ReactNode })
   )
 }
 
+/*
+ * The announcement semantics live here, on the path every application renders,
+ * and not on `toast.tsx`'s `ToastViewport`, which nothing mounts.
+ *
+ * A toast is the one piece of feedback on this app that a screen reader user
+ * cannot reach any other way: it is not focusable, it is not in the tab order,
+ * and it deletes itself on a timer. If the live region is missing the message is
+ * simply never spoken, so this is the whole fix and everything else is detail.
+ *
+ * The region is the `Toaster` container, and it renders even when empty. Both
+ * halves of that matter. A live region that appears at the same instant as its
+ * own content is frequently not announced at all, because assistive technology
+ * has no earlier state to diff against; mounting it first is what makes the
+ * polite announcement reliable. The empty container costs one unpopulated,
+ * `fixed` div — no space, no pointer targets.
+ *
+ * Politeness belongs to the region rather than to the update, so a single
+ * region cannot choose per message: everything lands in a polite queue here,
+ * and a `destructive` toast nests its own `role="alert"` to interrupt. That is
+ * the only variant that means "something failed", and it is the only one whose
+ * reader should hear it now instead of after the next pause. The trade is that
+ * a few screen readers speak a destructive toast twice — interrupting, then as
+ * the polite region's own addition — which is the safe direction to fail in:
+ * a duplicate failure message is a nuisance, an unheard one is the bug this
+ * change exists to close.
+ *
+ * `aria-atomic="false"` on the region keeps two rapid toasts as two utterances;
+ * the alert sets `aria-atomic="true"` so a title and its description read as
+ * one message rather than two fragments. Auto-dismiss needs no attribute of its
+ * own: `aria-relevant` already defaults to "additions text", which is what
+ * stops a toast *disappearing* from being announced too.
+ */
 function Toaster({
   toasts,
   removeToast,
@@ -121,10 +153,13 @@ function Toaster({
   toasts: ToastData[]
   removeToast: (id: string) => void
 }) {
-  if (toasts.length === 0) return null
-
   return (
-    <div className="fixed top-4 right-4 z-50 flex flex-col gap-2">
+    <div
+      role="status"
+      aria-live="polite"
+      aria-atomic="false"
+      className="fixed top-4 right-4 z-50 flex flex-col gap-2"
+    >
       {toasts.map((t) => (
         <ToastItem
           key={t.id}
@@ -143,8 +178,18 @@ function ToastItem({
   toast: ToastData
   onRemove: (id: string) => void
 }) {
+  // `destructive` is the only variant that reports a failure, so it is the only
+  // one that gets its own assertive region; everything else is announced by the
+  // polite region this item lands in.
+  const urgent = toast.variant === 'destructive'
+
   return (
-    <div className={toastVariants({ variant: toast.variant })}>
+    <div
+      className={toastVariants({ variant: toast.variant })}
+      role={urgent ? 'alert' : undefined}
+      aria-live={urgent ? 'assertive' : undefined}
+      aria-atomic={urgent ? 'true' : undefined}
+    >
       <div className="flex-1">
         {toast.title && (
           <div className="font-semibold">{toast.title}</div>
@@ -166,10 +211,20 @@ function ToastItem({
         </button>
       )}
       <button
+        // Without an explicit type this defaults to "submit", so rendering a
+        // toast inside a form makes dismissing it submit that form.
+        type="button"
+        // The X icon carries no text, so without a label this control is
+        // announced as nothing but "button". Naming it after the toast's own
+        // title is what distinguishes one dismiss control from another when a
+        // screen reader is cycling the tab order through a stack of toasts.
+        aria-label={toast.title ? `Dismiss ${toast.title}` : "Dismiss notification"}
         className="shrink-0 rounded p-1 hover:bg-black/10"
         onClick={() => onRemove(toast.id)}
       >
-        <X className="h-4 w-4" />
+        {/* The button is named by aria-label above; announcing the glyph too
+            would double it up. */}
+        <X aria-hidden="true" className="h-4 w-4" />
       </button>
     </div>
   )

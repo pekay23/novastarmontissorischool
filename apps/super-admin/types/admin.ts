@@ -192,6 +192,27 @@ export interface Paged<T> {
   }
 }
 
+/**
+ * The platform-wide audit page: a `Paged` that also says what it left out.
+ *
+ * `excludedSuspendedEntries` is additive rather than a replacement, so every existing
+ * consumer of `data` and `meta.total` keeps working unchanged — and the pager stays
+ * honest, because `total` is the count of what this response can actually return. A
+ * filtered page beside an unfiltered total renders "1 of 340" and can never be walked.
+ *
+ * The field is required rather than optional because a withheld row that nothing
+ * reports is the failure this exists to prevent: an operator auditing a suspended
+ * tenant would otherwise read the absence of its rows as "nothing happened", when the
+ * truth is "not readable while it is off". `total + excludedSuspendedEntries` is the
+ * unfiltered total, so a client that wants the raw figure can reconstruct it.
+ */
+export interface PlatformAuditPage extends Paged<AuditEntrySummary> {
+  meta: Paged<AuditEntrySummary>['meta'] & {
+    /** Audit rows withheld because their `tenantId` names a suspended tenant. */
+    excludedSuspendedEntries: number
+  }
+}
+
 /** The `?take=`/`?skip=` window, bounded so a client cannot ask for the whole table. */
 export const PaginationQuerySchema = z.object({
   take: z.coerce.number().int().min(1).max(100).default(25),

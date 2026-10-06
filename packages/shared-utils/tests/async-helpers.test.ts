@@ -153,15 +153,39 @@ describe("retry", () => {
   });
 
   test("waits nothing after the final attempt", async () => {
-    // The loop sleeps only when `attempt < maxAttempts`, so a single-attempt retry
-    // resolves as fast as the call itself.
+    // The loop sleeps only when `attempt < maxAttempts`, so the last failure
+    // rejects immediately rather than sitting out a delay nobody is going to
+    // use. `retry` hardcodes `setTimeout` and takes no injected clock, so
+    // elapsed time is the only observable here — and it is the one the previous
+    // version of this test left out, which is why removing the guard passed:
+    // the single attempt still happened, and nothing measured the sleep.
     let attempts = 0;
+    const startedAt = Date.now();
     await retry(async () => {
       attempts += 1;
       throw new Error("nope");
-    }, 1, 5000).catch(() => undefined);
+    }, 1, 1000).catch(() => undefined);
+    const singleAttemptElapsed = Date.now() - startedAt;
 
     expect(attempts).toBe(1);
+    // A terminal sleep would be `delay * 1` = 1000ms. Correct behaviour is a
+    // single microtask, so the ceiling has a 500x margin over it.
+    expect(singleAttemptElapsed).toBeLessThan(500);
+
+    // And the same for the last of several: only `delay * 1` is slept, because
+    // attempt 2 is the final one. Sleeping unconditionally would add
+    // `delay * 2` = another 2000ms on top.
+    attempts = 0;
+    const twoAttemptStartedAt = Date.now();
+    await retry(async () => {
+      attempts += 1;
+      throw new Error("nope");
+    }, 2, 1000).catch(() => undefined);
+    const twoAttemptElapsed = Date.now() - twoAttemptStartedAt;
+
+    expect(attempts).toBe(2);
+    expect(twoAttemptElapsed).toBeGreaterThanOrEqual(1000);
+    expect(twoAttemptElapsed).toBeLessThan(1900);
   });
 
   test("rethrows a non-Error rejection rather than swallowing it", async () => {

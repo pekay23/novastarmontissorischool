@@ -1,9 +1,18 @@
 /**
  * Ghana term date calculation. The property pinned here is that the three
- * terms and the long vacation partition the academic year with no gaps and
- * no overlaps. A child whose birthday falls on a term boundary must not be
- * assigned to two terms or to none. The NaCCA calendar is the reference:
- * Term 1 Sep–Dec, Term 2 Jan–Apr, Term 3 May–Aug, holiday Aug–Sep.
+ * terms and the long vacation carry the dates NaCCA sets, on two different
+ * academic years. The NaCCA calendar is the reference: Term 1 Sep–Dec, Term 2
+ * Jan–Apr, Term 3 May–Aug, long vacation Aug–Sep.
+ *
+ * WHAT THE CALENDAR IS NOT, contrary to what this file used to claim at two
+ * places: the four intervals are not consecutive. The Christmas and Easter
+ * breaks sit between them as real gaps (Dec 20 → Jan 6, Apr 16 → May 2). It is
+ * also *not* true that no two of them shared a day: `term3.end` and
+ * `holidays.start` were both Aug 15, and since both ends of both ranges are
+ * inclusive that double-counted the boundary day and cost a real teaching day
+ * in every year whose Aug 15 is a weekday. The boundary is now adjacent rather
+ * than shared — term 3 owns Aug 15, the vacation opens Aug 16 — and both halves
+ * of that are pinned by name below.
  *
  * The long vacation's end date is pinned exactly because it was once wrong in a
  * way nothing could see: `new Date(year + 1, 8, 31)` reads as "September 31st",
@@ -17,7 +26,7 @@ import { describe, expect, test } from "bun:test";
 import { calculateGhanaTermDates, calculateTeachingDays } from "../index";
 
 describe("calculateGhanaTermDates", () => {
-  test("returns four consecutive, non-overlapping intervals for 2025-2026", () => {
+  test("pins the four NaCCA interval dates for 2025-2026", () => {
     const dates = calculateGhanaTermDates(new Date("2025-09-01"));
 
     // Term 1: Sep 1 – Dec 20, 2025
@@ -32,12 +41,12 @@ describe("calculateGhanaTermDates", () => {
     expect(dates.term3.start).toEqual(new Date("2026-05-02"));
     expect(dates.term3.end).toEqual(new Date("2026-08-15"));
 
-    // Holiday: Aug 15 – Sept 1, 2026
-    expect(dates.holidays.start).toEqual(new Date("2026-08-15"));
+    // Holiday: Aug 16 – Sept 1, 2026
+    expect(dates.holidays.start).toEqual(new Date("2026-08-16"));
     expect(dates.holidays.end).toEqual(new Date("2026-09-01"));
   });
 
-  test("returns four consecutive, non-overlapping intervals for 2024-2025", () => {
+  test("pins the four NaCCA interval dates for 2024-2025", () => {
     const dates = calculateGhanaTermDates(new Date("2024-09-01"));
 
     expect(dates.term1.start).toEqual(new Date("2024-09-01"));
@@ -49,7 +58,7 @@ describe("calculateGhanaTermDates", () => {
     expect(dates.term3.start).toEqual(new Date("2025-05-02"));
     expect(dates.term3.end).toEqual(new Date("2025-08-15"));
 
-    expect(dates.holidays.start).toEqual(new Date("2025-08-15"));
+    expect(dates.holidays.start).toEqual(new Date("2025-08-16"));
     expect(dates.holidays.end).toEqual(new Date("2025-09-01"));
   });
 
@@ -61,11 +70,99 @@ describe("calculateGhanaTermDates", () => {
     expect(dates.term2.end < dates.term3.start).toBe(true);
     expect(dates.term3.end < dates.holidays.end).toBe(true);
     // September 1, not October 1: month index 8 with day 31 rolls forward, and the
-// rollover is invisible unless this exact date is pinned.
+    // rollover is invisible unless this exact date is pinned.
     expect(dates.holidays.end.getTime()).toEqual(new Date("2026-09-01").getTime());
     expect(dates.holidays.end.getMonth()).toBe(8);
     expect(dates.holidays.end.getDate()).toBe(1);
   });
+
+  test("the intervals are separated by gaps, not consecutive", () => {
+    // The direct statement of what the two "consecutive" test names denied. If a
+    // future change closes either break, this is what notices.
+    const dates = calculateGhanaTermDates(new Date("2025-09-01"));
+
+    // 17 days of Christmas break and 16 of Easter break, in whole days.
+    expect(
+      Math.round((dates.term2.start.getTime() - dates.term1.end.getTime()) / 86_400_000),
+    ).toBe(17);
+    expect(
+      Math.round((dates.term3.start.getTime() - dates.term2.end.getTime()) / 86_400_000),
+    ).toBe(16);
+  });
+
+  test("term 3 and the long vacation are adjacent, so the shared day is gone", () => {
+    // Adjacency is the property, not adjacency's absence. `term3.end` and
+    // `holidays.start` were the same day, which meant a caller walking
+    // term3.end -> holidays.start as a closed interval visited Aug 15 twice —
+    // once as the last day of term 3 and once as the first day of the vacation.
+    // Term 3 owns Aug 15 and the vacation opens the day after it, so each
+    // calendar day belongs to exactly one interval.
+    const dates = calculateGhanaTermDates(new Date("2025-09-01"));
+
+    expect(dates.term3.end.getTime()).toBe(new Date("2026-08-15").getTime());
+    expect(dates.holidays.start.getTime()).toBe(new Date("2026-08-16").getTime());
+    expect(
+      Math.round((dates.holidays.start.getTime() - dates.term3.end.getTime()) / 86_400_000),
+    ).toBe(1);
+  });
+
+  test("attaching the calendar's own vacation to term 3 costs no teaching day", () => {
+    // The consequence of the old overlap, which was a defect rather than a
+    // curiosity. `calculateTeachingDays` drops a day for being a weekend and
+    // then drops it again for falling inside a holiday range, so a vacation whose
+    // `start` is also the term's `end` deletes a real teaching day whenever that
+    // boundary day is a weekday. A caller computing term 3's teaching days with
+    // this calendar's own vacation attached got one day fewer than the same
+    // call with no holidays, in the years where Aug 15 is a weekday.
+    //
+    // Aug 15 walks one day forward each year, so it is a weekday in 2024-25 and
+    // a weekend in 2025-26. Both branches are pinned by name below, because the
+    // old overlap showed up in one of them and not the other: a walk over only
+    // the weekend years was green against the defect.
+    const weekdayBoundary = calculateGhanaTermDates(new Date("2024-09-01"));
+    const weekendBoundary = calculateGhanaTermDates(new Date("2025-09-01"));
+
+    expect(weekdayBoundary.term3.end.getTime()).toBe(new Date("2025-08-15").getTime());
+    expect(weekdayBoundary.term3.end.getDay()).toBe(5); // Friday
+    expect(weekendBoundary.term3.end.getTime()).toBe(new Date("2026-08-15").getTime());
+    expect(weekendBoundary.term3.end.getDay()).toBe(6); // Saturday
+
+    for (const dates of [weekdayBoundary, weekendBoundary]) {
+      expect(
+        calculateTeachingDays(dates.term3.start, dates.term3.end, [dates.holidays]),
+      ).toBe(calculateTeachingDays(dates.term3.start, dates.term3.end, []));
+    }
+  });
+
+  test("every term of every academic year is unaffected by its own calendar's vacation", () => {
+    // The general rule the two named boundary years above are instances of: the
+    // vacation lies outside every term in the calendar, so passing it to
+    // `calculateTeachingDays` for any term removes nothing. Six consecutive
+    // academic-year starts — four weekday Aug 15s and the Saturday and Sunday
+    // ones — so the years the old boundary got wrong are all in this list, and a
+    // calendar whose vacation drifted back onto term 3's last day fails here in
+    // every weekday year even if the two named cases above were deleted.
+    for (const year of [2023, 2024, 2025, 2026, 2027, 2028]) {
+      const dates = calculateGhanaTermDates(new Date(`${year}-09-01`));
+
+      for (const term of [dates.term1, dates.term2, dates.term3]) {
+        expect(
+          calculateTeachingDays(term.start, term.end, [dates.holidays]),
+        ).toBe(calculateTeachingDays(term.start, term.end, []));
+      }
+    }
+  });
+
+  test("the long vacation ends on the day the next academic year opens", () => {
+    // The one boundary that IS continuous: holidays.end and next year's
+    // term1.start are the same date, which is what stops an untaught gap
+    // appearing between one academic year's calendar and the next.
+    const thisYear = calculateGhanaTermDates(new Date("2025-09-01"));
+    const nextYear = calculateGhanaTermDates(new Date("2026-09-01"));
+
+    expect(thisYear.holidays.end.getTime()).toBe(nextYear.term1.start.getTime());
+  });
+
 
   test("academic year start in October still anchors to September 1 of that year", () => {
     // If a school passes Oct 15, the function uses the year of that date
@@ -236,6 +333,19 @@ describe("Term dates + teaching days integration", () => {
     const days = calculateTeachingDays(dates.term3.start, dates.term3.end, []);
     // May 2 – Aug 15, 2026 inclusive: 75 weekdays
     expect(days).toBe(75);
+  });
+
+  test("Term 3 2024-2025 has 76 teaching days with the vacation attached", () => {
+    // The weekday-boundary year, pinned as an absolute number rather than only
+    // as a comparison. Aug 15 2025 is a Friday, so it is a teaching day, and
+    // 2024-25 was one of the years the shared boundary took it away: the same
+    // call with the vacation attached used to return 75 and no test noticed.
+    const dates = calculateGhanaTermDates(new Date("2024-09-01"));
+
+    // May 2 – Aug 15, 2025 inclusive: 76 weekdays
+    expect(dates.term3.end.getDay()).toBe(5); // Friday
+    expect(calculateTeachingDays(dates.term3.start, dates.term3.end, [])).toBe(76);
+    expect(calculateTeachingDays(dates.term3.start, dates.term3.end, [dates.holidays])).toBe(76);
   });
 
   /**

@@ -8,8 +8,9 @@
     "start": "next start",
     "lint": "eslint . --ext .ts,.tsx",
     "typecheck": "tsc --noEmit",
-    "test": "bun test --pass-with-no-tests",
-    "test:ui": "bun test --ui --pass-with-no-tests"
+    "test": "bun test tests",
+    "test:ui": "bun test --ui tests",
+    "test:e2e": "playwright test -c playwright.config.ts"
   },
   "dependencies": {
     "@prisma/client": "^7.10.0",

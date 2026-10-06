@@ -10,6 +10,7 @@ import {
 } from '@/lib/visibility'
 import { z } from 'zod'
 import { logError } from '@/lib/logger'
+import { isReasonGated } from '@/lib/amendments'
 // `P2002` handling, shared. `AttendanceStudent` carries
 // `@@unique([tenantId, studentId, date, period])` and the write path's
 // read-then-write is not atomic against a concurrent marker, so two POSTs for
@@ -83,6 +84,35 @@ export function normaliseAttendanceDate(value: string): Date {
  * this request — open for however long the database feels like answering.
  */
 const ATTENDANCE_TRANSACTION_BOUNDS = { maxWait: 2_000, timeout: 30_000 } as const
+
+/**
+ * A bulk re-save reached a record somebody had already settled.
+ *
+ * A dedicated class rather than a string test, because this is thrown from
+ * INSIDE the transaction callback to abort it and translated back into a
+ * per-record result by the loop's own catch. An `error.message` match would
+ * couple that translation to a sentence, and a driver error quoting the same
+ * words would be silently downgraded into "this record is locked" — a caller
+ * told a settled register is protected when in fact something else failed.
+ */
+class AttendanceRecordLockedError extends Error {
+  constructor() {
+    super('Attendance record is locked')
+    this.name = 'AttendanceRecordLockedError'
+  }
+}
+
+/**
+ * What the caller is told about a locked record on the marking path.
+ *
+ * Names the correction path rather than only refusing, because the lock is not an
+ * immutability flag: the record CAN be corrected, with a written reason, through
+ * `PATCH /api/attendance/[id]`. A message that only said "locked" would read as a
+ * dead end and turn a data-entry mistake into a support escalation, which is the
+ * outcome the lock migration was written to avoid.
+ */
+const LOCKED_RECORD_MESSAGE =
+  'This record has already been settled and cannot be re-saved from the marking screen. Correct it individually with a reason instead.'
 
 export async function GET(req: NextRequest) {
   try {
@@ -387,20 +417,36 @@ export async function POST(req: NextRequest) {
       // write therefore share one transaction, keyed on the same
       // normalised value: the `findFirst` matches the existing row for
       // the exact key, so a re-save updates instead of inserting.
-      const attendance = await prisma.$transaction(
+      try {
+        const attendance = await prisma.$transaction(
         async (tx) => {
           const existing = await tx.attendanceStudent.findFirst({
             where: { tenantId, studentId: record.studentId, date: recordDate, period },
           })
           if (existing) {
+            // The lock is checked against the STORED row, inside the transaction
+            // that would otherwise write it, and refused by throwing so the
+            // transaction aborts before any statement has written. Marking a
+            // class is not correcting a disputed record: the correction path —
+            // which demands a written reason and leaves a trail — is
+            // `PATCH /api/attendance/[id]`. Silently overwriting a settled
+            // register here is the exact failure the lock columns exist to
+            // prevent, and the per-record error below keeps one refused record
+            // from discarding the rest of the register.
+            if (isReasonGated(existing)) throw new AttendanceRecordLockedError()
             return tx.attendanceStudent.update({
-              where: { id: existing.id },
+              where: { id: existing.id, tenantId },
               data: {
                 classId: record.classId,
                 status: record.status,
                 period,
                 notes,
-                markedById: userId,
+                // `markedById` is DELIBERATELY ABSENT, the same omission the
+                // correction PATCH makes and for the same reason. It used to be
+                // set to `userId` here, so a bulk re-save destroyed the original
+                // marker's attribution exactly as thoroughly as the PATCH did.
+                // The column is `NOT NULL` and read as "who marked this
+                // register", so naming the corrector there erases the author.
               },
             })
           }
@@ -413,6 +459,8 @@ export async function POST(req: NextRequest) {
               status: record.status,
               period,
               notes,
+              // The one place `markedById` is written on this route: the CREATE,
+              // where naming the marker is what the column is for.
               markedById: userId,
             },
           })
@@ -420,6 +468,17 @@ export async function POST(req: NextRequest) {
         ATTENDANCE_TRANSACTION_BOUNDS,
       )
       results.push({ studentId: record.studentId, success: true, attendance })
+      } catch (error) {
+        // One refused record, not one refused register. Every other error still
+        // propagates to the handler's own catch, so a driver fault or a P2002
+        // keeps its existing 500/409 rather than being flattened into a
+        // per-record message the caller would read as success.
+        if (error instanceof AttendanceRecordLockedError) {
+          results.push({ studentId: record.studentId, error: LOCKED_RECORD_MESSAGE })
+          continue
+        }
+        throw error
+      }
     }
 
     return NextResponse.json({ success: true, results }, { status: 201 })

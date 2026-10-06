@@ -1,6 +1,8 @@
-import { requireCapabilityPage, requireTenantScope } from '@/lib/admin-context'
+import { requireCapabilityPage, requireExistingTenant } from '@/lib/admin-context'
+import { hasOperatorCapability } from '@/lib/permissions'
 import { listSchoolsForTenant } from '@/lib/queries'
 import { SchoolList } from '@/components/school-list'
+import { TenantSuspendedNotice } from '@/components/tenant-suspended-notice'
 
 /**
  * `/tenants/:tenantId/schools` — this tenant's schools.
@@ -8,6 +10,17 @@ import { SchoolList } from '@/components/school-list'
  * One query, `where: { tenantId }`. There is no way for the URL's tenant and the
  * query's tenant to disagree, because the query's tenant *is* the URL's tenant,
  * re-read from the database.
+ *
+ * A suspended tenant renders `TenantSuspendedNotice` and the branch returns before
+ * `listSchoolsForTenant` runs, so no school row is fetched. That query refuses a
+ * suspended tenant as well — the page check is what lets the refusal read as an
+ * answer rather than as the console's generic fault page.
+ *
+ * The check is not a convention here. `requireExistingTenant` returns a
+ * discriminated union whose suspended arm carries only `identity` (id and code), so
+ * `resolved.tenant` does not typecheck until `status === 'suspended'` has been
+ * answered, and the identifier `listSchoolsForTenant` needs is not in scope until
+ * then either. Deleting the branch below is a compile error, not a leak.
  */
 export const dynamic = 'force-dynamic'
 
@@ -22,9 +35,21 @@ export default async function TenantSchoolsPage({
 }: {
   params: Promise<{ tenantId: string }>
 }) {
-  await requireCapabilityPage('tenant:read')
+  const context = await requireCapabilityPage('tenant:read')
   const { tenantId } = await params
-  const tenant = await requireTenantScope(tenantId)
+  const resolved = await requireExistingTenant(tenantId)
+
+  if (resolved.status === 'suspended') {
+    return (
+      <TenantSuspendedNotice
+        tenantId={resolved.identity.id}
+        tenantCode={resolved.identity.code}
+        canUpdate={hasOperatorCapability(context.operator.capabilities, 'tenant:update')}
+      />
+    )
+  }
+
+  const { tenant } = resolved
   const schools = await listSchoolsForTenant(tenant.id)
 
   return (

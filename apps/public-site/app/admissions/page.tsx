@@ -1,8 +1,13 @@
-import { AdmissionsForm } from '@/components/admissions-form'
-import { generateAdmissionsMetadata, SCHOOL_INFO } from '@/lib/metadata'
-import { getAdmissionsStatus } from '@/lib/data'
 import type { Metadata } from 'next'
-import { Button, Card, CardContent } from '@novastar/shared-ui'
+
+import { cn } from '@novastar/shared-ui'
+
+import { AdmissionsForm } from '@/components/admissions-form'
+import { CARD_PAD, Card, HeroBand, SectionHeading, SectionTitle, SectionShell } from '@/components/marketing'
+import { MarketingButton } from '@/components/marketing-button'
+import { Photo } from '@/components/photo'
+import { getAdmissionsStatus } from '@/lib/data'
+import { generateAdmissionsMetadata, SCHOOL_INFO } from '@/lib/metadata'
 
 /*
  * Server Component: it owns the page's `metadata`, which Next resolves on the
@@ -22,86 +27,97 @@ export default async function AdmissionsPage() {
 
   return (
     <div className="min-h-screen">
-      <section className="bg-gradient-to-b from-primary/10 to-transparent py-16 md:py-20">
-        <div className="container">
-          <h1 className="text-responsive-h1 font-heading text-primary mb-4">Admissions</h1>
-          {/* Branches with the rest of the page. Left unconditional it read
-              "Apply online" in the hero while the panel directly below said
-              applications were not being accepted — the same page contradicting
-              itself, which is worse for a parent than either message alone. */}
-          <p className="text-lg text-muted-foreground max-w-2xl">
-            {open ? (
-              <>
-                We&apos;d love to welcome your child to our learning community. Apply online
-                or contact us for more information.
-              </>
-            ) : (
-              <>
-                We&apos;d love to welcome your child to our learning community. Admissions
-                are not open right now — contact us to hear about the next intake.
-              </>
-            )}
-          </p>
-        </div>
-      </section>
+      {/* Hero. The band wash is `--color-tint-warm` rather than the maroon-tinted
+          `from-primary/10` every inner page carried before; `HeroBand` also owns
+          the header clearance, which was re-stated per page. */}
+      <HeroBand>
+        <h1 className="type-display max-w-[18ch]">Admissions</h1>
+        {/* Branches with the rest of the page. Left unconditional it read
+            "Apply online" in the hero while the panel directly below said
+            applications were not being accepted — the same page contradicting
+            itself, which is worse for a parent than either message alone. */}
+        <p className="mt-6 max-w-[60ch] text-lg leading-relaxed text-muted-foreground">
+          {open ? (
+            <>
+              We&apos;d love to welcome your child to our learning community. Apply online
+              or contact us for more information.
+            </>
+          ) : (
+            <>
+              We&apos;d love to welcome your child to our learning community. Admissions
+              are not open right now — contact us to hear about the next intake.
+            </>
+          )}
+        </p>
+      </HeroBand>
+
+      {/* Placeholder photography — see `lib/placeholder-images.ts`. */}
+      <SectionShell tone="canvas">
+        <Photo id="learning" ratio="aspect-[3/2]" className="mx-auto max-w-3xl" />
+      </SectionShell>
 
       {open ? (
         <>
-          <section className="section-y">
-            <div className="container">
-              <div className="mb-12 text-center">
-                <h2 className="text-responsive-h2 font-heading text-primary mb-4">Admission Process</h2>
-                <p className="text-muted-foreground max-w-2xl mx-auto">
-                  Simple 4-step process to get your child enrolled at Novastar Montessori School.
-                </p>
-              </div>
+          <SectionShell tone="canvas">
+            <SectionHeading
+              align="center"
+              title="Admission Process"
+              lede="Simple 4-step process to get your child enrolled at Novastar Montessori School."
+            />
+            <ol className="mt-12 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <ProcessStep number="1" title="Apply Online" desc="Fill our online application form" />
+              <ProcessStep number="2" title="Documents" desc="Submit required documents" />
+              <ProcessStep number="3" title="Assessment" desc="Student assessment and interview" />
+              <ProcessStep number="4" title="Enroll" desc="Receive acceptance and register" />
+            </ol>
+          </SectionShell>
 
-              <ol className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                <ProcessStep number="1" title="Apply Online" desc="Fill our online application form" />
-                <ProcessStep number="2" title="Documents" desc="Submit required documents" />
-                <ProcessStep number="3" title="Assessment" desc="Student assessment and interview" />
-                <ProcessStep number="4" title="Enroll" desc="Receive acceptance and register" />
-              </ol>
+          <SectionShell tone="band">
+            {/*
+              The measure is on an inner element, not on `container`. `.container`
+              is a later same-specificity declaration than any `max-w-*` utility,
+              so the two on one element silently renders at the 80rem cap. See
+              the `.container` note in `app/globals.css`.
+            */}
+            <div className="mx-auto max-w-3xl">
+              <AdmissionsForm />
             </div>
-          </section>
-
-          <section className="section-y bg-muted/30">
-            <div className="container">
-              <div className="mx-auto max-w-3xl">
-                <AdmissionsForm />
-              </div>
-            </div>
-          </section>
+          </SectionShell>
         </>
       ) : (
-        <section className="section-y bg-muted/30">
-          <div className="container">
-            <div className="mx-auto max-w-2xl text-center">
-              <Card className="border-border bg-card">
-                <CardContent className="pt-6 pb-8 px-6 md:px-10">
-                  <h2 className="text-responsive-h2 font-heading text-primary mb-4">Admissions currently closed</h2>
-                  <p className="text-muted-foreground mb-6 max-w-xl mx-auto">
-                    We are not accepting applications at this time. The next intake window will
-                    be announced here and on our social channels.
-                  </p>
-                  <div className="flex flex-col items-center gap-4">
-                    <Button size="lg" asChild>
-                      <a href="/contact" className="w-full sm:w-auto">
-                        Contact us to enquire
-                      </a>
-                    </Button>
-                    <a
-                      href={`tel:${SCHOOL_INFO.phoneHref}`}
-                      className="text-sm font-medium text-primary hover:underline"
-                    >
-                      Or call us at {SCHOOL_INFO.phone}
-                    </a>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
+        <SectionShell tone="band">
+          <div className="mx-auto max-w-2xl text-center">
+            <Card className={CARD_PAD}>
+              <SectionTitle className="mb-4 text-primary">
+                Admissions currently closed
+              </SectionTitle>
+              <p className="mb-6 max-w-xl mx-auto text-muted-foreground">
+                We are not accepting applications at this time. The next intake window will
+                be announced here and on our social channels.
+              </p>
+              <div className="flex flex-col items-center gap-4">
+                {/* A link, not a submit: `output: 'export'` has no server to post to. */}
+                <MarketingButton href="/contact" size="lg" className="w-full sm:w-auto">
+                  Contact us to enquire
+                </MarketingButton>
+                {/*
+                  A phone number at the moment of intent is a primary action on an
+                  admissions page, not a footnote, so it gets a 44px target rather
+                  than the 20px it inherited from `text-sm`. Inline prose links are
+                  exempt under WCAG 2.5.8; this one sits next to a button, so it
+                  does not qualify for the exemption. The text says "Or", which is
+                  the right word: it is the alternative to the form above it.
+                */}
+                <a
+                  href={`tel:${SCHOOL_INFO.phoneHref}`}
+                  className="inline-flex min-h-11 items-center gap-2 rounded-sm px-3 text-sm font-medium text-primary transition-colors duration-fast hover:bg-tint-warm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                >
+                  Or call us at {SCHOOL_INFO.phone}
+                </a>
+              </div>
+            </Card>
           </div>
-        </section>
+        </SectionShell>
       )}
     </div>
   )
@@ -109,12 +125,24 @@ export default async function AdmissionsPage() {
 
 function ProcessStep({ number, title, desc }: { number: string; title: string; desc: string }) {
   return (
-    <li className="rounded-lg border border-border bg-card p-4 text-center shadow-sm">
-      <span className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-primary font-bold text-primary-foreground">
+    /*
+      `Card as="li"` keeps the step inside the `<ol>`'s own list semantics; the
+      card recipe is the same one every other panel on the site uses.
+
+      The number badge is `rounded-sm`, not a full-circle radius. Every radius on
+      the site has to be a `--radius-*` token — a full circle computes to 9999px,
+      which is a value outside the declared scale, and
+      `tests/design-tokens.test.ts` fails any `rounded-*` outside it. Tailwind v4
+      emits no warning for the class; it simply produces no rule, so this badge
+      would have rendered as a square with no error anywhere. `--radius-sm` is
+      the icon-tile radius, and this is an icon tile.
+    */
+    <Card as="li" className={cn(CARD_PAD, 'flex h-full flex-col items-center text-center')}>
+      <span className="mb-3 flex h-10 w-10 items-center justify-center rounded-sm bg-primary font-bold text-primary-foreground">
         {number}
       </span>
-      <h3 className="mb-1 font-semibold text-primary">{title}</h3>
-      <p className="text-sm text-muted-foreground">{desc}</p>
-    </li>
+      <h3 className="type-title text-primary">{title}</h3>
+      <p className="mt-2 text-sm text-muted-foreground">{desc}</p>
+    </Card>
   )
 }

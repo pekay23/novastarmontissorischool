@@ -1,6 +1,6 @@
 import 'server-only'
 import { NextResponse } from 'next/server'
-import { UnauthorizedError, ForbiddenError } from '@/lib/tenant'
+import { UnauthorizedError, ForbiddenError, TenantSuspendedError } from '@/lib/tenant'
 import { logError } from '@/lib/logger'
 import { logSystemError, severityFromStatus, PERSIST_TIMEOUT_MS } from '@/lib/system-errors'
 import { getTokenTenantId } from '@/lib/auth/session-context'
@@ -34,6 +34,9 @@ export async function toErrorResponse(
     return new NextResponse('Unauthorized', { status: 401 })
   }
   if (error instanceof ForbiddenError) {
+    return new NextResponse('Forbidden', { status: 403 })
+  }
+  if (error instanceof TenantSuspendedError) {
     return new NextResponse('Forbidden', { status: 403 })
   }
 

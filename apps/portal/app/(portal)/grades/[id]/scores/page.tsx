@@ -19,6 +19,9 @@ interface Student {
   studentId: string | null
 }
 
+import { useSession } from 'next-auth/react'
+import { permissionsForRole, type PlatformRoleName } from '@novastar/shared-types'
+
 interface Score {
   id: string
   studentId: string
@@ -28,6 +31,8 @@ interface Score {
   grade: string | null
   isApproved: boolean
   notes: string | null
+  approvedBy?: { name: string } | null
+  approvedAt?: string | null
 }
 
 interface Assessment {
@@ -60,6 +65,14 @@ const gradeBadgeClass = (grade: string | null): string => {
 
 export default function GradesScorePage({ params }: { params: Promise<{ id: string }> }) {
   const { toast } = useToast()
+  const { data: session } = useSession()
+  // Presentation only. The server refuses the write without `score:approve`, so
+  // hiding the control is a courtesy — but it is read from the same grant table
+  // the route authorises against, rather than from a local guess, so the button
+  // cannot appear for a role the route will reject.
+  const canApprove = permissionsForRole(
+    (session?.user as { role?: string } | undefined)?.role as PlatformRoleName,
+  ).includes('score:approve')
 
   const [assessmentId, setAssessmentId] = useState<string | null>(null)
   const [assessment, setAssessment] = useState<Assessment | null>(null)
@@ -147,6 +160,53 @@ export default function GradesScorePage({ params }: { params: Promise<{ id: stri
     }
     init()
   }, [params, fetchAssessment])
+
+  /**
+   * Approve a mark, or withdraw the approval.
+   *
+   * `DELETE` withdraws rather than a `PATCH {"approved": false}`: there is no
+   * field here to lie about, and the approver identity is the server's to
+   * decide. The response is re-read into the row rather than patched locally, so
+   * "approved by" on screen is the name the server recorded.
+   */
+  const handleApproval = async (scoreId: string, approve: boolean) => {
+    if (!assessmentId) return
+    try {
+      const res = await fetch(
+        `/api/assessments/${assessmentId}/scores/${scoreId}/approve`,
+        { method: approve ? 'POST' : 'DELETE' },
+      )
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        toast.error({
+          title: approve ? 'Could not approve' : 'Could not withdraw approval',
+          description: data.error || 'The server refused the request.',
+        })
+        return
+      }
+      const data = await res.json()
+      setScores(prev =>
+        prev.map(s =>
+          s.id === scoreId
+            ? {
+                ...s,
+                isApproved: data.score?.isApproved ?? approve,
+                approvedBy: data.score?.approvedBy ?? null,
+                approvedAt: data.score?.approvedAt ?? null,
+              }
+            : s,
+        ),
+      )
+      toast.success({
+        title: approve ? 'Mark approved' : 'Approval withdrawn',
+        description: approve
+          ? 'This mark now counts toward the report card.'
+          : 'The mark is pending approval again.',
+      })
+    } catch {
+      toast.error({ title: 'Network error', description: 'The approval request did not complete.' })
+    }
+  }
 
   const handleSaveScore = async (studentId: string, rawScore: number, notes: string) => {
     if (!assessment) return
@@ -322,6 +382,8 @@ export default function GradesScorePage({ params }: { params: Promise<{ id: stri
                   <TableHead className="text-right w-20">%</TableHead>
                   <TableHead>Grade</TableHead>
                   <TableHead>Notes</TableHead>
+                  <TableHead>Approved</TableHead>
+                  <TableHead>Approval</TableHead>
                   <TableHead className="w-12" />
                 </TableRow>
               </TableHeader>
@@ -382,6 +444,41 @@ export default function GradesScorePage({ params }: { params: Promise<{ id: stri
                           }}
                           placeholder="Notes"
                         />
+                      </TableCell>
+                      <TableCell>
+                        {score?.approvedAt ? (
+                          <span className="text-xs text-muted-foreground">
+                            {new Date(score.approvedAt).toLocaleDateString()}
+                          </span>
+                        ) : '—'}
+                      </TableCell>
+                      <TableCell>
+                        {!score ? (
+                          <span className="text-sm text-muted-foreground">—</span>
+                        ) : score.isApproved ? (
+                          <div className="flex items-center gap-2">
+                            <Badge className="bg-green-100 text-green-800">Approved</Badge>
+                            {canApprove && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleApproval(score.id, false)}
+                              >
+                                Withdraw
+                              </Button>
+                            )}
+                          </div>
+                        ) : canApprove && score.rawScore !== null ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleApproval(score.id, true)}
+                          >
+                            Approve
+                          </Button>
+                        ) : (
+                          <Badge variant="secondary">Pending</Badge>
+                        )}
                       </TableCell>
                       <TableCell>
                         {score && (

@@ -9,9 +9,65 @@ import {
   resolveAssessmentWeight,
   resolveGradeBand,
   summariseAttendance,
+  type BandStatus,
   type GradeBand,
 } from '@novastar/shared-utils'
+import {
+  resolveVisibility,
+  visibilityDeniesAll,
+} from '@/lib/visibility'
 import { logError } from '@/lib/logger'
+
+/**
+ * The band state of ONE assessment row, derived from that row and nothing else.
+ *
+ * `computeAcademicSummary` is already the classifier: `classifyBand` and
+ * `bandProblemFor` live inside `shared-utils`, are not exported, and a second
+ * copy of either would be a second answer to a question one implementation
+ * already owns — and the two answers would be compared on every card. So a row's
+ * state is literally the subject summary computed over that row alone: same
+ * bands, same code path, one assessment in it. Whatever the subject block says
+ * and whatever a row says therefore come from the same classifier and cannot
+ * drift, which is the whole point of giving a row its own verdict rather than
+ * borrowing its subject's.
+ *
+ * The one state the summary cannot speak for is `no-percentage`, because an
+ * assessment with no readable percentage is not a graded assessment at all — it
+ * is filtered out before `subjects` is built, so it contributes to nothing and
+ * appears nowhere. That absence is exactly what the row has to report, and it is
+ * a fact about the row alone: no scale is at fault, so there is nothing about
+ * the scale to quote.
+ *
+ * The `subjectId` is not a lookup key here. It only has to be stable for the
+ * one row being classified, because grouping is what puts that row into a
+ * subject bucket for the summary to read its verdict out of.
+ */
+function rowBandState(
+  percentage: number | null,
+  weight: number,
+  bands: readonly GradeBand[],
+): { bandStatus: BandStatus; bandProblem: string | null } {
+  if (
+    percentage === null ||
+    !Number.isFinite(percentage) ||
+    percentage < 0 ||
+    percentage > 100
+  ) {
+    return { bandStatus: 'no-percentage', bandProblem: null }
+  }
+  const row = computeAcademicSummary(
+    // The resolved weight, so this is the same row shape the whole-report summary
+    // is fed. On a single row it cannot change the answer — it is already
+    // strictly positive — and passing it keeps the two calls from being asked
+    // different questions about the same figure.
+    [{ subjectId: 'row', percentage, weight }],
+    bands,
+  ).subjects[0]
+  return {
+    bandStatus: row?.bandStatus ?? 'no-percentage',
+    bandProblem: row?.bandProblem ?? null,
+  }
+}
 
 // GET /api/reports/academic/[studentId] — Generate a student academic report card
 export async function GET(
@@ -19,7 +75,8 @@ export async function GET(
   { params }: { params: Promise<{ studentId: string }> },
 ) {
   try {
-    const { schoolId, tenantId, userId } = await getTenantContext()
+    const ctx = await getTenantContext()
+    const { schoolId, tenantId, userId } = ctx
     if (!schoolId) {
       return NextResponse.json({ error: 'No school assigned' }, { status: 400 })
     }
@@ -29,13 +86,27 @@ export async function GET(
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
+    const visibility = await resolveVisibility(ctx, 'report:read')
+    if (visibilityDeniesAll(visibility)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
     const { studentId } = await params
 
     // Fetch the student. The level is selected with its `code` as well as its
     // `name` because the grading-scale lookup below matches on either, and the
     // seed stores level codes.
+    const studentWhere: Prisma.StudentWhereInput = {
+      id: studentId,
+      schoolId,
+      tenantId,
+    }
+    if (visibility.scope === 'own') {
+      studentWhere.parentId = visibility.parentId ?? '__no-parent__'
+    }
+
     const student = await prisma.student.findFirst({
-      where: { id: studentId, schoolId, tenantId },
+      where: studentWhere,
       include: {
         class: { select: { name: true, level: { select: { name: true, code: true } } } },
       },
@@ -146,7 +217,20 @@ export async function GET(
         },
         type: { select: { name: true, code: true, defaultWeight: true } },
         term: { select: { name: true, academicYear: { select: { name: true } } } },
-        scores: { where: { studentId } },
+        // Approved marks only.
+        //
+        // A report card is what goes to a parent, so it must show what was
+        // signed off, not what was typed. `Score.isApproved` is written by
+        // `POST /api/assessments/[id]/scores/[scoreId]/approve` and is withdrawn
+        // whenever the mark itself changes, so filtering on it here is what stops
+        // a card going home with a mark no approver ever saw.
+        //
+        // The honest consequence, which is not a bug: before anything is
+        // approved the card is empty. That is the intended reading — an
+        // unapproved mark belongs in the teacher's gradebook, not in a parent's
+        // inbox — and it is why this cannot be quietly relaxed to
+        // `isApproved: { not: false }` to make a demo look fuller.
+        scores: { where: { studentId, isApproved: true } },
       },
       orderBy: { assessmentDate: 'desc' },
     })
@@ -223,6 +307,12 @@ export async function GET(
         typeDefaultWeight: a.type ? Number(a.type.defaultWeight) : null,
       })
 
+      // This row's own band verdict, from this row's own percentage. It used to
+      // borrow the subject's, which put a statement about a subject's scale on
+      // every row beneath it — and left a row that failed to resolve under a
+      // healthy subject with nothing at all to say for itself.
+      const rowBand = rowBandState(percentage, weight.weight, bands)
+
       return {
         id: a.id,
         name: a.name,
@@ -244,6 +334,13 @@ export async function GET(
         // rendering blank.
         grade: score?.grade || null,
         band: percentage === null ? null : resolveGradeBand(percentage, bands),
+        // Which state THIS row's band is in, and what to fix if the scale is at
+        // fault for it. Both come from this row's own percentage against the
+        // school's current bands — never from the subject summary above, which
+        // has already been folded across every assessment of a subject into one
+        // number and can only speak about that number.
+        bandStatus: rowBand.bandStatus,
+        bandProblem: rowBand.bandProblem,
         isGraded: hasScore,
         assessmentDate: a.assessmentDate,
         term: a.term?.name || null,

@@ -9,7 +9,8 @@
     "allowJs": true,
     "noEmit": true,
     "types": [
-      "node"
+      "node",
+      "bun"
     ],
     "jsx": "react-jsx",
     "paths": {

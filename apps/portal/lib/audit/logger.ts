@@ -22,6 +22,11 @@ export enum AuditLogAction {
   PASSKEY_LOGIN = 'PASSKEY_LOGIN',
   // Generic CRUD
   CREATE = 'CREATE',
+  // `READ`, not `SYSTEM_UPDATE`: a read that filed itself as an update asserted a
+  // write that did not happen, and a reader filtering `action = SYSTEM_UPDATE` to
+  // find changes saw reads in the answer. It is a member of its own rather than a
+  // reading of an existing one because `SYSTEM` is spoken for — see the note there.
+  READ = 'READ',
   UPDATE = 'UPDATE',
   DELETE = 'DELETE',
   // Domain events
@@ -31,6 +36,11 @@ export enum AuditLogAction {
   USER_SUSPENDED = 'USER_SUSPENDED',
   USER_REACTIVATED = 'USER_REACTIVATED',
   IMPORT = 'IMPORT',
+  // RESERVED for refusals. The config write routes give it exactly one meaning — "this
+  // row is a refusal, and `changes.refused` says which check refused it" — and
+  // `successRows()` in `tests/config-write-audit.test.ts` classifies on precisely that,
+  // so anything that succeeded and is filed as `SYSTEM` becomes invisible to a reader
+  // asking what happened. `READ` exists above so a read never has to borrow `SYSTEM`.
   SYSTEM = 'SYSTEM',
   SYSTEM_UPDATE = 'SYSTEM_UPDATE',
   ADMISSIONS_TOGGLE = 'ADMISSIONS_TOGGLE',

@@ -91,26 +91,29 @@ describe('Payments - Reconciliation', () => {
   })
 })
 
-describe('Payments - Types', () => {
-  it('should export PaymentProvider interface', () => {
-    // Type is compile-time only
-    expect(true).toBe(true)
-  })
+// The `PaymentProvider` / `PaymentInput` / `PaymentResult` /
+// `VerificationResult` interfaces used to have four tests here whose entire body
+// was `expect(true).toBe(true)`, commented "Type is compile-time only". They were
+// removed rather than fixed: an interface is erased at runtime, so the only way
+// to test one is to compile against it, and `tsc --noEmit` on this package
+// already does that. A test that cannot fail is worse than no test, because it
+// counts toward coverage and implies a guarantee that nothing checks.
+// `tsconfig` covers the types; see `packages/payments/tsconfig.json`.
 
-  it('should export PaymentInput interface', () => {
-    expect(true).toBe(true)
-  })
+describe('Payments - test-data factories and money helpers', () => {
+  // These cover `@novastar/testing`, NOT the payments package: nothing in
+  // `@novastar/payments` uses a factory, and this file is the only importer of
+  // either package in the workspace. They live here because `packages/testing`
+  // has no test suite of its own, so this is the only place these helpers are
+  // checked at all. If that package ever grows a `test` task, this block belongs
+  // there and should move.
+  //
+  // The money assertions below pin LITERAL minor-unit counts rather than round-
+  // tripping through `toMinorUnits`. `expect(invoice.totalAmount).toBe(
+  // toMinorUnits(1500))` is `x === x`: scaling `toMinorUnits` by a thousand
+  // leaves both sides scaled together and the test green while every stored
+  // amount is wrong by 1000x.
 
-  it('should export PaymentResult interface', () => {
-    expect(true).toBe(true)
-  })
-
-  it('should export VerificationResult interface', () => {
-    expect(true).toBe(true)
-  })
-})
-
-describe('Payments - Factory Integration', () => {
   it('should build a valid fee category', () => {
     const tenant = buildTenant()
     const feeCategory = buildFeeCategory({ tenantId: tenant.id, code: 'TUITION', name: 'Tuition Fee' })
@@ -139,9 +142,11 @@ describe('Payments - Factory Integration', () => {
     expect(invoice.id).toMatch(/^test_invoice_\d+$/)
     expect(invoice.tenantId).toBe(tenant.id)
     expect(invoice.schoolId).toBe(school.id)
-    expect(invoice.totalAmount).toBe(toMinorUnits(1500))
+    // GHS 1,500.00 in minor units. A literal, so a mis-scaled `toMinorUnits`
+    // cannot scale the expectation along with the value under test.
+    expect(invoice.totalAmount).toBe(150_000)
     expect(invoice.paidAmount).toBe(0)
-    expect(invoice.balance).toBe(toMinorUnits(1500))
+    expect(invoice.balance).toBe(150_000)
     expect(invoice.status).toBe('PENDING')
     expect(invoice.invoiceNumber).toMatch(/^INV-\d+-\d+$/)
   })
@@ -153,7 +158,7 @@ describe('Payments - Factory Integration', () => {
     expect(payment.id).toMatch(/^test_payment_\d+$/)
     expect(payment.tenantId).toBe(tenant.id)
     expect(payment.schoolId).toBe(school.id)
-    expect(payment.amount).toBe(toMinorUnits(500))
+    expect(payment.amount).toBe(50_000)
     expect(payment.status).toBe('COMPLETED')
     expect(payment.reference).toMatch(/^REF-\d+-\d+$/)
   })

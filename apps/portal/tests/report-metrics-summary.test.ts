@@ -2,10 +2,12 @@ import { describe, it, expect } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
+  assertBandsCoverZeroToHundred,
   computeAcademicSummary,
   findGradingScaleApplicabilityProblems,
   resolveApplicableGradingScale,
   resolveAssessmentWeight,
+  type GradeBand,
   type ReportableAssessment,
 } from '@novastar/shared-utils'
 
@@ -400,6 +402,64 @@ describe('the zero-weight guard', () => {
     expect(seedSrc).toContain(
       "import { assertBandsCoverZeroToHundred } from '../../packages/shared-utils'",
     )
+  })
+
+  it('the shared guard itself refuses a scale that does not cover 0-100', () => {
+    // Grepping two files' text proved the WORDING existed and that the seed calls
+    // something by that name — turning the guard into a no-op, a stub, or a function
+    // that never throws left all of it green. So the guard is executed here, on the
+    // scales the seed actually writes plus the three ways one of them can be wrong.
+    const GOOD: GradeBand[] = [
+      { key: 'level_6', minScore: 85, maxScore: 100, label: 'Level 6', color: '#047857', order: 0, description: null },
+      { key: 'level_1', minScore: 0, maxScore: 84, label: 'Level 1', color: '#7f1d1d', order: 1, description: null },
+    ]
+
+    expect(() => assertBandsCoverZeroToHundred('Covering', GOOD)).not.toThrow()
+
+    // A gap: nothing claims 60-69.
+    expect(() =>
+      assertBandsCoverZeroToHundred('Gap', [
+        { ...GOOD[0]!, key: 'level_6' },
+        { ...GOOD[1]!, key: 'level_1', maxScore: 59 },
+      ]),
+    ).toThrow(/does not cover 0-100 exactly once/)
+    // Overlap: two bands claim the same marks.
+    expect(() =>
+      assertBandsCoverZeroToHundred('Overlap', [
+        GOOD[0]!,
+        { ...GOOD[1]!, key: 'level_1b', minScore: 80 },
+      ]),
+    ).toThrow(/does not cover 0-100 exactly once/)
+    // A backwards band: min above max, so the scale claims nothing at all.
+    expect(() =>
+      assertBandsCoverZeroToHundred('Backwards', [{ ...GOOD[0]!, minScore: 100, maxScore: 85 }]),
+    ).toThrow(/does not cover 0-100 exactly once/)
+    // And an emptied scale, which is the state a school can actually be in.
+    expect(() => assertBandsCoverZeroToHundred('Empty', [])).toThrow()
+
+    // Both seeded scales go through the guard, so they must pass it. Read from the
+    // seed rather than restated, so a band moved there is a band checked here.
+    const seedSrc = readFileSync(
+      join(import.meta.dir, '..', '..', '..', 'tools', 'seed', 'index.ts'),
+      'utf-8',
+    )
+    for (const match of seedSrc.matchAll(
+      /(?:name:\s*'([^']+)',[\s\S]{0,4000}?levels:\s*\[)([\s\S]*?)\n\s{4}\],/g,
+    )) {
+      const bands = [...match[2]!.matchAll(/minScore:\s*(-?\d+),\s*maxScore:\s*(-?\d+)/g)].map(
+        (pair, index) => ({
+          key: `level_${index}`,
+          label: `Level ${index}`,
+          color: '#047857',
+          minScore: Number(pair[1]),
+          maxScore: Number(pair[2]),
+          order: index,
+          description: null,
+        }),
+      )
+      expect(bands.length).toBeGreaterThan(0)
+      expect(() => assertBandsCoverZeroToHundred(match[1]!, bands)).not.toThrow()
+    }
   })
 
   it('seeds weights that a head teacher can read off the page', () => {

@@ -122,6 +122,7 @@ export const PERMISSION_ACTIONS = [
   'manage',
   'settings',
   'write',
+  'upload',
   '*',
 ] as const
 export type PermissionAction = (typeof PERMISSION_ACTIONS)[number]
@@ -142,6 +143,13 @@ export const PERMISSION_CATEGORIES = [
   'student',
   'communication',
   'reports',
+  // A child's clinical documents. Its own category rather than `student` on
+  // purpose: `CLASSROOM_TEACHER` is granted every `student` key with action
+  // `read`, so filing the medical officer's report under `student` would have
+  // given every teacher in the school every child's report. No role rule matches
+  // `health` except the explicit grants, so adding a document key here cannot
+  // silently widen anyone.
+  'health',
   'system',
 ] as const
 export type PermissionCategory = (typeof PERMISSION_CATEGORIES)[number]
@@ -247,6 +255,13 @@ export const PERMISSION_CATALOG: readonly PermissionDefinition[] = [
   perm('assessment:delete', 'academic', 'Delete assessments'),
   perm('assessment:grade', 'academic', 'Grade assessments'),
   perm('assessment:publish', 'academic', 'Publish or unpublish an assessment to parents'),
+  // --- academic: scores ---
+  // Entering a mark and approving it are different acts. `assessment:grade`
+  // covers writing a mark; approving it is what makes it count toward a
+  // report card, so it is a separate key and is withheld from the role that
+  // enters the marks. A teacher must not sign off their own marks.
+  perm('score:read', 'academic', 'Read assessment scores'),
+  perm('score:approve', 'academic', 'Approve or withdraw approval of a score'),
   // --- academic: attendance ---
   perm('attendance:read', 'academic', 'Read attendance records'),
   perm('attendance:mark', 'academic', 'Mark attendance'),
@@ -304,6 +319,31 @@ export const PERMISSION_CATALOG: readonly PermissionDefinition[] = [
   perm('enrollment:read', 'student', 'Read enrollments'),
   perm('enrollment:create', 'student', 'Create enrollments'),
   perm('enrollment:delete', 'student', 'Delete enrollments'),
+  // --- child health ---
+  // The school policy (docs/NOVASTAR POLICIES.docx) requires a parent to declare
+  // any known medical condition, allergy or erratic attack, and to do it "with a
+  // report from a certified medical officer or paediatrician". That is two
+  // different kinds of record with two different audiences, so they are two
+  // different resources rather than one `student:medical:*` family:
+  //
+  //   - the DECLARATIONS are operational. A classroom teacher must see that a
+  //     child has a peanut allergy before lunch, so this stays in the `student`
+  //     category and every teaching role picks it up through the existing rules.
+  //   - the REPORT is a clinical document. It is deliberately NOT in a category
+  //     any teaching role matches, so `CLASSROOM_TEACHER` and `HEAD_TEACHER` do
+  //     not receive it without anyone adding an exclusion. Had this been
+  //     `student:medical:read`, the rule
+  //     `(p.category === 'student' && p.action === 'read')` would have handed
+  //     every classroom teacher every child's medical officer's report.
+  perm('student:health:read', 'student', "Read a child's health declarations"),
+  perm('student:health:write', 'student', "Record or amend a child's health declarations"),
+  perm('document:health:upload', 'health', 'Upload a health document for a child'),
+  perm('document:health:read', 'health', 'Read a health document for a child'),
+  // There is deliberately no `document:health:delete`. A superseded report is
+  // replaced by uploading a newer one, and removing a clinical record from a
+  // child's file is a retention decision the school makes on purpose, not a
+  // capability to hand to a role. If a deletion right is ever genuinely needed
+  // it should be its own key with its own audit reason, not a default.
   // --- communication ---
   perm('communication:create', 'communication', 'Create communications'),
   perm('communication:read', 'communication', 'Read communications'),
@@ -366,7 +406,26 @@ export type RoleGrantRule = (permission: PermissionDefinition) => boolean
  * needs to see the bands they mark against, and building their own class's
  * timetable is their job.
  */
-const CLASSROOM_TEACHER_EXCLUDED = new Set(['grading:update', 'promotion:execute'])
+const CLASSROOM_TEACHER_EXCLUDED = new Set([
+  'grading:update',
+  'promotion:execute',
+  // A teacher enters marks; a different role approves them. Without this the
+  // teacher who typed the mark could also be the one who signed it off.
+  'score:approve',
+])
+
+/**
+ * `student:health:write` a `HEAD_TEACHER` must not hold.
+ *
+ * `HEAD_TEACHER` takes the whole `student` category, which is right for records
+ * a head teacher genuinely owns — creating a student, editing one. A health
+ * declaration is different in kind: it is the parent's statement about their
+ * own child, made under a policy that says a condition found out later "will be
+ * asked to withdraw". A teacher able to edit that field could quietly clear a
+ * declaration that is the only record a staff member had been warned about.
+ * Reading is fine and necessary — allergies decide what a child eats.
+ */
+const HEAD_TEACHER_EXCLUDED = new Set(['student:health:write'])
 
 /**
  * Grant rules per role. These reproduce the previous inline `Array.filter`
@@ -376,7 +435,8 @@ export const ROLE_GRANT_RULES: Record<PlatformRoleName, RoleGrantRule> = {
   HEADMASTER: () => true,
   ASSISTANT_HEAD: (p) => p.category !== 'system' && !p.key.includes('delete'),
   HEAD_TEACHER: (p) =>
-    p.category === 'academic' || p.category === 'student' || p.category === 'communication',
+    (p.category === 'academic' || p.category === 'student' || p.category === 'communication') &&
+    !HEAD_TEACHER_EXCLUDED.has(p.key),
   CLASSROOM_TEACHER: (p) =>
     (p.category === 'academic' &&
       p.action !== 'delete' &&
@@ -387,15 +447,40 @@ export const ROLE_GRANT_RULES: Record<PlatformRoleName, RoleGrantRule> = {
   ADMIN_STAFF: (p) =>
     (p.category === 'student' && (p.action === 'read' || p.action === 'create')) ||
     (p.category === 'communication' && p.action === 'read'),
-  // A parent may read their own children and anything addressed to parents.
-  // `student:read` is narrowed to their own children by ROLE_READ_SCOPE below,
-  // so granting the key here is safe.
-  PARENT: (p) => p.key === 'student:read' || p.key === 'communication:read' || p.key === 'announcement:read',
-  // Admissions officer: can read/create admissions and related student data
+  // A parent may read their own children, their own child's report card, and
+  // anything addressed to parents. `student:read` is narrowed to their own
+  // children by ROLE_READ_SCOPE below, and `report:read` must be narrowed the
+  // same way, so granting the keys here is safe. Granting `report:read` is what
+  // makes a parent able to open their child's report; without it they reach the
+  // portal and find every report 403.
+  //
+  // The four health keys are granted for the same reason and are narrowed just
+  // as tightly below. The policy puts the obligation on the parent — they are
+  // the one who declares the condition and supplies the medical officer's
+  // report — so a portal that could not accept the declaration would push every
+  // parent back to WhatsApp with a clinical document.
+  PARENT: (p) =>
+    p.key === 'student:read' ||
+    p.key === 'report:read' ||
+    p.key === 'communication:read' ||
+    p.key === 'announcement:read' ||
+    p.key === 'student:health:read' ||
+    p.key === 'student:health:write' ||
+    p.key === 'document:health:upload' ||
+    p.key === 'document:health:read',
+  // Admissions officer: can read/create admissions and related student data.
+  // The two `document:health` keys are added explicitly because they sit in the
+  // `health` category and the rule below matches on `category` or an
+  // `admissions:` prefix. This is the role that RECEIVES the medical officer's
+  // report at application time, so it is the one role that must be able to take
+  // the upload; without this the report would arrive by WhatsApp and never reach
+  // the child's file.
   ADMISSIONS_OFFICER: (p) =>
     p.category === 'student' ||
     p.category === 'communication' ||
-    p.key.startsWith('admissions:'),
+    p.key.startsWith('admissions:') ||
+    p.key === 'document:health:upload' ||
+    p.key === 'document:health:read',
 }
 
 export function permissionsForRole(
@@ -430,6 +515,16 @@ export const ROLE_READ_SCOPE: Partial<
   PARENT: {
     'student:read': 'own',
     'enrollment:read': 'own',
+    // Health data is the sharpest case in this map. A parent holding
+    // `student:health:read` with no scope entry would resolve to the
+    // permission's own default and read EVERY child's allergies and medical
+    // declarations; `document:health:read` would hand every parent in the
+    // school every other child's medical officer's report. Both are pinned to
+    // `own` here, which `studentVisibilityWhere` resolves by parentId.
+    'student:health:read': 'own',
+    'student:health:write': 'own',
+    'document:health:upload': 'own',
+    'document:health:read': 'own',
     // Attendance for a parent's own child, not the class. `ROLE_GRANT_RULES`
     // does not grant PARENT any attendance key today, so these are inert --
     // but without them, granting one later would have handed every parent in
@@ -444,6 +539,13 @@ export const ROLE_READ_SCOPE: Partial<
   },
   CLASSROOM_TEACHER: {
     'student:read': 'class',
+    // A teacher's grant on `student:health:read` arrives through the rule
+    // `(p.category === 'student' && p.action === 'read')`, and `perm()` gives a
+    // key the scope `all` unless told otherwise — so without this entry every
+    // classroom teacher in the school could read every child's allergies and
+    // medical declarations. A teacher needs the truth about the children in
+    // their own room before lunch; they have no need for the Crèche's.
+    'student:health:read': 'class',
     'attendance:read': 'class',
     'attendance:mark': 'class',
     'attendance:edit': 'class',

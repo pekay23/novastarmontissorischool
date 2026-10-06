@@ -76,11 +76,15 @@ export async function POST(req: Request) {
     // Find the passkey
     const passkey = await prisma.passkey.findUnique({
       where: { credentialId: credential.id },
-      include: { user: true },
+      include: { user: { include: { tenant: { select: { isActive: true } } } } },
     })
 
     if (!passkey || !passkey.user) {
       return new NextResponse('Passkey not found', { status: 401 })
+    }
+
+    if (passkey.user.tenant?.isActive === false) {
+      return new NextResponse('Tenant has been suspended', { status: 403 })
     }
 
     // Validate challenge-user binding

@@ -9,15 +9,27 @@ import { Award, Baby, BookOpen, GraduationCap } from 'lucide-react'
  */
 export type AcademicPhase = 'KINDERGARTEN' | 'PRIMARY' | 'JHS' | 'SHS'
 
-/** Soft brand-tinted badge styles — phase identity without a second loud color. */
+/**
+ * Phase badge styles.
+ *
+ * These previously gave each phase its own hue (`wine`, `secondary`,
+ * `accent-earth`, `primary`) on a maroon-tinted `bg-primary-soft`. Four hues plus
+ * the tint is the colour noise the 2026-10-04 refinement removed, and
+ * `bg-primary-soft` no longer exists — the council replaced it with
+ * `--color-tint-warm`. Three cues carry phase identity instead of four colours:
+ * a warm tint (maroon text), a stone neutral (ink text), and a navy wash
+ * (navy text). SHS reuses the warm tint with terracotta text, which is the same
+ * warm family read one step hotter, so the set stays inside the palette the
+ * council signed off: smoke neutrals, one warm tint, one cool note.
+ */
 const PHASE_BADGES: Record<AcademicPhase, string> = {
-  KINDERGARTEN: 'bg-primary-soft text-primary',
-  PRIMARY: 'bg-secondary/10 text-secondary',
-  JHS: 'bg-wine/10 text-wine',
-  SHS: 'bg-accent-earth/10 text-accent-earth',
+  KINDERGARTEN: 'border-primary/15 bg-tint-warm text-primary',
+  PRIMARY: 'border-border bg-surface-container text-foreground',
+  JHS: 'border-secondary/20 bg-secondary-fixed text-secondary',
+  SHS: 'border-accent-warm/30 bg-tint-warm text-accent-warm-dark',
 }
 
-const FALLBACK_BADGE = 'bg-muted text-muted-foreground'
+const FALLBACK_BADGE = 'border-border bg-surface-container-low text-muted-foreground'
 
 export function phaseBadge(phase: string): string {
   return PHASE_BADGES[phase as AcademicPhase] ?? FALLBACK_BADGE

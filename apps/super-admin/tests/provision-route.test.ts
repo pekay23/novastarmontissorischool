@@ -290,6 +290,9 @@ describe('POST /api/tenants — the administrator password', () => {
     )
 
     expect(response.status).toBe(400)
+    // The refusal names the environment variable that would have supplied it. The
+    // console cannot fix a misconfigured deployment on its own, so a bare 400 is a
+    // support ticket with nothing in it.
     expect(await response.text()).toContain('TENANT_ADMIN_PASSWORD')
     expect(provisionTenant).toHaveBeenCalledTimes(0)
   })
@@ -314,6 +317,19 @@ describe('POST /api/tenants/:tenantId/provision — the URL addresses the tenant
     expect(response.status).toBe(409)
     expect(provisionTenant).toHaveBeenCalledTimes(0)
     expect(mocks.auditCreate).toHaveBeenCalledTimes(0)
+    // All three values, because there are three. The URL names an id and a code; the
+    // body names a different code. A 409 that reported only the mismatch would leave
+    // the operator unable to tell which of the two codes the request would have
+    // created — and `code` is the idempotency key the shared function keys on, so it
+    // is the one value that decides what would have been written.
+    const body = await readJson(response)
+    expect(body.details).toEqual({
+      urlTenantId: 'tenant-a',
+      urlTenantCode: 'novastar',
+      bodyTenantCode: 'some-other-school',
+    })
+    expect(String(body.error)).toContain('some-other-school')
+    expect(String(body.error)).toContain('novastar')
   })
 
   it('should reconcile the URL tenant when the code matches', async () => {

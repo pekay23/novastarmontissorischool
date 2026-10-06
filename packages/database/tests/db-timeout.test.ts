@@ -84,16 +84,13 @@ async function timeoutRejection(promise: PromiseLike<unknown>): Promise<DbTimeou
 const MODULE_URL = pathToFileURL(join(import.meta.dir, "..", "db-timeout.ts")).href;
 
 /**
- * Runs `body` in a child `bun` process against the real module, and reports how
- * long the process took to exit.
+ * Spawns `script` in a child `bun` process and reports how long it took to exit.
  *
- * `elapsedMs` is the assertion that matters for the timer tests: a deadline left
- * armed keeps the loop alive for its full ten seconds, so the difference between
- * "exited" and "exited ten seconds later" is the difference between the property
- * holding and not. `timeout` bounds a regression to a failure rather than a hang.
+ * `timeout` bounds a regression to a failure rather than a hang. This is the
+ * only place a process is started, so both the plain and the instrumented runs
+ * below are spawned identically and differ only in what the script does.
  */
-function runInChild(body: string): { exitCode: number; stdout: string; elapsedMs: number } {
-  const script = `const { withDbTimeout } = await import(${JSON.stringify(MODULE_URL)});\n${body}\n`;
+function spawnInChild(script: string): { exitCode: number; stdout: string; elapsedMs: number } {
   const startedAt = performance.now();
   const child = Bun.spawnSync([process.execPath, "-e", script], {
     stdout: "pipe",
@@ -105,6 +102,161 @@ function runInChild(body: string): { exitCode: number; stdout: string; elapsedMs
     stdout: child.stdout.toString(),
     elapsedMs: performance.now() - startedAt,
   };
+}
+
+/**
+ * Runs `body` in a child `bun` process against the real module.
+ *
+ * `elapsedMs` on its own means little — it is dominated by what spawning `bun`
+ * costs on the day — so it is only ever read as a difference, against a control
+ * process that pays the same start-up without arming a deadline. A deadline left
+ * armed keeps the loop alive for its full ten seconds, and that is the whole
+ * excess over start-up.
+ */
+function runInChild(body: string): { exitCode: number; stdout: string; elapsedMs: number } {
+  return spawnInChild(`const { withDbTimeout } = await import(${JSON.stringify(MODULE_URL)});\n${body}\n`);
+}
+
+/**
+ * How long a child may keep its own event loop alive after its work has finished.
+ *
+ * This is the quantity that is actually being asserted, and it needs no baseline
+ * at all: it is measured inside the child, between the moment the awaited work
+ * settles and the moment the loop finally drains. Process start-up is not in that
+ * interval, so nothing about the machine's speed can enter it.
+ *
+ * Sized against what it has to tell apart. Measured on this four-core box, the
+ * clean case reads 0–1ms both idle and under a saturating load and during a full
+ * 52-task gate, because the work is microtask-only and the loop has nothing left
+ * to wait for the moment it finishes; a leaked timer reads the full deadline,
+ * 10_002ms to 10_035ms across six runs. 2_000 therefore sits four orders of
+ * magnitude above the clean reading and five times below the leak, so neither
+ * outcome is reachable by accident — the two are not the same magnitude, they
+ * differ by the deadline itself.
+ */
+const DRAIN_SLACK_MS = 2_000;
+
+/**
+ * How much slower than its own control a child may be before the excess can only
+ * have come from something left armed.
+ *
+ * Sized from the measurements this suite actually produces, not picked to look
+ * tidy. Both terms carry the same scheduling noise, so what reaches the
+ * assertion is their difference: sampling ten times during a full `typecheck lint
+ * test --force` gate, the widest clean margin seen was +1974ms (and most were
+ * negative, the control being the slower of the pair), against +9901ms to
+ * +10083ms for a genuinely leaked timer. 4_000 sits above the observed clean
+ * noise by ~2x and below the observed leak by ~2.5x.
+ *
+ * Deliberately not 2_000. At 2_000 the worst clean sample observed left 91ms of
+ * headroom, which is the same kind of bet as the 4_000ms absolute bound it
+ * replaced, and would have made this a less frequent flake rather than the
+ * removal of one.
+ *
+ * This bound is the weaker of the two assertions, and is kept only because
+ * `DRAIN_SLACK_MS` cannot see a regression that made the *work* slow to settle
+ * rather than left a handle behind — the drain would still read ~0ms while the
+ * process genuinely took far longer than it should. Note also what it costs: the
+ * slowest control observed was 12_310ms, longer than the deadline itself, so on
+ * its own this comparison could be inflated past a real leak and let one through.
+ * It cannot hide anything here only because the drain assertion is checked first
+ * and does not depend on a baseline at all.
+ */
+const STARTUP_SLACK_MS = 4_000;
+
+/**
+ * The per-test ceiling for the two timer tests, set above `spawnInChild`'s own
+ * 30-second spawn cap on purpose.
+ *
+ * Bun's default 5-second per-test ceiling is *shorter than the 10-second
+ * deadline* that a leaked timer costs, so a leak would kill the test while the
+ * child was still exiting and neither assertion below would ever be evaluated.
+ * The suite would go red either way, but on the harness's clock rather than on
+ * the measurement, which is no evidence that the assertions discriminate
+ * anything. Outlasting the spawn cap hands the verdict to the assertions, and the
+ * test still terminates, because the cap does.
+ */
+const TIMER_LEAK_TEST_TIMEOUT_MS = 35_000;
+
+/**
+ * Wraps `body` so the child reports how long its event loop stayed alive after
+ * the work finished.
+ *
+ * The timestamp is taken *after* the body, and read inside an `exit` handler,
+ * because that is the only interval in which a leftover handle shows up: `exit`
+ * fires once the loop has drained, so the gap is exactly the time something kept
+ * it open. Written with `writeSync` because a piped stdout is not flushed
+ * synchronously and a `console.log` here can be lost.
+ */
+function withDrainProbe(body: readonly string[]): string {
+  return [
+    `const { withDbTimeout } = await import(${JSON.stringify(MODULE_URL)});`,
+    `const { writeSync } = await import("node:fs");`,
+    ...body,
+    "const workSettledAt = performance.now();",
+    'process.on("exit", () => {',
+    '  writeSync(1, "DRAIN=" + Math.round(performance.now() - workSettledAt) + "\\n");',
+    "});",
+  ].join("\n");
+}
+
+/**
+ * Reads the drain interval the child reported, failing loudly if it reported
+ * nothing.
+ *
+ * A missing marker means the child died before its handler ran, which is itself
+ * a failure worth naming — silently turning it into `NaN` would produce a
+ * comparison that passes for the wrong reason.
+ */
+function drainMs(stdout: string): number {
+  const reported = /DRAIN=(\d+)/.exec(stdout);
+  if (reported === null) {
+    throw new Error(`child never reported how long it stayed alive: ${JSON.stringify(stdout)}`);
+  }
+  return Number(reported[1]);
+}
+
+/**
+ * Asserts that a child which armed a deadline through `withDbTimeout` left
+ * nothing holding its event loop open.
+ *
+ * Two assertions, because they fail for different reasons and each covers what
+ * the other cannot see. The drain interval is the sharp one: it is measured
+ * inside the child, so start-up — unbounded, machine-dependent, and measured in
+ * hundreds of milliseconds idle but in seconds under a 52-task gate — is not part
+ * of it at all, and a leak cannot hide behind a slow machine because there is no
+ * slow-machine term to hide behind. The wall-clock margin then guards the other
+ * direction, a wrapper that made the query itself slow to settle, which the
+ * drain interval would report as ~0ms.
+ *
+ * `withoutTimeout` is that same script with the `withDbTimeout` call taken out,
+ * which is what makes the wall-clock half relative rather than absolute. It is
+ * sampled on both sides of the run under test and the slower reading wins: one
+ * sample is either cold or warm and neither is the run being bounded, since the
+ * first child pays to fault the module into the filesystem cache and a control
+ * taken only afterwards is bounded by whatever the machine did afterwards.
+ * Sampling both sides puts the baseline at the moment the run under test actually
+ * happened. The controls are separate processes with their own module instances,
+ * so nothing is shared with the measurement except the module on disk, and the
+ * baseline cannot be inflated by anything the run under test did.
+ */
+function expectLeavesNoTimerArmed(
+  body: readonly string[],
+  withoutTimeout: readonly string[],
+): void {
+  const control = (): number => runInChild(withoutTimeout.join("\n")).elapsedMs;
+  const controlBefore = control();
+  const child = spawnInChild(withDrainProbe(body));
+  const startupMs = Math.max(controlBefore, control());
+
+  expect(child.stdout).toContain("done");
+  expect(child.exitCode).toBe(0);
+  // First, because it is the one that cannot be argued with: the loop drained
+  // immediately, so nothing was left armed, whatever the machine charged for it.
+  expect(drainMs(child.stdout)).toBeLessThan(DRAIN_SLACK_MS);
+  // Then the whole-process comparison, as a second net under the first.
+  const marginMs = child.elapsedMs - startupMs;
+  expect(marginMs).toBeLessThan(STARTUP_SLACK_MS);
 }
 
 describe("a query that answers inside the deadline", () => {
@@ -229,33 +381,25 @@ describe("nothing is left holding the process open", () => {
   test("a query that answers leaves no timer behind", () => {
     // No timeout argument, so the armed deadline is the full ten seconds. Left
     // uncleared on this path, it would keep the event loop alive for all of it.
-    const child = runInChild(
-      ['await withDbTimeout(Promise.resolve(1), "user.findUnique");', 'console.log("done");'].join(
-        "\n",
-      ),
+    expectLeavesNoTimerArmed(
+      ['await withDbTimeout(Promise.resolve(1), "user.findUnique");', 'console.log("done");'],
+      ['await Promise.resolve(1);', 'console.log("done");'],
     );
-
-    expect(child.stdout).toContain("done");
-    expect(child.exitCode).toBe(0);
-    // Start-up plus a resolved promise is a few hundred milliseconds; the
-    // deadline is 10_000. Anything near the latter is the timer still armed.
-    expect(child.elapsedMs).toBeLessThan(4_000);
-  });
+  }, TIMER_LEAK_TEST_TIMEOUT_MS);
 
   test("a query that fails leaves no timer behind either", () => {
     // The same open handle on the failure path, where the deadline never fires
-    // and so is still live when the caller's error propagates.
-    const child = runInChild(
+    // and so is still live when the caller's error propagates. Its control keeps
+    // the rejection and the `.catch` and drops only the wrapper, so the two
+    // children differ by the deadline and by nothing else.
+    expectLeavesNoTimerArmed(
       [
         'await withDbTimeout(Promise.reject(new Error("boom")), "user.findUnique").catch(() => {});',
         'console.log("done");',
-      ].join("\n"),
+      ],
+      ['await Promise.reject(new Error("boom")).catch(() => {});', 'console.log("done");'],
     );
-
-    expect(child.stdout).toContain("done");
-    expect(child.exitCode).toBe(0);
-    expect(child.elapsedMs).toBeLessThan(4_000);
-  });
+  }, TIMER_LEAK_TEST_TIMEOUT_MS);
 });
 
 describe("the deadline a caller can pass", () => {

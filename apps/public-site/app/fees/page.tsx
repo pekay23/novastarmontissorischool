@@ -1,8 +1,29 @@
-import { Banknote, Landmark, Smartphone, type LucideIcon } from 'lucide-react'
+import { Banknote, Check, Landmark, Smartphone, type LucideIcon } from 'lucide-react'
+
+import { cn } from '@novastar/shared-ui'
+
+import { CARD_PAD, Card, HeroBand, SectionHeading, SectionShell } from '@/components/marketing'
 import { getFeeSchedule, type FeeScheduleGroup } from '@/lib/data'
 import { generateFeesMetadata } from '@/lib/metadata'
 
 export const metadata = generateFeesMetadata()
+
+/*
+ * The rules of payment, from the school's policy document. Paraphrased into a
+ * scannable list, because the paragraph they come from is a single run of five
+ * sentences and a parent looking for "can I pay this in cash" is not going to
+ * find it in the fourth clause.
+ *
+ * Two sentences are deliberately NOT paraphrased — the bank, and the staff
+ * prohibition — because they are the two that cost a parent money and both are
+ * below the list, set in terracotta. Everything that is paraphrased here is
+ * process; those two are the policy's teeth.
+ */
+const POLICY_RULES = [
+  'Fees are due promptly at the beginning of each session.',
+  'If you need a special arrangement, come to the school and discuss it with the administrator or proprietress.',
+  'A child whose fees are still unsettled after written notice has been given will not be allowed to stay in school.',
+]
 
 /*
  * Amounts come from the database. This page previously carried hardcoded prices
@@ -19,75 +40,147 @@ export default async function FeesPage() {
 
   return (
     <div className="min-h-screen">
-      <section className="bg-gradient-to-b from-primary/10 to-transparent py-16 md:py-20">
-        <div className="container">
-          <h1 className="text-responsive-h1 font-heading text-primary mb-4">Fee Structure</h1>
-          <p className="text-lg text-muted-foreground max-w-2xl">
-            Transparent, competitive fees offering excellent value for quality education.
-          </p>
-        </div>
-      </section>
+      {/* Hero. The band wash is `--color-tint-warm` rather than the maroon-tinted
+          `from-primary/10` every inner page carried before; `HeroBand` also owns
+          the header clearance, which was re-stated per page. */}
+      <HeroBand>
+        <h1 className="type-display max-w-[18ch]">Fee Structure</h1>
+        <p className="mt-6 max-w-[60ch] text-lg leading-relaxed text-muted-foreground">
+          Transparent, competitive fees offering excellent value for quality education.
+        </p>
+      </HeroBand>
 
-      <section className="section-y">
-        <div className="container">
-          {schedule.length === 0 ? (
-            <div className="mx-auto max-w-2xl rounded-xl border border-border bg-surface p-10 text-center">
-              <h2 className="mb-2 font-heading text-xl font-semibold text-primary">
-                Fee schedule not published yet
-              </h2>
-              <p className="text-muted-foreground">
-                Current fees, due dates and payment terms are shared directly by the
-                school office. Call or visit us and we will walk you through the
-                schedule for your child&rsquo;s class.
-              </p>
+      <SectionShell tone="canvas">
+        {schedule.length === 0 ? (
+          <Card className={cn(CARD_PAD, 'mx-auto max-w-2xl text-center')}>
+            <h2 className="type-title text-primary">Fee schedule not published yet</h2>
+            <p className="mt-2.5 text-muted-foreground">
+              Current fees, due dates and payment terms are shared directly by the
+              school office. Call or WhatsApp and we will send this term's schedule.
+            </p>
+            <div className="mt-5 flex flex-col gap-3 sm:flex-row">
+              <a
+                href="https://wa.me/233244935251"
+                className={cn(
+                  'inline-flex items-center justify-center gap-2 rounded-md',
+                  'h-11 px-5 text-sm font-medium',
+                  'bg-accent-warm text-accent-warm-dark',
+                  'hover:bg-accent-warm/90 focus:outline-2 focus:outline-offset-2',
+                  'focus:outline-accent-warm',
+                )}
+              >
+                WhatsApp us
+              </a>
+              <a
+                href="tel:+233244935251"
+                className={cn(
+                  'inline-flex items-center justify-center gap-2 rounded-md',
+                  'h-11 px-5 text-sm font-medium',
+                  'border border-border bg-transparent',
+                  'hover:bg-muted focus:outline-2 focus:outline-offset-2',
+                  'focus:outline-border',
+                )}
+              >
+                Call the office
+              </a>
             </div>
-          ) : (
-            <div className="space-y-8">
-              {schedule.map((group) => (
-                <FeeCategoryCard key={group.levelId} group={group} />
-              ))}
-            </div>
-          )}
-        </div>
-      </section>
-
-      <section className="section-y bg-muted/30">
-        <div className="container">
-          <h2 className="text-responsive-h2 font-heading text-primary text-center mb-4">
-            Payment Methods
-          </h2>
-          <p className="text-center text-muted-foreground mb-8 max-w-2xl mx-auto">
-            We accept multiple payment methods for your convenience.
-          </p>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-3xl mx-auto">
-            <PaymentMethodCard
-              title="MTN Mobile Money"
-              description="Pay using MTN MoMo app or USSD *170#"
-              icon={Smartphone}
-            />
-            <PaymentMethodCard
-              title="Bank Transfer"
-              description="Transfer to our school bank account"
-              icon={Landmark}
-            />
-            <PaymentMethodCard
-              title="Cash at School"
-              description="Pay in cash at our school office during operating hours"
-              icon={Banknote}
-            />
+          </Card>
+        ) : (
+          <div className="space-y-8">
+            {schedule.map((group) => (
+              <FeeCategoryCard key={group.levelId} group={group} />
+            ))}
           </div>
+        )}
+      </SectionShell>
+
+      {/*
+        Payment policy, from the school's own policy document.
+
+        Placed between the schedule and the methods rather than after them,
+        because it qualifies both: it says when fees fall due and it says where
+        the money goes, so it belongs after the figure and before the channel.
+
+        The two prohibitions are the reason this is a block and not a paragraph.
+        "Paid directly at the bank" and "never to a teacher" are the two ways a
+        parent loses money, and both fail quietly — money handed over in cash to
+        a member of staff is unrecoverable and unprovable. They are therefore set
+        as a labelled list in terracotta (`--color-accent-warm-dark`, 7.11:1 on
+        the canvas) rather than in body grey, which is the register this site
+        reserves for "pop". No fee amount appears here; see the note at the top
+        of this file.
+      */}
+      <SectionShell tone="canvas">
+        <Card className={cn(CARD_PAD, 'mx-auto max-w-3xl')}>
+          <h2 className="type-title text-primary">Payment Policy</h2>
+          <ul className="mt-5 flex flex-col gap-4 text-[0.9375rem] leading-relaxed text-muted-foreground">
+            {POLICY_RULES.map((rule) => (
+              <li key={rule} className="flex gap-3">
+                <Check className="mt-1 h-5 w-5 shrink-0 text-primary" aria-hidden="true" />
+                <span>{rule}</span>
+              </li>
+            ))}
+          </ul>
+          <div className="mt-6 border-t border-border pt-5 text-[0.9375rem] leading-relaxed text-muted-foreground">
+            <p className="text-accent-warm-dark">
+              Pay fees directly at the bank. Never pay a teacher or any other
+              unauthorised member of staff.
+            </p>
+            <p className="mt-2.5">
+              The school will not take responsibility for any inconvenience that
+              arises if this policy is not followed.
+            </p>
+          </div>
+        </Card>
+      </SectionShell>
+
+      <SectionShell tone="band">
+        {/*
+          OUTSTANDING — owner decision, not fixed here.
+
+          These three cards predate the policy document and two of them sit in
+          tension with it. "Pay in cash at our school office during operating
+          hours" describes handing money to a person at the school, while the
+          policy above says fees "are to be paid directly at the bank" and that
+          no payment goes to "any teacher or unauthorized staff". Whether a cash
+          payment received at the office counts as the school's own account
+          depends on a rule the documents do not state, and inventing one here
+          would put a made-up payment rule on the page about money — the exact
+          failure the empty state above exists to avoid. So the cards are left
+          as they are and the tension is reported rather than resolved.
+        */}
+        <SectionHeading
+          align="center"
+          title="Payment Methods"
+          lede="We accept multiple payment methods for your convenience."
+        />
+        <div className="mx-auto mt-12 grid max-w-3xl grid-cols-1 gap-6 md:grid-cols-3">
+          <PaymentMethodCard
+            title="MTN Mobile Money"
+            description="Pay using MTN MoMo app or USSD *170#"
+            icon={Smartphone}
+          />
+          <PaymentMethodCard
+            title="Bank Transfer"
+            description="Transfer to our school bank account"
+            icon={Landmark}
+          />
+          <PaymentMethodCard
+            title="Cash at School"
+            description="Pay in cash at our school office during operating hours"
+            icon={Banknote}
+          />
         </div>
-      </section>
+      </SectionShell>
     </div>
   )
 }
 
 function FeeCategoryCard({ group }: { group: FeeScheduleGroup }) {
   return (
-    <div className="border border-border rounded-lg p-6">
-      <div className="mb-4">
-        <h2 className="text-2xl font-heading font-semibold text-primary">{group.title}</h2>
+    <Card className={cn(CARD_PAD, 'flex flex-col gap-4')}>
+      <div>
+        <h2 className="type-title text-primary">{group.title}</h2>
         <p className="text-sm text-muted-foreground">{group.subtitle}</p>
       </div>
       {/*
@@ -97,7 +190,14 @@ function FeeCategoryCard({ group }: { group: FeeScheduleGroup }) {
       <table className="w-full text-sm">
         <caption className="sr-only">Fees for {group.title}</caption>
         <thead>
-          <tr className="border-b">
+          {/*
+            `border-border` is stated, where this used to be a bare `border-b`.
+            Tailwind v4 does not load `tailwind.config.mts` (it is dead code —
+            see the note at the top of that file), so there is no default border
+            colour and a bare `border-b` resolves to `currentColor`: a full-strength
+            ink rule under the header row instead of a hairline.
+          */}
+          <tr className="border-b border-border">
             <th scope="col" className="text-left py-2">
               Item
             </th>
@@ -120,7 +220,7 @@ function FeeCategoryCard({ group }: { group: FeeScheduleGroup }) {
           ))}
         </tbody>
       </table>
-    </div>
+    </Card>
   )
 }
 
@@ -134,10 +234,10 @@ function PaymentMethodCard({
   icon: LucideIcon
 }) {
   return (
-    <div className="text-center rounded-lg border border-border bg-card p-6 shadow-sm">
-      <Icon className="mx-auto mb-3 h-8 w-8 text-primary" aria-hidden="true" />
-      <h3 className="mb-2 font-semibold text-primary">{title}</h3>
-      <p className="text-sm text-muted-foreground">{description}</p>
-    </div>
+    <Card className={cn(CARD_PAD, 'flex flex-col items-center text-center')}>
+      <Icon className="mb-3 h-8 w-8 text-primary" aria-hidden="true" />
+      <h3 className="type-title text-primary">{title}</h3>
+      <p className="mt-2.5 text-sm leading-relaxed text-muted-foreground">{description}</p>
+    </Card>
   )
 }

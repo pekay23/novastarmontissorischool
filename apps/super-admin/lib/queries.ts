@@ -1,10 +1,12 @@
 import { createHash } from 'node:crypto'
 import type { Prisma } from '@novastar/database'
+import { TenantSuspendedError } from '@/lib/errors'
 import { prisma } from '@/lib/prisma'
 import type {
   AuditEntrySummary,
   Paged,
   PaginationQuery,
+  PlatformAuditPage,
   SchoolSummary,
   TenantDetail,
   TenantSummary,
@@ -40,10 +42,61 @@ import type {
  * change is already committed, and a failure in the log leaves a real change with
  * no record of who made it. Login events are the one exception, and they are
  * documented where they are written.
+ *
+ * SUSPENSION IS A GATE, NOT A LABEL
+ * ---------------------------------
+ * `Tenant.isActive` is checked by every function below that touches one tenant,
+ * with three deliberate exceptions, each marked where it is declared: `readTenant`
+ * and `getTenantById`, which are the resolution primitive; `setTenantActive`, which
+ * is the off switch itself; and the two fleet-wide reads, which exist to show
+ * suspended tenants so that one can be found and reactivated. The first draft of
+ * this module treated the flag as something to display, which left `PATCH
+ * {"isActive": false}` — the request `DELETE /api/tenants/:id` refuses with and
+ * points operators at as the tenant's off switch — writing a column that nothing
+ * read.
+ *
+ * `auditAcrossPlatform` is not one of the exceptions, and the distinction is worth
+ * spelling out because it is the only fleet-wide read that touches tenant data at
+ * all. The roster and the health totals exist to *surface* suspension, so they read
+ * across it and must keep doing so. The audit trail exists to describe activity, so
+ * a suspended tenant's entries are withheld from it — and the withheld count is
+ * returned in `meta` rather than dropped, because a trail that shrinks silently is
+ * worse than one that admits it is incomplete.
+ *
+ * `assertTenantIsActive` is the shared form for callers that have not already read
+ * the row. It throws rather than filtering: a suspended tenant reached by
+ * `where: { tenantId, tenant: { isActive: true } }` would answer with an empty
+ * page, and an operator cannot tell an empty page from a school with no users in
+ * it. The refusal has to be a refusal.
+ *
+ * A row that is absent is not a suspension — it is a tenant that does not exist,
+ * which every caller has already resolved to a 404 by the time it gets here, and
+ * the `findMany` calls that follow are scoped to that id and return nothing.
  */
 
 /** Either the pooled client or a transaction. Reads and writes accept both. */
 type Db = Prisma.TransactionClient | typeof prisma
+
+/**
+ * Throws `TenantSuspendedError` unless `tenantId` names an active tenant.
+ *
+ * The refusal carries the tenant id and nothing else, so a client can name the
+ * tenant it asked about without learning anything about any other.
+ *
+ * On a row that does not exist this returns rather than throwing, because a
+ * nonexistent tenant is a 404 that the caller has already produced and this
+ * function has no opinion about; the reads that follow are scoped to that id and
+ * return nothing.
+ */
+export async function assertTenantIsActive(tenantId: string): Promise<void> {
+  const row = await prisma.tenant.findFirst({
+    // `id: tenantId` is the tenant predicate: `Tenant.id` is the primary key and is
+    // unique across the fleet, so this names exactly one tenant and cannot widen.
+    where: { id: tenantId },
+    select: { isActive: true },
+  })
+  if (row && !row.isActive) throw new TenantSuspendedError(tenantId)
+}
 
 // ---------------------------------------------------------------------------
 // Projections
@@ -251,30 +304,112 @@ export async function countAppliedMigrations(): Promise<number | null> {
 /**
  * The audit trail across every tenant, for the platform audit page.
  *
- * CROSS-TENANT: the platform audit page exists to show what happened anywhere,
- * which is the one view a per-tenant filter would defeat. `auditForTenant` is the
- * scoped counterpart for a drill-down, and both share the same projection so the
- * two views cannot disagree about what a row contains.
+ * CROSS-TENANT: the platform audit page exists to show what happened anywhere, which
+ * is the one view a per-tenant filter would defeat. `auditForTenant` is the scoped
+ * counterpart for a drill-down, and both share the same projection so the two views
+ * cannot disagree about what a row contains.
+ *
+ * A SUSPENDED TENANT'S ROWS ARE EXCLUDED, AND THE EXCLUSION IS REPORTED
+ * ------------------------------------------------------------------
+ * `meta.excludedSuspendedEntries` counts what was withheld. Silent filtering was the
+ * shape that was rejected: an operator auditing a school that has been switched off
+ * would see an empty result and read it as "nothing happened", when the answer is "not
+ * readable while it is off". A row that is missing and a row that was never written
+ * have to look different here, or the trail is worse than useless during exactly the
+ * window somebody most wants to read it.
+ *
+ * Tagging the rows instead was rejected for a reason that is structural rather than
+ * stylistic: a tag has to live on the row, and the rows are gone. Inventing
+ * `suspended: true` on rows this function does not return is a contradiction, and
+ * returning the rows with a tag is the owner's other option, ruled out.
+ *
+ * WHY NOT MATCH `auditForTenant` AND REFUSE
+ * ----------------------------------------
+ * Because the request names no tenant, so there is nothing to refuse. `auditForTenant`
+ * can throw because the caller said "tenant X" and X is off; `auditAcrossPlatform` is
+ * asked "what happened anywhere", and the honest answer to that is every tenant that
+ * is on. Refusing here would mean one suspended school out of the whole fleet blinds an
+ * operator to every *other* school's history — a worse failure than the one this closes,
+ * and one an operator could cause deliberately. The two functions are therefore
+ * inconsistent in mechanism and consistent in principle: neither presents a suspended
+ * tenant as an ordinary, complete answer — one refuses, the other withholds and says so.
+ *
+ * WHY `notIn` RATHER THAN AN ALLOWLIST OF ACTIVE TENANTS
+ * -----------------------------------------------------
+ * `AuditLog.tenantId` is a plain `String` with no relation to `Tenant` (only `userId`
+ * and `operatorId` are relations), so `tenant: { isActive: true }` is not expressible
+ * — and an allowlist spelled by hand would be wrong besides. The table legitimately
+ * holds rows whose `tenantId` is a sentinel rather than a tenant: `'platform'` for the
+ * console's own sign-ins, sign-outs and refusals (`lib/audit.ts`), and `'system'` for
+ * a portal row whose tenant could not be resolved (`apps/portal/lib/audit/logger.ts`).
+ * "Only active tenants" would silently delete the operator's own sign-in trail from the
+ * one view that is supposed to be the whole story. `notIn` subtracts exactly the
+ * switched-off tenants' ids and leaves every sentinel, and every `tenantId` that
+ * resolves to no tenant at all, where it was.
+ *
+ * CONSEQUENCE, ACCEPTED RATHER THAN PAPERED OVER: a tenant's own `TENANT_SUSPEND` and
+ * `TENANT_REACTIVATE` entries are withheld for as long as it is off, so suspending a
+ * school also removes the suspension from this page. That is the coherent reading —
+ * the trail for a switched-off tenant is withheld while it is off and complete again
+ * once it is on — and the count above is what tells the operator it happened.
  */
-export async function auditAcrossPlatform(page: PaginationQuery): Promise<Paged<AuditEntrySummary>> {
-  const [rows, total] = await Promise.all([
+export async function auditAcrossPlatform(page: PaginationQuery): Promise<PlatformAuditPage> {
+  // CROSS-TENANT: the set of switched-off tenants is a fact about the whole fleet, so
+  // it is read across it. This is the only reason the function is not one statement.
+  const suspended = await prisma.tenant.findMany({
+    where: { isActive: false },
+    select: { id: true },
+  })
+  const suspendedIds = suspended.map((row) => row.id)
+
+  // `undefined` rather than `{ tenantId: { notIn: [] } }` when nothing is suspended:
+  // an empty `notIn` is left to the engine's own handling of an empty list rather
+  // than relied upon, so the no-suspension case is decided here where it is legible.
+  const where = suspendedIds.length > 0 ? { tenantId: { notIn: suspendedIds } } : undefined
+
+  const [rows, visibleTotal, allTotal] = await Promise.all([
+    // CROSS-TENANT: the platform trail. The `where` above is not a tenant scope — a
+    // request here named no tenant — but the exclusion it carries is what keeps a
+    // suspended tenant's rows out of this page, which is the whole point of the read.
     prisma.auditLog.findMany({
+      where,
       select: AUDIT_SELECT,
       orderBy: { createdAt: 'desc' },
       take: page.take,
       skip: page.skip,
     }),
-    // CROSS-TENANT: the fleet-wide total that goes with the fleet-wide page.
+    // CROSS-TENANT: as above, for the count that pages the result.
+    prisma.auditLog.count({ where }),
+    // CROSS-TENANT: the unfiltered total, so the withheld count is arithmetic on the
+    // two counts above rather than a third independent read that could disagree with
+    // either of them.
     prisma.auditLog.count({}),
   ])
-  return pageOf(rows.map(toAuditEntry), total, page)
+
+  const paged = pageOf(rows.map(toAuditEntry), visibleTotal, page)
+  return {
+    ...paged,
+    meta: { ...paged.meta, excludedSuspendedEntries: allTotal - visibleTotal },
+  }
 }
 
 // ---------------------------------------------------------------------------
 // Tenant-scoped reads
 // ---------------------------------------------------------------------------
 
-/** One tenant by its own id, on whichever handle the caller is holding. */
+/**
+ * One tenant by its own id, on whichever handle the caller is holding.
+ *
+ * No `isActive` in the `where`, and deliberately so: this is the resolution
+ * primitive, and the two callers that must reach a suspended tenant cannot both
+ * do it through a gated read. `requireTenantScope` needs the row in order to
+ * *report* that it is suspended, and `setTenantActive` needs it in order to return
+ * the reactivated tenant in the response that proves the suspension lifted.
+ * Filtering here would turn both into a 404 on a tenant that plainly exists.
+ *
+ * The suspension decision therefore lives one layer up — in `requireTenantScope`
+ * for the drill-down routes and in the write paths below for everything else.
+ */
 async function readTenant(db: Db, tenantId: string): Promise<TenantDetail | null> {
   // `id: tenantId` is the tenant predicate: `Tenant.id` is the primary key and is
   // unique across the fleet, so this names exactly one tenant and cannot widen.
@@ -289,8 +424,15 @@ export async function getTenantById(tenantId: string): Promise<TenantDetail | nu
   return readTenant(prisma, tenantId)
 }
 
-/** A tenant's schools. Scoped on `tenantId`, which is a non-null column. */
+/**
+ * A tenant's schools. Scoped on `tenantId`, which is a non-null column.
+ *
+ * Refuses a suspended tenant rather than answering with an empty list, for the
+ * reason in the module header: the read must be a refusal or it is indistinguishable
+ * from a school with no schools in it.
+ */
 export async function listSchoolsForTenant(tenantId: string): Promise<SchoolSummary[]> {
+  await assertTenantIsActive(tenantId)
   const rows = await prisma.school.findMany({
     where: { tenantId },
     select: SCHOOL_SELECT,
@@ -311,8 +453,17 @@ export async function listSchoolsForTenant(tenantId: string): Promise<SchoolSumm
   }))
 }
 
-/** A tenant's user directory. Scoped on `tenantId`. */
+/**
+ * A tenant's user directory. Scoped on `tenantId`.
+ *
+ * A suspended tenant's staff directory refuses, rather than listing. This is the
+ * read that matters most of the three: the projection already keeps every
+ * credential column out of it, but a directory of names, addresses, roles and last
+ * sign-ins for a school that has been switched off is not something an operator
+ * needs in order to decide whether to switch it back on.
+ */
 export async function listUsersForTenant(tenantId: string): Promise<TenantUserSummary[]> {
+  await assertTenantIsActive(tenantId)
   const rows = await prisma.user.findMany({
     where: { tenantId },
     select: TENANT_USER_SELECT,
@@ -343,11 +494,18 @@ export async function listUsersForTenant(tenantId: string): Promise<TenantUserSu
  * The alternative, reading the school by id alone and comparing afterwards, is a
  * cross-tenant read that happens to be checked one line later, which is one refactor
  * away from being a cross-tenant *write*.
+ *
+ * It also refuses a suspended tenant, and that is load-bearing rather than
+ * decorative: this is the only caller-visible path into `inviteTenantUser`, so it is
+ * the suspension gate on the console's only credential-minting route. The check runs
+ * before the school row is read, so a suspended tenant cannot be probed for which
+ * school ids it holds.
  */
 export async function getSchoolInTenant(
   tenantId: string,
   schoolId: string,
 ): Promise<{ id: string; tenantId: string; name: string } | null> {
+  await assertTenantIsActive(tenantId)
   const row = await prisma.school.findFirst({
     where: { id: schoolId, tenantId },
     select: { id: true, tenantId: true, name: true },
@@ -355,11 +513,24 @@ export async function getSchoolInTenant(
   return row
 }
 
-/** One tenant's audit trail. Scoped on `tenantId`. */
+/**
+ * One tenant's audit trail. Scoped on `tenantId`.
+ *
+ * Refuses a suspended tenant rather than returning an empty page, for the reason in
+ * the module header: the caller named this tenant, so an empty page would be a lie
+ * about a tenant that plainly exists. What must not happen is that it reads as a normal
+ * drill-down — an operator working inside a school that has been switched off sees
+ * nothing, and cannot tell "switched off" from "no history".
+ *
+ * This is deliberately the opposite mechanism to `auditAcrossPlatform`, which has no
+ * named tenant to refuse and therefore withholds and counts instead. That function
+ * documents why, and what would go wrong if it did the same thing here.
+ */
 export async function auditForTenant(
   tenantId: string,
   page: PaginationQuery,
 ): Promise<Paged<AuditEntrySummary>> {
+  await assertTenantIsActive(tenantId)
   const [rows, total] = await Promise.all([
     prisma.auditLog.findMany({
       where: { tenantId },
@@ -701,6 +872,13 @@ export interface TenantMutationContext {
  * entry as `changes.from`. Reading them after the write would file "name changed
  * from Foo to Foo" for every request, and an audit log that cannot reconstruct
  * the prior state is not an audit log.
+ *
+ * `isActive` rides along on that same read because the suspension check needs it
+ * and a second query would not: the flag has to be judged inside the transaction
+ * that is about to write, or a tenant suspended by a concurrent request could be
+ * renamed after it. The refusal is thrown rather than returned as `null` so a
+ * suspended tenant is a 403 and a nonexistent one stays the 404 the caller has
+ * always answered with.
  */
 export async function updateTenantFields(
   tenantId: string,
@@ -714,6 +892,7 @@ export async function updateTenantFields(
       select: { name: true, domain: true, isActive: true },
     })
     if (!before) return null
+    if (!before.isActive) throw new TenantSuspendedError(tenantId)
 
     // Scoped on the tenant's own primary key.
     await tx.tenant.update({ where: { id: tenantId }, data })
@@ -749,6 +928,12 @@ export async function updateTenantFields(
  * Flips `isActive` and nothing else. Suspension is never a delete: `tools/tenant-cli`
  * makes the same promise about its own `suspend`, and a control plane whose "off
  * switch" destroys a school's academic year is not an off switch.
+ *
+ * The one function in this module that does NOT check `isActive`, and the reason
+ * is the whole point of the flag: this is how a suspended tenant comes back. A gate
+ * here would make `PATCH {"isActive": true}` a 403 and the console's documented
+ * recovery path a dead end. Every other write in this module refuses against a
+ * suspended tenant precisely so that this one remains the only way through.
  */
 export async function setTenantActive(
   tenantId: string,
@@ -794,6 +979,12 @@ export async function setTenantActive(
  * The whole document is read inside the transaction and merged, so a stale tab
  * cannot erase a key it never knew about by submitting a document it fetched
  * before someone else's change.
+ *
+ * Refuses a suspended tenant, on the same transaction-local read and for the same
+ * reason as `updateTenantFields`: a settings document is configuration a school is
+ * running on, and the console's promise that suspension is the off switch is only
+ * true if nothing can reconfigure the school behind it. `isActive` is selected on
+ * the read the merge already performs rather than fetched again.
  */
 export async function writeTenantSetting(
   tenantId: string,
@@ -805,9 +996,10 @@ export async function writeTenantSetting(
     // Scoped on the tenant's own primary key.
     const current = await tx.tenant.findFirst({
       where: { id: tenantId },
-      select: { settings: true },
+      select: { settings: true, isActive: true },
     })
     if (!current) return null
+    if (!current.isActive) throw new TenantSuspendedError(tenantId)
 
     const before = (current.settings ?? {}) as Record<string, unknown>
     const next = setDotPath({ ...before }, path, value)

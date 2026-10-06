@@ -150,10 +150,19 @@ export const authOptions: NextAuthOptions = {
             // with the school name blank while a password session did not.
             school: { select: { name: true } },
             role: { select: { name: true } },
+            tenant: { select: { isActive: true } },
           },
         })
 
         if (dbUser) {
+          // Invalidate session if tenant was suspended
+          if (dbUser.tenant?.isActive === false) {
+            token.id = ''
+            token.role = ''
+            token.status = ''
+            return token
+          }
+
           // Invalidate session if password was changed after token issued
           if (
             dbUser.passwordChangedAt &&
@@ -255,7 +264,7 @@ export const authOptions: NextAuthOptions = {
         if (credentials?.token && credentials.token.startsWith('pk_')) {
           const user = await prisma.user.findUnique({
             where: { passkeyBridgeToken: credentials.token },
-            include: { role: { select: { name: true } }, school: { select: { name: true } } },
+            include: { role: { select: { name: true } }, school: { select: { name: true } }, tenant: { select: { isActive: true } } },
           })
 
           if (!user) {
@@ -265,6 +274,10 @@ export const authOptions: NextAuthOptions = {
           const tokenExpires = user.passkeyBridgeExpires
           if (tokenExpires && tokenExpires < new Date()) {
             throw new Error('Verification link has expired')
+          }
+
+          if (user.tenant?.isActive === false) {
+            throw new Error('Tenant has been suspended')
           }
 
           // Check account status
@@ -321,7 +334,7 @@ export const authOptions: NextAuthOptions = {
 
           const user = await prisma.user.findUnique({
             where: { verifyToken: hashEmailToken(credentials.token) },
-            include: { role: { select: { name: true } }, school: { select: { name: true } } },
+            include: { role: { select: { name: true } }, school: { select: { name: true } }, tenant: { select: { isActive: true } } },
           })
 
           if (!user) {
@@ -331,6 +344,10 @@ export const authOptions: NextAuthOptions = {
           const tokenExpires = user.verifyTokenExpires
           if (tokenExpires && tokenExpires < new Date()) {
             throw new Error('Verification link has expired')
+          }
+
+          if (user.tenant?.isActive === false) {
+            throw new Error('Tenant has been suspended')
           }
 
           if (user.status === 'SUSPENDED') {
@@ -424,10 +441,14 @@ export const authOptions: NextAuthOptions = {
             ],
             schoolId: school.id,
           },
-          include: { role: { select: { name: true } }, school: { select: { name: true } } },
+          include: { role: { select: { name: true } }, school: { select: { name: true } }, tenant: { select: { isActive: true } } },
         })
 
         if (!user?.passwordHash) return null
+
+        if (user.tenant?.isActive === false) {
+          throw new Error('Tenant has been suspended')
+        }
 
         // Check account lockout
         //

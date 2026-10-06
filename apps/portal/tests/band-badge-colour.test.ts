@@ -10,7 +10,7 @@ import {
   ENTITY_CONFIG_MAP,
   GradingLevelCreateSchema,
 } from '@novastar/shared-types'
-import { BandBadge } from '@/app/(portal)/reports/[studentId]/page'
+import { BandBadge } from '@/components/reports/band-badge'
 
 /**
  * What a report card says when it cannot show a band, and the one colour value
@@ -38,6 +38,14 @@ const band = (
   label: string,
   color = '#047857',
 ): GradeBand => ({ key, minScore, maxScore, label, color, order: 0, description: null })
+
+/** One badge in one specific colour, as the report renders it. */
+const renderBadgeWithColor = (color: string): string =>
+  renderToStaticMarkup(
+    createElement(BandBadge, {
+      band: { key: 'level_6', label: 'Level 6', color, minScore: 85, maxScore: 100 },
+    }),
+  )
 
 /** What the card renders for one subject of one subject's summary. */
 const renderFor = (percentage: number, bands: readonly GradeBand[], scaleName: string | null) => {
@@ -96,6 +104,34 @@ describe('the report card states which of the six "no band" states it is in', ()
     // The badge is the school's own colour, and its text contrast comes from that
     // colour rather than from the size of the score.
     expect(html).toContain('background-color:#047857')
+    // And the TEXT is on the badge too, in the colour that colour demands. This is
+    // the assertion the whole `contrastTextColor` block used to miss: it only ever
+    // checked the helper's return value, so replacing the `color:` with a constant
+    // `#ffffff` left every test green — while the accepted light band `#fde047`
+    // would have rendered white on yellow at about 1.1:1, an unreadable grade label.
+    expect(html).toContain('color:#ffffff')
+  })
+
+  it('decides the rendered text colour from the band colour, in the DOM', () => {
+    // Every band colour the schemas accept, checked where it is actually rendered
+    // rather than in the helper. `toContain` on the serialised `style` is the only
+    // place the rendered foreground exists.
+    const cases: ReadonlyArray<[string, '#0f172a' | '#ffffff']> = [
+      ['#fde047', '#0f172a'],
+      ['#ffffff', '#0f172a'],
+      ['#000000', '#ffffff'],
+      ['#047857', '#ffffff'],
+      ['#1d4ed8', '#ffffff'],
+      ['#ca8a04', '#0f172a'],
+    ]
+    for (const [color, expectedText] of cases) {
+      const html = renderBadgeWithColor(color)
+      expect(html).toContain(`background-color:${color}`)
+      expect(html).toContain(`color:${expectedText}`)
+      // The two colours are distinct values, so the assertion cannot pass on the
+      // background alone, and the fallback is not one of them.
+      expect(contrastTextColor(color)).toBe(expectedText)
+    }
   })
 
   it('never prints a bare dash for a state it can name', () => {
@@ -177,15 +213,41 @@ describe('the report card states which of the six "no band" states it is in', ()
         scaleName: 'Ghana Primary GES 6-level',
       }),
     )
-    expect(textOf(withoutScale)).toBe('No grading scale')
-    expect(textOf(emptiedScale)).toBe('No grading scale')
+    expect(textOf(withoutScale)).toContain('No grading scale')
+    expect(textOf(emptiedScale)).toContain('No grading scale')
     expect(emptiedScale).toContain('has no bands')
     expect(withoutScale).not.toContain('has no bands')
     expect(withoutScale).toContain('No grading scale applies to this class')
+    // Both explanations are text a person reads, not a tooltip they have to find.
+    expect(textOf(emptiedScale)).toContain('has no bands')
+    expect(textOf(withoutScale)).toContain('No grading scale applies to this class')
     // And the difference is visible: an emptied scale is a fault, a school that has
     // not built one yet is not.
     expect(emptiedScale).toContain('border-destructive')
     expect(withoutScale).not.toContain('border-destructive')
+  })
+
+  it('quotes the ranges to fix as visible text, not only as a hover title', () => {
+    const gap = renderFor(
+      62,
+      FULL_SCALE.map((b) => (b.key === 'level_4' ? { ...b, minScore: 66 } : b)),
+      'Mistyped',
+    )
+    expect(gap.html).toContain('60-65%')
+    // The child's own percentage is named too, so the fault is not read as being
+    // about somebody else on the card.
+    expect(gap.html).toContain('62.0%')
+    // Strip every attribute — the whole of a `title`, `class` and `style` — and the
+    // range is still there, because it is the element's content. A tooltip-only
+    // explanation is empty here, and unreachable by keyboard, by screen reader and
+    // on the printed card.
+    const attributesGone = gap.html.replace(/\s[a-zA-Z-]+="[^"]*"/g, '')
+    expect(attributesGone).toContain('60-65% falls between level_3 and level_4')
+    expect(attributesGone).toContain('62.0% is not inside any band')
+
+    const emptied = renderFor(68, [band('level_6', 85, 100, 'Level 6')], 'Ghana Primary GES')
+    expect(emptied.html).toContain('no band covers 0-84%')
+    expect(emptied.html.replace(/\s[a-zA-Z-]+="[^"]*"/g, '')).toContain('no band covers 0-84%')
   })
 
   it('quotes the ranges to fix, so the fault is actionable and not just labelled', () => {

@@ -18,8 +18,14 @@ import {
 import { getEffectivePermissions } from '@novastar/auth'
 import { PLATFORM_ROLE_NAMES } from '@novastar/shared-types'
 import { CreateUserForm } from '@/components/create-user-form'
-import { operatorCan, requireCapabilityPage, requireTenantScope } from '@/lib/admin-context'
+import {
+  operatorCan,
+  requireCapabilityPage,
+  requireExistingTenant,
+} from '@/lib/admin-context'
+import { hasOperatorCapability } from '@/lib/permissions'
 import { listSchoolsForTenant, listUsersForTenant } from '@/lib/queries'
+import { TenantSuspendedNotice } from '@/components/tenant-suspended-notice'
 import type { TenantUserSummary } from '@/types/admin'
 
 /**
@@ -35,6 +41,15 @@ import type { TenantUserSummary } from '@/types/admin'
  *
  * `tenant:user:read` opens the page; `tenant:user:create` is what the form needs, and
  * the two are separate so the form's absence does not also hide the directory.
+ *
+ * A suspended tenant renders `TenantSuspendedNotice` instead, before
+ * `listUsersForTenant` runs: a suspended school's staff directory — names, addresses,
+ * roles and last sign-ins — is not readable as a normal drill-down, and the create
+ * form behind it would be a second way in. Both queries refuse a suspended tenant as
+ * well; this branch is what turns that refusal into an answer. It is not a convention:
+ * `requireExistingTenant` returns a union whose suspended arm carries only `identity`
+ * (id and code), so neither `resolved.tenant` nor the `tenant.id` the reads below
+ * need is in scope until the suspended arm has been answered.
  */
 export const dynamic = 'force-dynamic'
 
@@ -52,7 +67,19 @@ export default async function TenantUsersPage({
   const context = await requireCapabilityPage('tenant:user:read')
   const { tenantId } = await params
   const { userId } = await searchParams
-  const tenant = await requireTenantScope(tenantId)
+  const resolved = await requireExistingTenant(tenantId)
+
+  if (resolved.status === 'suspended') {
+    return (
+      <TenantSuspendedNotice
+        tenantId={resolved.identity.id}
+        tenantCode={resolved.identity.code}
+        canUpdate={hasOperatorCapability(context.operator.capabilities, 'tenant:update')}
+      />
+    )
+  }
+
+  const { tenant } = resolved
   const users = await listUsersForTenant(tenant.id)
 
   // The form needs two lists the directory does not carry: the schools an account can

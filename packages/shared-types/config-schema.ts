@@ -359,7 +359,7 @@ export const DEFAULT_ENTITY_REGISTRY = [
     icon: 'shield',
     color: '#0369a1',
     fields: RoleFields.map(f => EntityFieldSchema.parse(f)),
-    allowAdd: true,
+    allowAdd: false,
     allowEdit: true,
     allowDelete: false, // system roles protected
     hasPermissions: true,

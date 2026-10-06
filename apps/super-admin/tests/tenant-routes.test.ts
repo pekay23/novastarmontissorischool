@@ -118,6 +118,10 @@ describe('GET /api/tenants — the roster', () => {
     const response = await GET_TENANTS()
 
     expect(response.status).toBe(403)
+    // The refusal names the missing grant, and nothing beyond it.
+    expect(String((await readJson(response)).error)).toBe(
+      'This operator holds no platform capability.',
+    )
     expect(mocks.tenantFindMany).toHaveBeenCalledTimes(0)
   })
 
@@ -130,6 +134,9 @@ describe('GET /api/tenants — the roster', () => {
     const response = await GET_TENANTS()
 
     expect(response.status).toBe(403)
+    // The named capability is the whole message: it tells the operator what to ask
+    // for and discloses nothing about the fleet.
+    expect(String((await readJson(response)).error)).toBe('This operator cannot tenant:read.')
     expect(mocks.tenantFindMany).toHaveBeenCalledTimes(0)
   })
 
@@ -261,6 +268,59 @@ describe('PATCH /api/tenants/:tenantId — the URL addresses the tenant', () => 
     // tenant-b while the operator believed they had suspended tenant-a.
     expect(mocks.tenantUpdate).toHaveBeenCalledTimes(0)
     expect(mocks.auditCreate).toHaveBeenCalledTimes(0)
+    // And the body names both sides of the conflict. "409, no details" leaves an
+    // operator unable to tell which of two tenants the request was actually about.
+    const body = await readJson(response)
+    expect(body.details).toEqual({ urlTenantId: 'tenant-a', bodyTenantId: 'tenant-b' })
+    expect(String(body.error)).toContain('URL segment')
+  })
+
+  it('should patch the mutable fields on the URL tenant and nowhere else', async () => {
+    // The other arm of the same route, and the one nothing else here reaches: every
+    // other PATCH test in this file sends `isActive` or a refused `code`, so
+    // `updateTenantFields` — and its `where` — was reached by no test at all.
+    signIn()
+    mocks.tenantFindFirst.mockImplementation(async (args) =>
+      args.select?.settings !== undefined
+        ? { ...TENANT_ROW, settings: {} }
+        : { name: 'Before', domain: null, isActive: true },
+    )
+
+    const response = await TENANT_ROUTE.PATCH(
+      request('/api/tenants/tenant-a', {
+        method: 'PATCH',
+        body: { name: '  Novastar Montessori School  ', domain: 'https://novastar.test' },
+      }),
+      { params: Promise.resolve({ tenantId: 'tenant-a' }) },
+    )
+
+    expect(response.status).toBe(200)
+    // The write's `where`, compared whole. A substring or key-presence check passes
+    // for `{ id: { not: 'tenant-a' } }` — a write to every tenant except the URL's.
+    expect(mocks.tenantUpdate.mock.calls[0][0].where).toEqual({ id: 'tenant-a' })
+    expect(mocks.tenantUpdate).toHaveBeenCalledTimes(1)
+    // Trimmed, and `code` still absent: the mutable projection, not a spread.
+    expect(mocks.tenantUpdate.mock.calls[0][0].data).toEqual({
+      name: 'Novastar Montessori School',
+      domain: 'https://novastar.test',
+    })
+    // The previous values are read on the tenant the URL named, so the entry can
+    // say what moved from rather than filing "changed from X to X".
+    expect(mocks.tenantFindFirst.mock.calls[0][0].where).toEqual({ id: 'tenant-a' })
+    const entry = mocks.auditCreate.mock.calls[0][0].data as Record<string, unknown>
+    expect(entry.action).toBe('TENANT_UPDATE')
+    expect(entry.tenantId).toBe('tenant-a')
+    expect(entry.entityId).toBe('tenant-a')
+    expect(entry.newData).toEqual({
+      from: { name: 'Before', domain: null },
+      to: { name: 'Novastar Montessori School', domain: 'https://novastar.test' },
+    })
+    // And the response reports which fields changed, so a client cannot mistake a
+    // partial patch for a whole one.
+    expect((await readJson(response)).changed).toEqual({
+      name: 'Novastar Montessori School',
+      domain: 'https://novastar.test',
+    })
   })
 
   it('should suspend the URL tenant and record the change in one transaction', async () => {
@@ -302,6 +362,9 @@ describe('PATCH /api/tenants/:tenantId — the URL addresses the tenant', () => 
     )
 
     expect(response.status).toBe(404)
+    // The body names the id that missed. A bare 404 would not distinguish "no such
+    // tenant" from a route that 404s for anything at all.
+    expect(String((await readJson(response)).error)).toContain('tenant-ghost')
     expect(mocks.tenantUpdate).toHaveBeenCalledTimes(0)
   })
 
@@ -335,7 +398,7 @@ describe('PATCH /api/tenants/:tenantId — the URL addresses the tenant', () => 
 })
 
 describe('PATCH /api/tenants/:tenantId/settings — dot-paths, not documents', () => {
-  it('should refuse a prototype-polluting key', async () => {
+  it('should refuse a prototype-polluting key, and name the key it refused', async () => {
     signIn()
 
     const response = await SETTINGS_ROUTE.PATCH(
@@ -347,10 +410,20 @@ describe('PATCH /api/tenants/:tenantId/settings — dot-paths, not documents', (
     )
 
     expect(response.status).toBe(400)
+    // The rejected key is echoed back. A bare 400 leaves an operator who sent
+    // `__proto__.isActive` with nothing to fix and every reason to retry it — and it
+    // leaves a reader unable to tell this refusal from a missing `value`.
+    const body = await readJson(response)
+    expect(String(body.error)).toContain('__proto__.isActive')
+    expect(String(body.error)).toContain('not a writable setting path')
+    // Nothing was written, and the tenant was never looked up: the body checks run
+    // before the database, so the refusal cannot be used to discover whether this
+    // tenant id exists.
     expect(mocks.tenantUpdate).toHaveBeenCalledTimes(0)
+    expect(mocks.tenantFindFirst).toHaveBeenCalledTimes(0)
   })
 
-  it('should refuse a body that names a different tenant', async () => {
+  it('should refuse a body that names a different tenant, naming both', async () => {
     signIn()
     mocks.tenantFindFirst.mockImplementation(async () => ({ ...TENANT_ROW, settings: {} }))
 
@@ -364,15 +437,22 @@ describe('PATCH /api/tenants/:tenantId/settings — dot-paths, not documents', (
 
     expect(response.status).toBe(409)
     expect(mocks.tenantUpdate).toHaveBeenCalledTimes(0)
+    // The pair, so the operator can see which two tenants the request disagreed
+    // about rather than being told only that it was refused.
+    expect((await readJson(response)).details).toEqual({
+      urlTenantId: 'tenant-a',
+      bodyTenantId: 'tenant-b',
+    })
   })
 
   it('should merge one key into the stored document, scoped to the URL tenant', async () => {
     signIn()
     mocks.tenantFindFirst.mockImplementation(async (args) => {
-      // `requireTenantScope` reads the whole detail row; the merge reads only
-      // `settings`. Dispatching on the select keeps the two apart.
+      // `requireTenantScope` reads the whole detail row; the merge reads `settings`
+      // and `isActive`, because `writeTenantSetting` refuses a suspended tenant on
+      // the same read it merges on. Dispatching on the select keeps the two apart.
       if (args.select?.name !== undefined) return { ...TENANT_ROW, settings: {} }
-      return { settings: { currency: 'GHS', timezone: 'Africa/Accra' } }
+      return { settings: { currency: 'GHS', timezone: 'Africa/Accra' }, isActive: true }
     })
 
     const response = await SETTINGS_ROUTE.PATCH(
@@ -395,6 +475,48 @@ describe('PATCH /api/tenants/:tenantId/settings — dot-paths, not documents', (
 })
 
 describe('the fleet-wide routes are gated too', () => {
+  it('should refuse a tenant-scoped operator on the cross-tenant audit route', async () => {
+    // The behavioural half of `rbac.test.ts`'s wildcard table, on the route where
+    // getting it wrong actually leaks. A tenant-scoped grant — including a
+    // `tenant:*` wildcard on the row, which `narrowCapabilities` drops because
+    // `tenant:*` is not in the vocabulary — covers everything inside a tenant and
+    // nothing across them. If a `tenant:*` grant satisfied `platform:audit`, one
+    // tenant-scoped grant would read every tenant's audit rows.
+    givenLiveOperator(
+      fakeOperator({ id: OPERATOR.id, capabilities: ['tenant:*', 'tenant:read'] }),
+    )
+    setCookies({ [ADMIN_SESSION_COOKIE]: createSessionToken(operatorClaims(OPERATOR)) })
+
+    const response = await AUDIT_ROUTE.GET(request('/api/audit'))
+
+    expect(response.status).toBe(403)
+    // The named capability, and nothing about the fleet.
+    expect(String((await readJson(response)).error)).toBe(
+      'This operator cannot platform:audit.',
+    )
+    // Not one row of the fleet's trail.
+    expect(mocks.auditFindMany).toHaveBeenCalledTimes(0)
+    expect(mocks.auditCount).toHaveBeenCalledTimes(0)
+  })
+
+  it('should refuse a wildcard-only grant outright, because the vocabulary drops it', async () => {
+    // Worth stating rather than leaving implied: a row carrying nothing but
+    // `tenant:*` is narrowed to an empty grant set and refused at the gate, so the
+    // wildcard path in `permissionMatches` is unreachable for stored operator
+    // capabilities. That is fail-closed and correct; it is asserted because the
+    // refusal message is the *other* one and a reader should know which to expect.
+    givenLiveOperator(fakeOperator({ id: OPERATOR.id, capabilities: ['tenant:*'] }))
+    setCookies({ [ADMIN_SESSION_COOKIE]: createSessionToken(operatorClaims(OPERATOR)) })
+
+    const response = await AUDIT_ROUTE.GET(request('/api/audit'))
+
+    expect(response.status).toBe(403)
+    expect(String((await readJson(response)).error)).toBe(
+      'This operator holds no platform capability.',
+    )
+    expect(mocks.auditFindMany).toHaveBeenCalledTimes(0)
+  })
+
   it('should answer 401 for the audit route without a session', async () => {
     const response = await AUDIT_ROUTE.GET(request('/api/audit'))
 

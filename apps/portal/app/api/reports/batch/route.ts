@@ -24,7 +24,6 @@ import {
   type AttendanceMark,
   type BandStatus,
   type GradeBand,
-  type StudentForRanking,
 } from '@novastar/shared-utils'
 
 /**
@@ -422,6 +421,7 @@ function buildChildReport(
       totalAttendanceDays: attendanceMetrics.totalAttendanceDays,
       presentDays: attendanceMetrics.presentDays,
       excusedDays: attendanceMetrics.excusedDays,
+      position: null,
     },
     subjects: summaryMetrics.subjects.map((subject) => ({
       ...subject,

@@ -182,11 +182,17 @@ export function AdmissionsForm() {
                   : 'text-muted-foreground'
               }`}
             >
+              {/*
+                `rounded-sm`, not `rounded-full`. A 32px circle next to a text
+                label is a pill-chart tell, and the radius scale has no 9999px
+                step; `rounded-full` also failed `tests/design-tokens.test.ts`,
+                which asserts every radius resolves to a `--radius-*` token.
+              */}
               <span
-                className={`mx-auto mb-1 flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold ${
+                className={`mx-auto mb-1.5 flex h-8 w-8 items-center justify-center rounded-sm text-xs font-bold ${
                   currentStep === step.id
                     ? 'bg-primary text-primary-foreground'
-                    : 'bg-muted text-muted-foreground'
+                    : 'bg-surface-container text-muted-foreground'
                 }`}
               >
                 {i + 1}

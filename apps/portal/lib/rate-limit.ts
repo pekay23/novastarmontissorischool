@@ -172,6 +172,10 @@ export function rateLimitByUser(userId: string, limit: number = 30, windowMs: nu
   return inMemoryRateLimit(`user:${userId}`, limit, windowMs)
 }
 
+export async function rateLimitByUserAsync(userId: string, limit: number = 30, windowMs: number = 60000) {
+  return rateLimitAsync(`user:${userId}`, limit, windowMs)
+}
+
 export async function rateLimitByIPAsync(ip: string, limit: number = 20, windowMs: number = 60000) {
   return rateLimitAsync(`ip:${ip}`, limit, windowMs)
 }

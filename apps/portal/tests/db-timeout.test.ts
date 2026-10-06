@@ -271,16 +271,16 @@ describe('db-timeout - the timer does not outlive the call', () => {
     }
   })
 
-  it('should not keep the default deadline armed after a query that answered', async () => {
-    // End-to-end statement of the same thing, without any instrumentation: if
-    // the default's 10s handle were still pending, this process could not exit
-    // for ten seconds after the suite finished. The suite completing promptly
-    // is the observation.
-    await withDbTimeout(Promise.resolve('ok'), 'user.findUnique')
-    const started = Date.now()
-    await tick(20)
-    expect(Date.now() - started).toBeLessThan(DB_QUERY_TIMEOUT_MS)
-  })
+  // There used to be a fourth test here, "should not keep the default deadline
+  // armed after a query that answered", which awaited the query and then asserted
+  // the wall clock had advanced less than DB_QUERY_TIMEOUT_MS. It was removed
+  // because it could not fail for the reason it claimed: a leaked 10s handle is
+  // invisible to a 20ms tick, and the test passed unchanged against an
+  // implementation with the `finally { clearTimeout }` deleted outright. The two
+  // tests above are the real proof — they instrument `setTimeout` and assert the
+  // handle was cleared, which is what "not still armed" actually means. An
+  // end-to-end variant can only observe process exit, which this test process
+  // does not control.
 })
 
 describe('db-timeout - the default is a bound, not a comment', () => {

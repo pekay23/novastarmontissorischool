@@ -17,12 +17,26 @@ export const SCHOOL_INFO = {
    * Single source of truth for opening hours. Pages must not restate these —
    * a parent calling at the wrong hour because two sections disagreed is a
    * worse failure than the duplication that caused it.
+   *
+   * Corrected from the owner's own documents, which state the school "opens at
+   * 7.00am" and "closes at 4.00pm". Every figure the list used to carry was
+   * wrong: 7:30 AM–5:30 PM was two hours late at both ends, and 9:00 AM–1:00 PM
+   * on Saturday had no source at all.
+   *
+   * The Saturday row is deleted. `rg -in 'saturday' apps/public-site` reported
+   * exactly one hit before the edit — this line — so nothing in the site, the
+   * documents, the database or the seed data ever asserted it, and
+   * `GENERAL INFORMATION.docx` describes the school as running "daily (Monday
+   * – Friday)".
+   *
+   * The Sunday "Closed" row goes with it, and that is the less obvious half. A
+   * two-row list reading "Monday – Friday … · Sunday: Closed" omits exactly one
+   * weekday, so it publishes "closed on Sunday" and therefore, by implication,
+   * "open on Saturday" — reintroducing the unsourced claim in the only place it
+   * would now do harm, silently, as an inference rather than as a figure anyone
+   * can check. One row states the documented schedule and nothing else.
    */
-  hours: [
-    { days: 'Monday – Friday', time: '7:30 AM – 5:30 PM' },
-    { days: 'Saturday', time: '9:00 AM – 1:00 PM' },
-    { days: 'Sunday', time: 'Closed' },
-  ],
+  hours: [{ days: 'Monday – Friday', time: '7:00 AM – 4:00 PM' }],
   /** Google Maps keyless embed. `output=embed` needs no API key. */
   mapEmbedUrl:
     'https://www.google.com/maps?q=Ayeduase+New+Site%2C+K-5+Junction%2C+Ayeduase+Road%2C+Kumasi%2C+Ashanti+Region%2C+Ghana&output=embed',
@@ -175,7 +189,16 @@ export function generateContactMetadata(): Metadata {
   return {
     ...baseMetadata,
     title: 'Contact Us — Visit or Get in Touch',
-    description: 'Contact Novastar Montessori School. Phone, WhatsApp, email, and address. Schedule a visit Monday–Friday, 7:30am–5:30pm.',
+    /*
+     * The hours come out of `SCHOOL_INFO.hours` rather than being typed here.
+     * This string used to end "Schedule a visit Monday–Friday, 7:30am–5:30pm",
+     * a hand-written restatement of the very list the comment above `hours`
+     * forbids — so correcting `hours` would have left the search description
+     * advertising the old, wrong hours while the page showed the new ones.
+     * Deriving the clause makes that drift impossible: `hours` has one entry
+     * (see its comment for why Saturday and Sunday are not listed).
+     */
+    description: `Contact Novastar Montessori School. Phone, WhatsApp, email, and address. Schedule a visit ${SCHOOL_INFO.hours[0].days}, ${SCHOOL_INFO.hours[0].time.toLowerCase()}.`,
     /* Trailing slash matches `trailingSlash: true` in next.config.ts. */
     alternates: { canonical: `${SCHOOL_INFO.website}/contact/` },
     openGraph: { ...baseMetadata.openGraph, url: `${SCHOOL_INFO.website}/contact/` },

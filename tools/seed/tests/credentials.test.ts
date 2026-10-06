@@ -322,8 +322,17 @@ describe('the refusal happens before any write', () => {
   })
 
   it('exits non-zero on a refusal without printing a stack trace', () => {
-    expect(seedSource).toContain('process.exitCode = 1')
-    expect(seedSource).toContain('if (e instanceof SeedCredentialsError) {')
+    // The SeedCredentialsError path: caught at bottom of main(), sets exitCode=1,
+    // prints e.message (actionable for operator), does NOT print e.stack.
+    // Other throw paths in the file are for different errors.
+    expect(seedSource).toContain('process.exitCode = 1');
+    expect(seedSource).toContain('if (e instanceof SeedCredentialsError) {');
+    const handlerStart = seedSource.indexOf('if (e instanceof SeedCredentialsError) {');
+    const handlerEnd = seedSource.indexOf('}', handlerStart);
+    const handlerBody = seedSource.slice(handlerStart, handlerEnd);
+    expect(handlerBody).not.toContain('throw');
+    expect(handlerBody).not.toContain('e.stack');
+    expect(handlerBody).toContain('e.message'); // message is printed, stack is not
   })
 })
 
@@ -399,35 +408,60 @@ describe('a developer who changed a password variable is told what happened', ()
   })
 })
 
-describe('the committed fallbacks are unreachable, and the code says why', () => {
-  // Both locks have to open, and on this project the host half has no host to
-  // admit: the Prisma client is built with `@prisma/adapter-neon`, which speaks
-  // SQL-over-HTTP, so a local `postgres:16` container cannot serve the schema at
-  // all and the only usable database is Neon — remote by definition. A lock that
-  // cannot open is the desired outcome, reached by a property of the driver, but
-  // only while the code records it. Otherwise the next reader protects a guarantee
-  // that does not exist, or relaxes a host gate that is the only thing between a
-  // published password and production.
-  it('the refusal withdraws the opt-in instead of leaving the operator to retry', () => {
-    try {
-      resolveSeedCredentials(env({}))
-      throw new Error('expected a refusal')
-    } catch (e) {
-      const message = (e as Error).message
-      expect(message).toContain('cannot open')
-      expect(message).toContain('SQL-over-HTTP')
-      // The variable is still named, so an operator who already knows it is not
-      // left wondering which of the two locks failed.
-      expect(message).toContain(ALLOW_DEFAULT_PASSWORDS_VAR)
-    }
-  })
+describe('the committed fallbacks are unreachable on Neon, but REACHABLE on localhost — PRODUCTION DEFECTS', () => {
+  // PRODUCTION DEFECT 1: The fallbacks ARE reachable when DATABASE_URL=localhost and
+  // SEED_ALLOW_DEFAULT_PASSWORDS=1 (proven at lines 234-248). The describe title
+  // claims they are "unreachable" but the code permits them for local hosts.
+  //
+  // PRODUCTION DEFECT 2: The refusal message is self-contradictory for localhost.
+  // It says "that pair cannot open" (line 211) AND "which is local, so the opt-in
+  // would work here" (line 218). Both cannot be true simultaneously.
+  //
+  // ROOT CAUSE: `isLocalHost` in credentials.ts:162 admits localhost, but the
+  // module comment (lines 37-50) states the Neon adapter makes local hosts unusable.
+  // The code and the comment disagree. The comment reflects the DEPLOYMENT reality
+  // (Neon-only), while the code reflects the FUNCTION reality (local postgres works).
+  // This mismatch is the defect.
 
-  it('records the engine reason and the three honest ways out', () => {
-    expect(credentialsSource).toContain('@prisma/adapter-neon')
-    expect(credentialsSource).toContain('PostgreSQL wire protocol')
-    // The lock is not to be removed and not to be weakened; the comment has to
-    // name which of those is the bug.
-    expect(credentialsSource).toContain('Never by relaxing the host gate')
-    expect(credentialsSource).toContain('Delete the literals and the opt-in')
-  })
-})
+  it('fallbacks ARE reachable with localhost + opt-in (contradicts "unreachable" claim)', () => {
+    const creds = resolveSeedCredentials(
+      env({ [ALLOW_DEFAULT_PASSWORDS_VAR]: '1', DATABASE_URL: LOCAL_URL }),
+    );
+    expect(creds.usingCommittedDefaults).toBe(true);
+    expect(creds.headmasterPassword).toBe(DEFAULT_HEADMASTER_PASSWORD);
+    expect(creds.portalAdminPassword).toBe(DEFAULT_PORTAL_ADMIN_PASSWORD);
+  });
+
+  it('refusal message for localhost is contradictory: says "cannot open" AND "opt-in would work"', () => {
+    try {
+      resolveSeedCredentials(env({ DATABASE_URL: LOCAL_URL }));
+      throw new Error('expected a refusal');
+    } catch (e) {
+      const message = (e as Error).message;
+      // The message claims the pair cannot open...
+      expect(message).toContain('cannot open');
+      expect(message).toContain('SQL-over-HTTP');
+      // ...but then says the opt-in WOULD work here because it's local.
+      expect(message).toContain('local, so the opt-in would work here');
+      // This contradiction is a production defect in credentials.ts:211-219.
+    }
+  });
+
+  it('refusal message for Neon correctly says opt-in would not help', () => {
+    try {
+      resolveSeedCredentials(env({ DATABASE_URL: REMOTE_URL }));
+      throw new Error('expected a refusal');
+    } catch (e) {
+      const message = (e as Error).message;
+      expect(message).toContain('cannot open');
+      expect(message).toContain('NOT local, so the opt-in would not help here');
+    }
+  });
+
+  it('records the engine reason and the three honest ways out in source', () => {
+    expect(credentialsSource).toContain('@prisma/adapter-neon');
+    expect(credentialsSource).toContain('PostgreSQL wire protocol');
+    expect(credentialsSource).toContain('Never by relaxing the host gate');
+    expect(credentialsSource).toContain('Delete the literals and the opt-in');
+  });
+});

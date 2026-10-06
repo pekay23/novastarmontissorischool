@@ -72,6 +72,8 @@ export {
   SubjectSchema,
   GradingLevelSchema,
   GradingLevelCreateSchema,
+  GradingLevelPositionSetSchema,
+  JsonDateSchema,
   GradingScaleSchema,
   SyllabusSchema,
   AssessmentTypeConfigSchema,
@@ -290,5 +292,17 @@ export const UserRoleEnum = z.enum([
 export type UserRole = z.infer<typeof UserRoleEnum>
 
 // Re-export entity API config (consolidated entity model map, schemas, and sets)
-export type { EntityApiConfig } from './entity-api-config'
-export { ENTITY_CONFIG_MAP, TENANT_ONLY_ENTITY_TYPES, SOFT_DELETE_ENTITY_TYPES } from './entity-api-config'
+export type {
+  EntityApiConfig,
+  EntityParentRef,
+  SiblingWriteContext,
+  SiblingWriteRule,
+  CrossRowWriteRuleKind,
+  SiblingWriteRuleKind,
+} from './entity-api-config'
+export {
+  ENTITY_CONFIG_MAP,
+  EntityConfigMapSchema,
+  TENANT_ONLY_ENTITY_TYPES,
+  SOFT_DELETE_ENTITY_TYPES,
+} from './entity-api-config'

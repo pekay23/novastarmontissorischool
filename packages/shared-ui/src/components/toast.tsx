@@ -60,14 +60,29 @@ const ToastHeader = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDi
 )
 ToastHeader.displayName = 'ToastHeader'
 
+/*
+ * Not the rendered path. Every application in this monorepo raises toasts
+ * through `PortalToastProvider` (exported as `ToastProvider`), which renders
+ * `Toaster`/`ToastItem` in `use-toast.tsx`; `git grep -n ToastViewport` finds
+ * no renderer outside the package barrel. The live region that actually
+ * announces a toast lives on the `Toaster` container there, with
+ * `role="alert"` added per destructive toast — so do not move or "fix" the
+ * announcement semantics here.
+ *
+ * The attributes below are still correct for this component on its own terms: a
+ * viewport is a container that holds transient notifications, so it is a live
+ * region by design. It is kept, and kept exported, because it is part of the
+ * published surface of this package; removing one export of this module would
+ * be a breaking change to every sibling primitive left beside it, all of which
+ * are equally unrendered today.
+ */
 const ToastViewport = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
   ({ className, ...props }, ref) => (
     <div
       ref={ref}
-      // The live region. Without it a toast appears silently for anyone who
-      // cannot see it, which is most of the failure feedback on this app.
       role="status"
       aria-live="polite"
+      aria-atomic="false"
       className={cn('fixed top-0 z-1000 flex flex-col gap-2 p-4', className)}
       {...props}
     />

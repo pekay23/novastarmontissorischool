@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions, ExtendedUser } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { withDbTimeout } from '@novastar/database'
-import { UnauthorizedError } from '@/lib/tenant'
+import { UnauthorizedError, TenantSuspendedError } from '@/lib/tenant'
 import { parsePlatformRole } from '@/lib/constants/platform-roles'
 
 /**
@@ -47,6 +47,11 @@ export const getCachedSessionAndTenant = cache(async () => {
   // `toErrorResponse` never runs, so the outage is recorded nowhere, which is
   // the one thing the error log exists to prevent.
   //
+  // The query now joins `Tenant` to enforce suspension: Prisma 7 collapses the
+  // to-one relation into the same SQL statement (relationJoins is GA and enabled
+  // by default), so there is no second round-trip. The cost is one extra column
+  // in the row returned, not a second query.
+  //
   // A `DbTimeoutError` is deliberately NOT translated into an
   // `UnauthorizedError`. The caller is authenticated and the session is valid;
   // the database is what is unavailable, and reporting that as a 401 would both
@@ -62,6 +67,7 @@ export const getCachedSessionAndTenant = cache(async () => {
         schoolId: true,
         role: { select: { name: true } },
         status: true,
+        tenant: { select: { isActive: true } },
       },
     }),
     'user.findUnique'
@@ -69,6 +75,10 @@ export const getCachedSessionAndTenant = cache(async () => {
 
   if (!dbUser) {
     throw new UnauthorizedError()
+  }
+
+  if (dbUser.tenant?.isActive === false) {
+    throw new TenantSuspendedError()
   }
 
   // Check account status

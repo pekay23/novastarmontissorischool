@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import type { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { getTenantContext } from '@/lib/tenant'
 import { hasPermission } from '@novastar/auth'
@@ -6,15 +7,15 @@ import { resolveVisibility, visibilityDeniesAll } from '@/lib/visibility'
 import { z } from 'zod'
 import { logError } from '@/lib/logger'
 
+/**
+ * Reads and writes `Announcement`, the internal staff-notice table. It is not
+ * `News`: `apps/public-site/lib/data.ts` renders `News` at build time on
+ * nothing but `status: 'PUBLISHED'`, so a PATCH that set `PUBLISHED` on a `News`
+ * row put a staff notice on the public homepage. See `../route.ts`.
+ */
 const UpdateAnnouncementSchema = z.object({
   title: z.string().min(1).optional(),
-  slug: z.string().min(1).optional(),
-  bodyEn: z.string().min(1).optional(),
-  bodyTw: z.string().nullable().optional(),
-  excerptEn: z.string().nullable().optional(),
-  excerptTw: z.string().nullable().optional(),
-  category: z.string().nullable().optional(),
-  featuredImage: z.string().nullable().optional(),
+  body: z.string().min(1).optional(),
   audience: z.array(z.string()).optional(),
   status: z.enum(['DRAFT', 'PUBLISHED', 'ARCHIVED']).optional(),
   publishedAt: z.string().nullable().optional(),
@@ -40,8 +41,16 @@ export async function GET(
     }
 
     const { id } = await params
-    const announcement = await prisma.news.findFirst({
-      where: { id, schoolId, tenantId },
+    // The same audience rule as the list route, in the query rather than after
+    // it. A notice addressed to other roles must be indistinguishable from one
+    // that does not exist, so this narrows to a 404 and never a 403 -- a 403
+    // would confirm the id is real, which is itself a disclosure.
+    const audienceFilter: Prisma.AnnouncementWhereInput = ctx.role
+      ? { OR: [{ audience: { isEmpty: true } }, { audience: { has: ctx.role } }] }
+      : { OR: [{ audience: { isEmpty: true } }] }
+
+    const announcement = await prisma.announcement.findFirst({
+      where: { id, schoolId, tenantId, ...audienceFilter },
       include: { author: { select: { name: true } } },
     })
     if (!announcement) return NextResponse.json({ error: 'Announcement not found' }, { status: 404 })
@@ -78,19 +87,13 @@ export async function PATCH(
       return NextResponse.json({ error: 'Invalid input', details: parseResult.error.issues }, { status: 400 })
     }
 
-    const existing = await prisma.news.findFirst({ where: { id, schoolId, tenantId } })
+    const existing = await prisma.announcement.findFirst({ where: { id, schoolId, tenantId } })
     if (!existing) return NextResponse.json({ error: 'Announcement not found' }, { status: 404 })
 
     const data = parseResult.data
     const updateData: Record<string, unknown> = {}
     if (data.title !== undefined) updateData.title = data.title
-    if (data.slug !== undefined) updateData.slug = data.slug
-    if (data.bodyEn !== undefined) updateData.bodyEn = data.bodyEn
-    if (data.bodyTw !== undefined) updateData.bodyTw = data.bodyTw
-    if (data.excerptEn !== undefined) updateData.excerptEn = data.excerptEn
-    if (data.excerptTw !== undefined) updateData.excerptTw = data.excerptTw
-    if (data.category !== undefined) updateData.category = data.category
-    if (data.featuredImage !== undefined) updateData.featuredImage = data.featuredImage
+    if (data.body !== undefined) updateData.body = data.body
     if (data.audience !== undefined) updateData.audience = data.audience
     if (data.status !== undefined) {
       updateData.status = data.status
@@ -100,7 +103,7 @@ export async function PATCH(
     }
     if (data.publishedAt !== undefined) updateData.publishedAt = data.publishedAt ? new Date(data.publishedAt) : null
 
-    const updated = await prisma.news.update({
+    const updated = await prisma.announcement.update({
       where: { id, schoolId, tenantId },
       data: updateData,
     })
@@ -131,10 +134,10 @@ export async function DELETE(
     }
 
     const { id } = await params
-    const existing = await prisma.news.findFirst({ where: { id, schoolId, tenantId } })
+    const existing = await prisma.announcement.findFirst({ where: { id, schoolId, tenantId } })
     if (!existing) return NextResponse.json({ error: 'Announcement not found' }, { status: 404 })
 
-    await prisma.news.delete({ where: { id, schoolId, tenantId } })
+    await prisma.announcement.delete({ where: { id, schoolId, tenantId } })
     return NextResponse.json({ success: true })
   } catch (error) {
     if (error instanceof Error && error.name === 'UnauthorizedError') {

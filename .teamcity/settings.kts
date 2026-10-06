@@ -144,9 +144,20 @@ project {
     // VCS: <Unrecognized project>".
     //
     // This project's id (NovastarMontessori) and name are owned by the server, set
-    // when the project was created. That id is also the prefix every entity id in
-    // this file must carry, which is why the build configurations below are named
-    // NovastarMontessori_*. Do not reintroduce id()/name= here.
+    // when the project was created. Do not reintroduce id()/name= here.
+    //
+    // Entity ids in this file split into two kinds, and the difference is load
+    // bearing. A build type's id("...") is its INTERNAL id, which is scoped to
+    // this project, so it is written bare: id("Install"). Its resulting EXTERNAL
+    // id is the project id joined to that, NovastarMontessori_Install. Anything
+    // that takes a fully qualified id therefore spells the prefix out, including
+    // the finishBuildTrigger { buildType = "..." } strings below and the VCS root
+    // at AbsoluteId("NovastarMontessori_nmsGit"). TeamCity resolves the trigger
+    // strings as external ids, so those two spellings are the SAME build type.
+    //
+    // Do not "fix" that asymmetry by adding the project prefix back inside id():
+    // that is the double-prefixed id f8b680d removed, and it renames every build
+    // type's external id out from under the trigger strings and the VCS root.
     description = "Local CI/CD for the Novastar Montessori monorepo (Turborepo + Bun + Next.js)"
 
     // No vcsRoots { } block here on purpose.

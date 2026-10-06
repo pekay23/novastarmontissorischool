@@ -33,14 +33,29 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { EntityType, DEFAULT_ENTITY_REGISTRY, EntityField } from '@novastar/shared-types'
+import { isLockedRecord, isUsableReason, MISSING_REASON_MESSAGE } from './amendment'
+import { AmendmentReasonField } from './amendment-reason-field'
 
-
+/**
+ * `onSubmit` is handed the field edits AND, for a locked row, the amendment
+ * reason under the reserved key — so the caller sends one body and the server
+ * mints one `groupId` for the whole edit. `amendmentReason` is a separate prop
+ * rather than something `EntityForm` owns, because `EntityList` composes the
+ * PATCH; see `amendment.ts` for the wire contract.
+ */
 interface EntityFormProps {
   entityType: EntityType
   initialData: Record<string, unknown> | null
   onSubmit: (data: Record<string, unknown>) => Promise<void>
   onClose: () => void
   readOnly?: boolean
+  /**
+   * The amendment reason, lifted to the caller. Defaults to `''` so a caller that
+   * does not amend still gets a body with no stray key: `withAmendmentReason`
+   * strips the reserved key entirely when the row is not locked.
+   */
+  amendmentReason?: string
+  onAmendmentReasonChange?: (reason: string) => void
 }
 
 function createSchema(fields: EntityField[]) {
@@ -119,6 +134,8 @@ export function EntityForm({
   onSubmit,
   onClose,
   readOnly = false,
+  amendmentReason = '',
+  onAmendmentReasonChange,
 }: EntityFormProps) {
   const registry = DEFAULT_ENTITY_REGISTRY.find(e => e.type === entityType)
   const schema = useMemo(
@@ -126,6 +143,11 @@ export function EntityForm({
     [registry]
   )
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState<string | null>(null)
+  // Read from the row the dialog was opened with, so the locked state cannot
+  // change under the form between opening it and submitting: the dialog holds
+  // `initialData`, not a live refetch.
+  const locked = isLockedRecord(initialData)
 
   const form = useForm({
     resolver: schema ? zodResolver(schema) : undefined,
@@ -136,6 +158,16 @@ export function EntityForm({
   const handleSubmit = async (data: Record<string, unknown>) => {
     if (!schema) return
 
+    // Refused here rather than sent, because the alternative is a save that
+    // reaches the server, is rejected there for a missing reason, and comes back
+    // as an opaque error after the user has already pressed Update. The check
+    // mirrors the database's `btrim(reason) <> ''`: whitespace is not a reason.
+    if (locked && !isUsableReason(amendmentReason)) {
+      setSubmitError(MISSING_REASON_MESSAGE)
+      return
+    }
+
+    setSubmitError(null)
     setIsSubmitting(true)
     try {
       await onSubmit(data)
@@ -185,6 +217,27 @@ export function EntityForm({
               })}
           </CardContent>
         </Card>
+
+        {/*
+          Inside the field card's sibling region rather than inside the field list:
+          the reason is not an entity field, so it must never be picked up by
+          `createSchema` — it is stripped from the payload by the route and stored
+          on `RecordAmendment`, not on the row.
+        */}
+        <AmendmentReasonField
+          recordId={typeof initialData?.id === 'string' ? initialData.id : null}
+          entityType={entityType}
+          recordName={registry.name}
+          initialData={initialData}
+          readOnly={readOnly}
+          onReasonChange={onAmendmentReasonChange ?? (() => {})}
+        />
+
+        {submitError && (
+          <p role="alert" className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            {submitError}
+          </p>
+        )}
 
         <div className="flex justify-end gap-3">
           <Button type="button" variant="outline" onClick={onClose} disabled={isSubmitting}>

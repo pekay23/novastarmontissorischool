@@ -113,12 +113,13 @@ const CREATE_WINDOW_MS = 60 * 60 * 1000
  * than no-ops, and each of those is asserted in the test suite.
  *
  * `hireDate` matches what `<input type="date">` emits, so the browser cannot
- * produce a value the column cannot store.
+ * produce a value the column cannot store, and is additionally refused when it is
+ * shaped like a date but is not one: `new Date('2026-02-31')` is the 3rd of March,
+ * so the pattern alone stored a date nobody entered.
  */
 const StaffAccountSchema = z
   .object({
     email: z.string().email().max(320),
-    /** A seeded role NAME from `PLATFORM_ROLE_NAMES`, resolved in this school. */
     roleName: z.string().min(1).max(64),
     employeeId: z.string().min(1).max(64),
     firstName: z.string().min(1).max(120),
@@ -126,8 +127,18 @@ const StaffAccountSchema = z
     otherNames: z.string().max(160).optional(),
     gender: z.enum(['MALE', 'FEMALE', 'OTHER']),
     phone: z.string().min(1).max(40),
-    hireDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use the YYYY-MM-DD a date field emits.'),
+    hireDate: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, 'Use the YYYY-MM-DD a date field emits.')
+      .refine(
+        (value) => {
+          const parsed = new Date(`${value}T00:00:00.000Z`)
+          return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value
+        },
+        'That date does not exist on the calendar.',
+      ),
     address: z.string().max(300).optional(),
+    childStudentId: z.string().optional(),
   })
   .strict()
 
@@ -238,8 +249,6 @@ export async function POST(req: Request) {
           data: {
             tenantId,
             schoolId,
-            // Never from the body: the only `userId` that can reach this write is
-            // the one just created in this same transaction.
             userId: invite.userId,
             employeeId: data.employeeId,
             firstName: data.firstName,
@@ -247,19 +256,54 @@ export async function POST(req: Request) {
             otherNames: data.otherNames || null,
             gender: data.gender,
             phone: data.phone,
-            // The normalised address `User.email` was written with, so the directory
-            // row and the account name the same person.
             email: invite.email,
             address: data.address || null,
             hireDate: new Date(data.hireDate),
           },
         })
 
-        // `Staff.roleId` is deliberately left null. It is a foreign key to
-        // `StaffRole` — a job title, e.g. "Year 1 Teacher" — not to the `Role` row
-        // this route resolves. Writing a `Role.id` here would be a type error the
-        // schema happens to hide behind two same-named string columns, so the two
-        // roles are left visibly separate.
+        let parentId: string | null = null
+        if (invite.roleName === 'PARENT') {
+          const existingParent = await tx.parent.findFirst({
+            where: { tenantId, schoolId, email: invite.email },
+          })
+          if (existingParent) {
+            if (!existingParent.userId) {
+              await tx.parent.update({
+                where: { id: existingParent.id },
+                data: { userId: invite.userId },
+              })
+            }
+            parentId = existingParent.id
+          } else {
+            const parent = await tx.parent.create({
+              data: {
+                tenantId,
+                schoolId,
+                userId: invite.userId,
+                firstName: data.firstName,
+                lastName: data.lastName,
+                phone: data.phone,
+                email: invite.email,
+                address: data.address || null,
+              },
+            })
+            parentId = parent.id
+          }
+
+          if (data.childStudentId) {
+            const student = await tx.student.findFirst({
+              where: { id: data.childStudentId, tenantId, schoolId },
+            })
+            if (!student) {
+              throw new Error('Student not found')
+            }
+            await tx.student.update({
+              where: { id: student.id },
+              data: { parentId },
+            })
+          }
+        }
 
         await createAuditLog(
           {

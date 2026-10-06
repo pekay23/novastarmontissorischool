@@ -276,19 +276,39 @@ describe("EYLF Early Years scale", () => {
 });
 
 describe("Cross-scale consistency", () => {
-  test("no two scales assign the same mark to bands with the same semantic meaning", () => {
-    // This is a sanity check: the 6-level and 5-level scales have different
-    // band meanings. We only assert that at boundary marks they disagree,
-    // which is expected and correct — they are different systems.
-    const boundaries = [39, 40, 49, 50, 59, 60, 69, 70, 79, 80, 84, 85];
+  test("no two scales place the same mark in bands spanning the same range", () => {
+    // The 6-level and 5-level systems cut the same percentage at different
+    // points, so no mark may land in a band from each system that spans the same
+    // range. Key names prove nothing — the 6-level scale's ranges can be written
+    // out again under any keys at all and it is still the same scale — so the
+    // comparison is on minScore/maxScore. Asserting only that the keys differ
+    // passed against exactly that rewrite.
+    //
+    // 0 and 39 are absent deliberately: 0-39 is the one band the two systems
+    // genuinely share ("Fail" and "Below Partial"), which is the subject of the
+    // next test rather than a boundary between them.
+    const boundaries = [40, 44, 45, 49, 50, 54, 55, 59, 60, 64, 65, 69, 70, 79, 80, 84, 85, 100];
     for (const mark of boundaries) {
-      const l6 = findLevel(NACCA_6_LEVEL, mark);
-      const l5 = findLevel(NACCA_5_LEVEL, mark);
-      expect(l6).toBeDefined();
-      expect(l5).toBeDefined();
-      // They should never have the same key (they use different naming)
-      expect(l6!.key).not.toBe(l5!.key);
+      const six = findLevel(NACCA_6_LEVEL, mark);
+      const five = findLevel(NACCA_5_LEVEL, mark);
+      expect(six).toBeDefined();
+      expect(five).toBeDefined();
+      expect([six!.minScore, six!.maxScore]).not.toEqual([five!.minScore, five!.maxScore]);
     }
+  });
+
+  test("no band of the 5-level scale is a renamed copy of a 6-level band", () => {
+    // The precise forbidden condition, stated over every band rather than at
+    // sampled marks: the 5-level scale may not reuse a 6-level range under a
+    // different key. The bottom band is the single legitimate exception — both
+    // systems call 0-39 a failure, and pinning it as the exception means adding
+    // a second shared range fails.
+    const sixRanges = new Set(NACCA_6_LEVEL.levels.map((level) => `${level.minScore}-${level.maxScore}`));
+    const shared = NACCA_5_LEVEL.levels
+      .filter((level) => sixRanges.has(`${level.minScore}-${level.maxScore}`))
+      .map((level) => `${level.minScore}-${level.maxScore}`);
+
+    expect(shared).toEqual(["0-39"]);
   });
 
   test("every scale defines color and description for each level", () => {

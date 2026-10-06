@@ -11,6 +11,11 @@ import { auditAcrossPlatform } from '@/lib/queries'
  * per-tenant filter would defeat it. `auditForTenant` is the scoped counterpart
  * for a drill-down.
  *
+ * Entries belonging to a suspended tenant are withheld, and the response says how
+ * many in `meta.excludedSuspendedEntries` — additive, so a client reading `data` or
+ * `meta.total` is unaffected. `lib/queries.ts` documents why this one withholds
+ * where `auditForTenant` refuses.
+ *
  * Both windows read the same `AUDIT_SELECT` projection, so the two views cannot
  * disagree about what a row contains — and neither carries `oldData` or
  * `newData`, which are unvalidated JSON written by many callers and are not

@@ -13,7 +13,8 @@ import {
   Download, Printer,
 } from 'lucide-react'
 import Link from 'next/link'
-import { contrastTextColor, type BandStatus } from '@novastar/shared-utils'
+import { type BandStatus } from '@novastar/shared-utils'
+import { BandBadge, type ReportBand } from '@/components/reports/band-badge'
 
 interface ReportStudent {
   id: string
@@ -22,22 +23,6 @@ interface ReportStudent {
   studentId: string | null
   class: string | null
   classLevel: string | null
-}
-
-/**
- * A band of the school's own grading scale, resolved from the percentage.
- *
- * Coloured by the band's own `color` and never by the size of the score: bands
- * are school-configured and the seeded JHS scale runs the other way (grade 9 is
- * the worst result), so magnitude-based colouring would mislabel half the school.
- */
-interface ReportBand {
-  key: string
-  label: string
-  color: string
-  minScore: number
-  maxScore: number
-  description?: string | null
 }
 
 /** One continuous-assessment component, as the school configured it. */
@@ -99,6 +84,22 @@ interface ReportAssessment {
   /** The band key recorded when the score was graded. Audit only — see `band`. */
   grade: string | null
   band: ReportBand | null
+  /**
+   * Which state THIS row's band is in, from this row's own percentage.
+   *
+   * Its own, and not its subject's: a subject's `bandStatus` describes one
+   * percentage that has already been weighted across every assessment of that
+   * subject, so it cannot answer "why has this test no band". A row also fails
+   * for reasons the subject as a whole never had — one test in a hole in the
+   * scale, or one test with no mark recorded, in a subject that graded fine.
+   */
+  bandStatus: BandStatus
+  /**
+   * The ranges or defects the scale is at fault for, when this row's own state
+   * says it is. Null when the row has no readable percentage: no scale is at
+   * fault for a mark that was never recorded, so there is nothing to quote.
+   */
+  bandProblem: string | null
   isGraded: boolean
   assessmentDate: string
   term: string | null
@@ -162,139 +163,6 @@ const formatDays = (days: number): string =>
   Number.isInteger(days) ? String(days) : days.toFixed(1)
 
 /**
- * What the card says in place of a band, per `bandStatus`.
- *
- * Every state gets its own words, because a single "-" said "no mark recorded" for
- * six different reasons and four of them are faults in the school's own settings
- * that nobody was shown.
- */
-const BAND_STATUS_LABEL: Record<BandStatus, string> = {
-  ok: '',
-  'no-scale': 'No grading scale',
-  'no-bands': 'Scale cannot grade',
-  'below-scale': 'Below the scale',
-  'above-scale': 'Above the scale',
-  hole: 'Gap in the scale',
-  ambiguous: 'Two bands claim this',
-  'no-percentage': 'No mark to band',
-}
-
-/**
- * Whether a state is the scale's fault rather than an absence of configuration.
- *
- * Only these are drawn as an error, so a school that simply has not built a scale
- * yet is not told it is broken.
- */
-const BAND_STATUS_IS_FAULT: Record<BandStatus, boolean> = {
-  ok: false,
-  'no-scale': false,
-  'no-bands': true,
-  'below-scale': true,
-  'above-scale': true,
-  hole: true,
-  ambiguous: true,
-  'no-percentage': false,
-}
-
-/**
- * A band badge in the school's own colour, with text contrast decided from that
- * colour rather than from the score.
- *
- * With no band there is still a statement to make, so this never prints a bare
- * "-" when it knows why: `status` names the state (a subject summary carries one),
- * `problem` carries the ranges to fix, and `scaleName` resolves the one state the
- * summary cannot — `no-scale` means either "no scale applies" or "the scale that
- * applies has no bands", and only this component is told which scale applied. A
- * per-assessment row passes no status, so the fallback stays "-" there unless its
- * subject's problem travels down with it.
- *
- * Exported so the card's own claims can be rendered and asserted rather than read
- * as source text: every state below is a sentence a parent is shown, and the
- * defect this fixes is that four of them used to be the same "-".
- */
-export const BandBadge = ({
-  band,
-  status = null,
-  problem = null,
-  scaleName = null,
-  percentage = null,
-}: {
-  band: ReportBand | null
-  /** `BandStatus` for a subject row; null for a single assessment. */
-  status?: BandStatus | null
-  /** The ranges or defects the scale is at fault for, when there are any. */
-  problem?: string | null
-  /** The scale that applied to this class, when one did. */
-  scaleName?: string | null
-  /** The percentage the band was resolved from, quoted in the explanation. */
-  percentage?: number | null
-}) => {
-  if (band) {
-    return (
-      <span
-        className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium"
-        style={{ backgroundColor: band.color, color: contrastTextColor(band.color) }}
-        title={`${band.minScore}-${band.maxScore}%`}
-      >
-        {band.label}
-      </span>
-    )
-  }
-
-  if (status) {
-    // A scale that applies but carries no bands is a misconfiguration, not an
-    // absence of one, so it is drawn as the fault it is even though `no-scale`
-    // covers both.
-    const fault =
-      BAND_STATUS_IS_FAULT[status] || (status === 'no-scale' && scaleName !== null)
-    // The scale the school would have to fix, named so a parent reading the
-    // printed card can be told what to look at.
-    const detail =
-      status === 'no-scale'
-        ? scaleName
-          ? `The scale "${scaleName}" has no bands, so no percentage can be given one.`
-          : 'No grading scale applies to this class, so no band can be assigned.'
-        : status === 'no-bands'
-          ? 'No band on this scale can claim a percentage: each one runs backwards or falls outside 0-100.'
-          : percentage !== null && problem
-            ? `${percentage.toFixed(1)}% is not inside any band — ${problem}`
-            : problem
-    return (
-      <span
-        className={
-          fault
-            ? 'inline-flex items-center rounded-full border border-destructive/40 bg-destructive/10 px-2.5 py-0.5 text-xs font-medium text-destructive'
-            : 'inline-flex items-center rounded-full border border-muted-foreground/40 px-2.5 py-0.5 text-xs font-medium text-muted-foreground'
-        }
-        title={detail ?? BAND_STATUS_LABEL[status]}
-      >
-        <span className="sr-only">
-          {fault ? 'Band withheld, grading scale problem: ' : 'No band: '}
-        </span>
-        {BAND_STATUS_LABEL[status]}
-      </span>
-    )
-  }
-
-  // An assessment row: it carries no status of its own, so the only honest
-  // statement available is the one its subject's scale is at fault for. Printing
-  // "-" there instead would read as a missing mark.
-  if (problem) {
-    return (
-      <span
-        className="inline-flex items-center rounded-full border border-destructive/40 bg-destructive/10 px-2.5 py-0.5 text-xs font-medium text-destructive"
-        title={problem}
-      >
-        <span className="sr-only">Band withheld, grading scale error: </span>
-        Scale error
-      </span>
-    )
-  }
-
-  return <span className="text-muted-foreground">-</span>
-}
-
-/**
  * How a percentage was composed. A teacher who cannot see why a child got 72%
  * has no reason to believe the 72%, so the weights and their shares are on the
  * card rather than only inside the arithmetic.
@@ -331,10 +199,10 @@ const WeightingBreakdown = ({
               </TableCell>
               <TableCell className="text-right text-sm">{component.weight.toFixed(2)}</TableCell>
               <TableCell className="text-right text-sm">
-                {component.weightShare !== null ? `${component.weightShare.toFixed(1)}%` : '-'}
+                {component.weightShare !== null ? `${component.weightShare.toFixed(1)}%` : 'No share'}
               </TableCell>
               <TableCell className="text-right text-sm">
-                {component.percentage !== null ? `${component.percentage.toFixed(1)}%` : '-'}
+                {component.percentage !== null ? `${component.percentage.toFixed(1)}%` : 'Not recorded'}
               </TableCell>
             </TableRow>
           ))}
@@ -347,7 +215,14 @@ const WeightingBreakdown = ({
               {weighting.totalWeight.toFixed(2)}
             </TableCell>
             <TableCell className="text-right text-sm font-medium">100%</TableCell>
-            <TableCell className="text-right text-sm font-medium">-</TableCell>
+            <TableCell className="text-right text-sm font-medium">
+                  {/* Deliberately not a percentage: the row is the total of the
+                      weights, and averaging percentages is the error this card
+                      exists to avoid. */}
+                  <span title="A weighted mean has no meaningful percentage total">
+                    Not a total
+                  </span>
+                </TableCell>
           </TableRow>
         </TableBody>
       </Table>
@@ -553,12 +428,12 @@ export default function ReportCardPage({ params }: { params: Promise<{ studentId
               </div>
               <div>
                 <Label className="text-xs text-muted-foreground">Student ID</Label>
-                <p className="text-lg font-medium">{student.studentId || '-'}</p>
+                <p className="text-lg font-medium">{student.studentId ?? 'Not assigned'}</p>
               </div>
               <div>
                 <Label className="text-xs text-muted-foreground">Class</Label>
                 <p className="text-lg font-medium">
-                  {student.classLevel ? `${student.classLevel} ${student.class}` : student.class || '-'}
+                  {student.classLevel ? `${student.classLevel} ${student.class}` : student.class ?? 'Not assigned'}
                 </p>
               </div>
               <div>
@@ -566,7 +441,7 @@ export default function ReportCardPage({ params }: { params: Promise<{ studentId
                 <p className="text-lg font-medium">
                   {academicYear && term
                     ? `${academicYear} — ${term}`
-                    : '-'}
+                    : 'No term'}
                 </p>
               </div>
             </div>
@@ -584,7 +459,7 @@ export default function ReportCardPage({ params }: { params: Promise<{ studentId
                   <CardTitle className="text-3xl">
                     {summary.overallPercentage !== null
                       ? `${summary.overallPercentage.toFixed(1)}%`
-                      : '-'}
+                      : 'No marks recorded'}
                   </CardTitle>
                   <p className="text-xs text-muted-foreground">
                     Mean of {summary.subjectCount} subject average
@@ -598,7 +473,7 @@ export default function ReportCardPage({ params }: { params: Promise<{ studentId
                   <CardTitle className="text-3xl">
                     {summary.weightedPercentage !== null
                       ? `${summary.weightedPercentage.toFixed(1)}%`
-                      : '-'}
+                      : 'No marks recorded'}
                   </CardTitle>
                   <p className="text-xs text-muted-foreground">
                     Mean mark across every graded assessment
@@ -611,7 +486,7 @@ export default function ReportCardPage({ params }: { params: Promise<{ studentId
                   <CardTitle className="text-3xl">
                     {summary.attendanceRate !== null
                       ? `${summary.attendanceRate.toFixed(1)}%`
-                      : '-'}
+                      : 'No attendance data'}
                   </CardTitle>
                   <p className="text-xs text-muted-foreground">
                     {formatDays(summary.presentDays)}/{summary.totalAttendanceDays} days
@@ -662,7 +537,7 @@ export default function ReportCardPage({ params }: { params: Promise<{ studentId
                       <span className="text-sm text-muted-foreground">
                         {subject?.percentage !== null && subject?.percentage !== undefined
                           ? `${subject.percentage.toFixed(1)}%`
-                          : '-'}
+                          : 'No marks recorded'}
                       </span>
                       {/* Which state the band is in is stated once, here, rather
                           than repeated on every row of the table below: it is a
@@ -714,20 +589,25 @@ export default function ReportCardPage({ params }: { params: Promise<{ studentId
                               </TableCell>
                               <TableCell className="text-right">{a.maxScore}</TableCell>
                               <TableCell className="text-right">
-                                {a.isGraded && a.score !== null ? a.score : '-'}
+                                {a.isGraded && a.score !== null ? a.score : 'Not marked'}
                               </TableCell>
                               <TableCell className="text-right">
-                                {a.percentage !== null ? `${a.percentage.toFixed(1)}%` : '-'}
+                                {a.percentage !== null ? `${a.percentage.toFixed(1)}%` : 'Not recorded'}
                               </TableCell>
                               <TableCell>
-                                {/* This row's band is its own percentage's, and so
-                                    is its own verdict: the subject's problem travels
-                                    down only where THIS row has no band, so a row
-                                    that graded keeps its label and no cell in the
-                                    table reads as a missing mark. */}
+                                {/* This row's verdict is its own. The subject's
+                                    status describes one percentage already weighted
+                                    across every assessment of that subject, so
+                                    carrying it down would claim each row failed for
+                                    a reason that may belong to none of them — and
+                                    would leave a row that genuinely has no band
+                                    under a healthy subject saying nothing at all. */}
                                 <BandBadge
                                   band={a.band}
-                                  problem={a.band === null ? subject?.bandProblem ?? null : null}
+                                  status={a.bandStatus}
+                                  problem={a.bandProblem}
+                                  scaleName={grading?.name ?? null}
+                                  percentage={a.percentage}
                                 />
                               </TableCell>
                             </TableRow>

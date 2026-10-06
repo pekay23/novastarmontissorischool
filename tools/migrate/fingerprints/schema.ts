@@ -30,7 +30,8 @@ const COMMENT_LINE = /^\s*--.*$/;
  * Comment lines go: Prisma annotates every statement (`-- CreateTable`), and
  * that is presentational. Statement order does not go: Prisma emits in
  * dependency order, which is itself meaningful. Whitespace inside a statement
- * does go, because it is wrapping.
+ * does go, because it is wrapping — EXCEPT inside string literals, where
+ * spacing is semantic (e.g. 'Ada  Lovelace' vs 'Ada Lovelace').
  */
 export function normalizeCanonicalSql(sql: string): string {
   const statements: string[] = [];
@@ -39,13 +40,55 @@ export function normalizeCanonicalSql(sql: string): string {
     if (COMMENT_LINE.test(raw)) continue;
     current.push(raw);
     if (raw.trimEnd().endsWith(";")) {
-      statements.push(current.join("\n").replace(/\s+/g, " ").trim());
+      statements.push(collapseWhitespacePreservingLiterals(current.join("\n")).trim());
       current = [];
     }
   }
-  const tail = current.join("\n").replace(/\s+/g, " ").trim();
+  const tail = collapseWhitespacePreservingLiterals(current.join("\n")).trim();
   if (tail !== "") statements.push(tail);
   return statements.join("\n");
+}
+
+/**
+ * Collapses runs of whitespace to a single space, but preserves whitespace
+ * inside single-quoted string literals (including escaped quotes '').
+ */
+function collapseWhitespacePreservingLiterals(sql: string): string {
+  let result = "";
+  let inLiteral = false;
+  let i = 0;
+  while (i < sql.length) {
+    const ch = sql[i];
+    if (ch === "'") {
+      result += ch;
+      inLiteral = !inLiteral;
+      i++;
+      // Handle escaped single quotes ('') inside a literal
+      if (inLiteral && i < sql.length && sql[i] === "'") {
+        result += "'";
+        i++;
+      }
+      continue;
+    }
+    if (inLiteral) {
+      result += ch;
+      i++;
+      continue;
+    }
+    // Outside literals: collapse whitespace
+    if (/\s/.test(ch)) {
+      // Skip all consecutive whitespace
+      while (i < sql.length && /\s/.test(sql[i])) i++;
+      // Add a single space if we're not at the start and previous char isn't whitespace/punctuation that doesn't need spacing
+      if (result.length > 0 && !/\s/.test(result[result.length - 1])) {
+        result += " ";
+      }
+    } else {
+      result += ch;
+      i++;
+    }
+  }
+  return result;
 }
 
 /** The stable digest of a schema's canonical SQL. */

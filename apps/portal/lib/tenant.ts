@@ -26,11 +26,15 @@ export async function getTenantContext(): Promise<TenantContext> {
   // This ensures per-request tenant isolation instead of a single process-level TENANT_ID.
   const dbUser = await prisma.user.findUnique({
     where: { id: user.id },
-    select: { tenantId: true, role: { select: { name: true } } },
+    select: { tenantId: true, role: { select: { name: true } }, tenant: { select: { isActive: true } } },
   })
 
   if (!dbUser) {
     throw new UnauthorizedError()
+  }
+
+  if (dbUser.tenant?.isActive === false) {
+    throw new TenantSuspendedError()
   }
 
   return {
@@ -72,5 +76,12 @@ export class ForbiddenError extends Error {
   constructor(message: string) {
     super(message)
     this.name = 'ForbiddenError'
+  }
+}
+
+export class TenantSuspendedError extends Error {
+  constructor() {
+    super('Tenant suspended')
+    this.name = 'tenant-suspended'
   }
 }

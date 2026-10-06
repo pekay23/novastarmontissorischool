@@ -14,6 +14,7 @@ import {
   resolveTenantId,
   scopeToSchool,
 } from '../config'
+import { DEFAULT_SYNC_CONFIG } from '@novastar/sync-engine'
 import { TEST_ENV, runCli, SPAWN_TIMEOUT_MS } from './helpers'
 
 describe('parseFlags', () => {
@@ -131,9 +132,9 @@ describe('conflict strategy', () => {
 describe('config defaults', () => {
   test('batch size and retries come from the engine, not from a copy', () => {
     const config = resolveConfig({ tenant: 't' }, TEST_ENV)
-    expect(config.batchSize).toBe(50)
-    expect(config.retryAttempts).toBe(3)
-    expect(config.retryDelayMs).toBe(1000)
+    expect(config.batchSize).toBe(DEFAULT_SYNC_CONFIG.batchSize)
+    expect(config.retryAttempts).toBe(DEFAULT_SYNC_CONFIG.retryAttempts)
+    expect(config.retryDelayMs).toBe(DEFAULT_SYNC_CONFIG.retryDelayMs)
     expect(config.maxIterations).toBe(DEFAULT_DRAIN_ITERATIONS)
     expect(config.maxIterations).toBe(10)
   })

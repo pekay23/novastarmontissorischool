@@ -24,7 +24,8 @@ import {
   SelectValue,
 } from '@novastar/shared-ui'
 import { ReportType } from '@novastar/database'
-import { contrastTextColor } from '@novastar/shared-utils'
+import { type BandStatus } from '@novastar/shared-utils'
+import { BandBadge, type ReportBand } from '@/components/reports/band-badge'
 import { BarChart3, Download, X, Printer } from 'lucide-react'
 
 const REPORT_TYPE_LABELS: Record<ReportType, { label: string; desc: string; implemented: boolean }> = {
@@ -98,21 +99,6 @@ interface ReportWeighting {
   components: ReportWeightingComponent[]
 }
 
-/**
- * A band of the school's own grading scale, resolved from the percentage.
- *
- * Coloured by the band's own `color`, never by the size of the score: bands are
- * school-configured and the seeded JHS scale runs the other way (grade 9 is the
- * worst result), so colouring by magnitude would mislabel half the school.
- */
-interface ReportBand {
-  key: string
-  label: string
-  color: string
-  minScore: number
-  maxScore: number
-}
-
 interface ReportAssessment {
   id: string
   name: string
@@ -126,6 +112,16 @@ interface ReportAssessment {
   percentage: number | null
   grade: string | null
   band: ReportBand | null
+  /**
+   * This row's own verdict on its band, and the ranges to fix when it has none.
+   *
+   * Declared because this page reads the same `/api/reports/academic/[studentId]`
+   * payload as the report card and both are only honest if they read the same
+   * fields. The list previously typed neither, so it fell back to a bare "-" for
+   * every state the card can name.
+   */
+  bandStatus: BandStatus
+  bandProblem: string | null
   isGraded: boolean
   assessmentDate: string
   term: string | null
@@ -247,24 +243,6 @@ export default function ReportsPage() {
       title: 'Coming Soon',
       description: 'PDF download will be available in a future update',
     })
-  }
-
-  /**
-   * A band badge in the school's own colour, with the text contrast decided from
-   * that colour. Never coloured by the size of the score: the bands are the
-   * school's, and the seeded JHS scale is better the lower the grade number.
-   */
-  const BandBadge = ({ band }: { band: ReportBand | null }) => {
-    if (!band) return <span className="text-muted-foreground">-</span>
-    return (
-      <span
-        className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"
-        style={{ backgroundColor: band.color, color: contrastTextColor(band.color) }}
-        title={`${band.minScore}-${band.maxScore}%`}
-      >
-        {band.label}
-      </span>
-    )
   }
 
   return (
@@ -425,9 +403,9 @@ export default function ReportsPage() {
             <DialogTitle>Academic Report Card</DialogTitle>
             <DialogDescription>
               Generated for{' '}
-              {reportData
-                ? `${reportData.student.firstName} ${reportData.student.lastName}`
-                : '-'}
+{reportData
+                  ? `${reportData.student.firstName} ${reportData.student.lastName}`
+                  : 'No student selected'}
             </DialogDescription>
           </DialogHeader>
 
@@ -468,9 +446,9 @@ export default function ReportsPage() {
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
                       <div>
                         <p className="text-3xl font-bold">
-                          {reportData.summary.overallPercentage !== null
-                            ? `${reportData.summary.overallPercentage}%`
-                            : '-'}
+{reportData.summary.overallPercentage !== null
+                  ? `${reportData.summary.overallPercentage}%`
+                  : 'No marks recorded'}
                         </p>
                         <p className="text-xs text-muted-foreground">
                           Overall % (0&ndash;100)
@@ -483,9 +461,9 @@ export default function ReportsPage() {
                       </div>
                       <div>
                         <p className="text-3xl font-bold">
-                          {reportData.summary.weightedPercentage !== null
-                            ? `${reportData.summary.weightedPercentage}%`
-                            : '-'}
+{reportData.summary.weightedPercentage !== null
+                  ? `${reportData.summary.weightedPercentage}%`
+                  : 'No marks recorded'}
                         </p>
                         <p className="text-xs text-muted-foreground">
                           Weighted % (0&ndash;100)
@@ -496,9 +474,9 @@ export default function ReportsPage() {
                       </div>
                       <div>
                         <p className="text-3xl font-bold">
-                          {reportData.summary.attendanceRate !== null
-                            ? `${reportData.summary.attendanceRate}%`
-                            : '-'}
+{reportData.summary.attendanceRate !== null
+                  ? `${reportData.summary.attendanceRate}%`
+                  : 'No attendance data'}
                         </p>
                         <p className="text-xs text-muted-foreground">
                           Attendance (0&ndash;100)
@@ -541,14 +519,14 @@ export default function ReportsPage() {
                                 </td>
                                 <td className="py-1 text-right">{component.weight.toFixed(2)}</td>
                                 <td className="py-1 text-right">
-                                  {component.weightShare !== null
-                                    ? `${component.weightShare}%`
-                                    : '-'}
+{component.weightShare !== null
+                                ? `${component.weightShare}%`
+                                : 'No share'}
                                 </td>
                                 <td className="py-1 text-right">
-                                  {component.percentage !== null
-                                    ? `${component.percentage}%`
-                                    : '-'}
+{component.percentage !== null
+                                ? `${component.percentage}%`
+                                : 'Not recorded'}
                                 </td>
                               </tr>
                             ))}
@@ -599,18 +577,25 @@ export default function ReportsPage() {
                               </td>
                               <td className="py-2 text-right">{a.maxScore}</td>
                               <td className="py-2 text-right">
-                                {a.score ?? '-'}
+                                {a.score ?? 'Not marked'}
                               </td>
                               <td className="py-2 text-right">
-                                {a.percentage
-                                  ? `${a.percentage}%`
-                                  : '-'}
+                                {/* A 0 is a mark, not an absence: the old truthiness
+                                    test printed a dash for a child who scored zero,
+                                    which reads as "nothing recorded". */}
+                                {a.percentage !== null ? `${a.percentage}%` : 'Not marked'}
                               </td>
                               <td className="py-2 text-center">
-                                <BandBadge band={a.band} />
+                                <BandBadge
+                                  band={a.band}
+                                  status={a.bandStatus}
+                                  problem={a.bandProblem}
+                                  scaleName={reportData.grading?.name ?? null}
+                                  percentage={a.percentage}
+                                />
                               </td>
                               <td className="py-2 text-muted-foreground">
-                                {a.term || '-'}
+                                {a.term ?? 'No term'}
                               </td>
                             </tr>
                           ))}
@@ -647,9 +632,9 @@ export default function ReportsPage() {
                       </div>
                       <div>
                         <p className="text-xl font-bold">
-                          {reportData.summary.attendanceRate !== null
-                            ? `${reportData.summary.attendanceRate}%`
-                            : '-'}
+{reportData.summary.attendanceRate !== null
+                  ? `${reportData.summary.attendanceRate}%`
+                  : 'No attendance data'}
                         </p>
                         <p className="text-xs text-muted-foreground">
                           Rate

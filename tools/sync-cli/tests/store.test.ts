@@ -96,10 +96,34 @@ describe('ServerStore', () => {
   test('round-trips a record', async () => {
     const { db } = createFakeDb()
     const store = new ServerStore(db, TENANT_A)
-    const record = fixture({ syncStatus: 'conflict', retryCount: 2, data: { id: 'x', nested: { a: [1, 2] } } })
+    // Use ISO string for timestamp to exercise the coercion in toRecord (server-store.ts:61)
+    const record = fixture({
+      syncStatus: 'conflict',
+      retryCount: 2,
+      data: { id: 'x', nested: { a: [1, 2] } },
+      // An ISO string, not a Date. `SyncRecord.timestamp` is typed `Date`, and
+      // `fixture` types its overrides as `Partial<SyncRecord>`, so the string
+      // cannot be passed through it without a cast that lies about the type.
+      //
+      // The cast is not a workaround for a wrong value: `put` coerces both
+      // shapes on purpose (adapters/server-store.ts:135, `record.timestamp
+      // instanceof Date ? record.timestamp : new Date(record.timestamp)`), which
+      // is what makes this a real path rather than a contrived one. What the cast
+      // records is that the annotation is narrower than the implementation —
+      // the same gap `toRecord` closes for rows coming back out of the database
+      // (server-store.ts:61). Passing the field through `fixture` instead would
+      // typecheck only by widening `SyncRecord`, which is a production type
+      // change and not this test's to make.
+      timestamp: '2026-01-01T00:00:00.000Z' as unknown as Date,
+    })
     await store.put(record)
     const [stored] = await store.getAll(TENANT_A)
-    expect(stored).toEqual(record)
+    // toRecord coerces ISO string -> Date, so stored.timestamp is a Date
+    expect(stored.timestamp).toBeInstanceOf(Date)
+    expect(stored.timestamp.toISOString()).toBe('2026-01-01T00:00:00.000Z')
+    expect(stored.syncStatus).toBe('conflict')
+    expect(stored.retryCount).toBe(2)
+    expect(stored.data).toEqual({ id: 'x', nested: { a: [1, 2] } })
   })
 
   test('a missing table is an error, not an empty queue', async () => {

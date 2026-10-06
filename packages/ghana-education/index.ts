@@ -39,7 +39,7 @@ export const GES_CURRICULUM: Record<Phase, PhaseCurriculum> = {
       { code: 'KG_PHYSED', name: 'Physical Development', category: 'core', isCore: true, description: 'Gross/fine motor, health, safety' },
     ],
     assessmentTypes: ['obs'],
-    gradingScale: 'naCCA_EYLF',
+    gradingScale: 'eylf_grading',
     description: 'NaCCA Early Year Development Standards (Birth-5 years)',
   },
   PRIMARY: {
@@ -59,7 +59,7 @@ export const GES_CURRICULUM: Record<Phase, PhaseCurriculum> = {
       { code: 'MON_MATH', name: 'Montessori Mathematics', category: 'montessori', isCore: false },
     ],
     assessmentTypes: ['sba1', 'sba2', 'sba3', 'midterm', 'terminal'],
-    gradingScale: 'naCCA_6_1',
+    gradingScale: 'nacca_6_level',
     description: 'NaCCA Lower & Upper Primary (B1-B6)',
   },
   JHS: {
@@ -80,7 +80,7 @@ export const GES_CURRICULUM: Record<Phase, PhaseCurriculum> = {
       { code: 'BST', name: 'Business Studies', category: 'elective', isCore: false },
     ],
     assessmentTypes: ['sba1', 'sba2', 'sba3', 'blc', 'midterm', 'terminal', 'mock'],
-    gradingScale: 'naCCA_6_1',
+    gradingScale: 'nacca_6_level',
     description: 'Junior High School (JHS 1-3) — Common Core Programme',
   },
   SHS: {
@@ -100,7 +100,7 @@ export const GES_CURRICULUM: Record<Phase, PhaseCurriculum> = {
       { code: 'FRENCH', name: 'French', category: 'elective', isCore: false },
     ],
     assessmentTypes: ['sba1', 'sba2', 'sba3', 'midterm', 'terminal', 'mock'],
-    gradingScale: 'naCCA_5_1',
+    gradingScale: 'nacca_5_level',
     description: 'Senior High School (SHS 1-3) — per track choice',
   },
 }
@@ -242,7 +242,14 @@ export function calculateGhanaTermDates(academicYearStart: Date): TermDates {
       end: new Date(year + 1, 7, 15),   // Aug 15
     },
     holidays: {
-      start: new Date(year + 1, 7, 15),  // Aug 15
+      // Day 16, not 15. `term3.end` above is the published last day of term 3,
+      // so that day belongs to term 3 and the vacation opens the day after it.
+      // Both ends of both ranges are inclusive, so a shared Aug 15 sat inside
+      // term 3's window *and* inside the vacation's: a caller passing this
+      // calendar's own vacation to `calculateTeachingDays` dropped that day's
+      // teaching time a second time, in every year whose Aug 15 is a weekday —
+      // again a number a fee or an attendance report is built on.
+      start: new Date(year + 1, 7, 16),  // Aug 16
       // Day 1, not 31. Month 8 is September, which has 30 days, so `8, 31`
       // rolls forward to October 1 and made the long vacation 17 days longer
       // than the "Aug – Sept" above. `calculateTeachingDays` treats both ends

@@ -7,11 +7,22 @@ import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent,
   DropdownMenuItem,
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
-  Input,
+  Input, Textarea, Badge, Label,
 } from '@novastar/shared-ui'
-import { Search, Save, Calendar, MoreHorizontal, Clock } from 'lucide-react'
+import { Search, Save, Calendar, MoreHorizontal, Clock, Lock, History } from 'lucide-react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
+import { useSession } from 'next-auth/react'
+import { AttendanceAmendmentHistory } from '@/components/attendance/amendment-history'
+import {
+  REASON_MAX_LENGTH,
+  attendanceCorrectionBody,
+  canUnlockAttendance,
+  changedAttendanceFields,
+  isSettledRecord,
+  settledColumnsOf,
+  type AttendanceFieldPatch,
+} from '@/components/attendance/correction'
 
 interface Student {
   id: string
@@ -29,6 +40,9 @@ interface AttendanceRecord {
   notes: string | null
   markedBy: { name: string } | null
   createdAt: string
+  /** The reason-gated lock. Non-null means this record has been settled. */
+  finalizedAt?: string | null
+  finalizedById?: string | null
 }
 
 const statusColors: Record<string, string> = {
@@ -47,8 +61,15 @@ const statusColors: Record<string, string> = {
  */
 export default function AttendanceMarkPage() {
   const searchParams = useSearchParams()
+  const { data: session } = useSession()
   const { toast } = useToast()
   const confirm = useConfirm()
+
+  // The unlock is a stricter act than the correction it enables, so the button
+  // that offers it is gated on the stricter key. The route re-checks with
+  // `hasPermission`, so this is the courtesy layer, not the boundary.
+  const role = (session?.user as { role?: string })?.role
+  const mayUnlock = canUnlockAttendance(role)
 
   const [classId, setClassId] = useState<string>('')
   const [className, setClassName] = useState<string>('')
@@ -59,6 +80,11 @@ export default function AttendanceMarkPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [search, setSearch] = useState('')
+  // The reason owed by a correction to a SETTLED record. One box for the screen,
+  // because a teacher correcting four registers writes one explanation about
+  // four marks, not four near-identical sentences.
+  const [reason, setReason] = useState('')
+  const [historyRecord, setHistoryRecord] = useState<{ recordId: string; studentName: string } | null>(null)
 
   const fetchStudentsForClass = useCallback(async (cid: string) => {
     try {
@@ -172,36 +198,148 @@ export default function AttendanceMarkPage() {
   const handleSave = async () => {
     setSaving(true)
     try {
-      const attendanceData = students.map(student => {
+      // A settled register is corrected INDIVIDUALLY and with a reason; it is
+      // not part of the bulk re-save. `POST /api/attendance` refuses a locked
+      // row by design — marking a class is not correcting a disputed record —
+      // so the two go down separate paths here rather than the screen silently
+      // dropping the corrections it cannot express.
+      const settled: Array<{ record: AttendanceRecord; fields: AttendanceFieldPatch[] }> = []
+      const markable = students.map(student => {
         const existing = records.find(r => r.studentId === student.id)
+        if (!existing) {
+          return {
+            studentId: student.id,
+            classId,
+            date,
+            period: period || undefined,
+            status: 'PRESENT' as const,
+            notes: undefined,
+          }
+        }
+        if (isSettledRecord(existing)) {
+          const fields = changedAttendanceFields(existing, {
+            status: existing.status,
+            period: existing.period ?? '',
+            notes: existing.notes ?? '',
+          })
+          if (fields.length > 0) settled.push({ record: existing, fields })
+          return null
+        }
         return {
           studentId: student.id,
           classId,
           date,
           period: period || undefined,
-          status: existing?.status || 'PRESENT',
-          notes: existing?.notes || undefined,
+          status: existing.status,
+          notes: existing.notes || undefined,
         }
       })
 
-      const res = await fetch('/api/attendance', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(attendanceData),
-      })
+      if (settled.length > 0 && reason.trim() === '') {
+        toast.error({
+          title: 'A reason is required',
+          description:
+            'These records have already been settled. Describe what is being corrected and why — the reason is recorded against each field you change.',
+        })
+        return
+      }
 
-      if (res.ok) {
-        toast.success({ title: 'Success', description: 'Attendance saved successfully' })
-        // Refresh records
+      const failures: string[] = []
+
+      if (markable.length > 0) {
+        const res = await fetch('/api/attendance', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(markable),
+        })
+        if (!res.ok) {
+          const data = await res.json()
+          toast.error({ title: 'Error', description: data.error || 'Failed to save attendance' })
+        } else {
+          const payload = await res.json()
+          // A 201 with a per-record error inside it is the bulk save reporting
+          // that one register could not be written. Reading only `res.ok` would
+          // have reported success while the refused rows were silently missing.
+          const problems = (payload?.results ?? []).filter(
+            (r: { error?: string }) => typeof r?.error === 'string',
+          )
+          for (const problem of problems) failures.push(problem.error)
+        }
         await fetchExistingAttendance(classId, date, period)
+      }
+
+      for (const { record, fields } of settled) {
+        const values: Partial<Record<AttendanceFieldPatch, string | null>> = {}
+        for (const field of fields) {
+          if (field === 'status') values.status = record.status
+          if (field === 'period') values.period = record.period ?? ''
+          if (field === 'notes') values.notes = record.notes ?? ''
+        }
+        const res = await fetch(`/api/attendance/${record.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(attendanceCorrectionBody(record, fields, values, reason)),
+        })
+        if (!res.ok) {
+          const data = await res.json()
+          const detail = Array.isArray(data?.details) ? data.details.join(' ') : data?.error
+          failures.push(
+            `${record.student.firstName} ${record.student.lastName}: ${detail || 'correction refused'}`,
+          )
+        }
+      }
+
+      if (settled.length > 0) await fetchExistingAttendance(classId, date, period)
+
+      if (failures.length > 0) {
+        toast.error({ title: 'Some rows were not saved', description: failures.join(' · ') })
       } else {
-        const data = await res.json()
-        toast.error({ title: 'Error', description: data.error || 'Failed to save attendance' })
+        toast.success({ title: 'Success', description: 'Attendance saved successfully' })
+        setReason('')
       }
     } catch {
       toast.error({ title: 'Error', description: 'Failed to save attendance' })
     } finally {
       setSaving(false)
+    }
+  }
+
+  /**
+   * Lifting the lock, which is a stricter act than the correction it enables and
+   * carries its own written reason.
+   */
+  const handleUnlock = async (record: AttendanceRecord) => {
+    if (reason.trim() === '') {
+      toast.error({
+        title: 'A reason is required',
+        description: 'Reopening a settled record has to say why, and the reason is recorded.',
+      })
+      return
+    }
+    const ok = await confirm({
+      title: 'Reopen this record?',
+      description: `The settled date will be removed and the reason recorded against the change. Anyone with attendance:edit will be able to correct the record without a reason afterwards.`,
+      confirmText: 'Reopen',
+    })
+    if (!ok) return
+
+    try {
+      const res = await fetch(`/api/attendance/${record.id}/unfinalize`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amendmentReason: reason.trim() }),
+      })
+      if (res.ok) {
+        toast.success({ title: 'Reopened', description: 'The record is editable again' })
+        setReason('')
+        await fetchExistingAttendance(classId, date, period)
+      } else {
+        const data = await res.json()
+        const detail = Array.isArray(data?.details) ? data.details.join(' ') : data?.error
+        toast.error({ title: 'Could not reopen', description: detail || 'Failed to unlock record' })
+      }
+    } catch {
+      toast.error({ title: 'Error', description: 'Failed to unlock record' })
     }
   }
 
@@ -232,6 +370,10 @@ export default function AttendanceMarkPage() {
     period: string
     notes: string
     recordId: string | null
+    /** The saved row behind this line, or null for a student not yet marked. */
+    record: AttendanceRecord | null
+    /** Whether this line has been settled and therefore needs a written reason. */
+    locked: boolean
   }
 
   // Merge students with their attendance records
@@ -243,6 +385,8 @@ export default function AttendanceMarkPage() {
       period: record?.period ?? '',
       notes: record?.notes ?? '',
       recordId: record?.id ?? null,
+      record: record ?? null,
+      locked: isSettledRecord(record),
     }
   })
 
@@ -251,6 +395,17 @@ export default function AttendanceMarkPage() {
   )
 
   const ready = Boolean(classId && date)
+
+  /**
+   * Whether the screen currently owes a reason.
+   *
+   * True when a settled line has a pending edit, or when a settled line exists
+   * at all and the caller has typed something — the second half is what makes the
+   * unlock button's reason requirement discoverable BEFORE the click, rather than
+   * after a refused request.
+   */
+  const settledCount = mergedStudents.filter(s => s.locked).length
+  const reasonOwed = settledCount > 0
 
   if (loading) {
     return (
@@ -322,6 +477,29 @@ export default function AttendanceMarkPage() {
                 />
               </div>
 
+              {/* One reason for the screen, shown only when a settled record is on
+                  it. It is owed by a CORRECTION to a settled record and by the
+                  unlock alike, and both record it against every field the edit
+                  changed. */}
+              {reasonOwed && (
+                <div className="mb-4 rounded-md border p-3 space-y-1">
+                  <Label className="flex items-center gap-2 font-medium">
+                    <Lock className="h-4 w-4" aria-hidden="true" />
+                    Reason for the {settledCount} settled record{settledCount === 1 ? '' : 's'}
+                  </Label>
+                  <Textarea
+                    value={reason}
+                    onChange={(e) => setReason(e.target.value)}
+                    maxLength={REASON_MAX_LENGTH}
+                    placeholder="Describe what is being corrected and why…"
+                    aria-label="Reason for correcting a settled attendance record"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Required to change a settled record, and recorded against each field you change.
+                  </p>
+                </div>
+              )}
+
               <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
@@ -360,6 +538,27 @@ export default function AttendanceMarkPage() {
                         </TableCell>
                         <TableCell className="font-medium">
                           {student.firstName} {student.lastName}
+                          {/* The settled marker sits beside the name because it changes
+                              what the row MEANS: the fields below are still editable,
+                              but every change to them is a correction with a written
+                              reason rather than a mark. */}
+                          {student.locked && (
+                            <Badge variant="outline" className="ml-2 gap-1">
+                              <Lock className="h-3 w-3" aria-hidden="true" />
+                              Settled
+                            </Badge>
+                          )}
+                          {/* WHEN it was settled, not just that it was: "settled"
+                              without a date cannot be weighed against a correction
+                              the reader is about to make. */}
+                          {settledColumnsOf(student.record).finalizedAt && (
+                            <time
+                              className="ml-2 text-xs text-muted-foreground"
+                              dateTime={settledColumnsOf(student.record).finalizedAt ?? undefined}
+                            >
+                              {new Date(settledColumnsOf(student.record).finalizedAt!).toLocaleDateString()}
+                            </time>
+                          )}
                         </TableCell>
                         <TableCell className="text-sm text-muted-foreground">
                           {student.studentId || '-'}
@@ -406,20 +605,34 @@ export default function AttendanceMarkPage() {
                               <DropdownMenuTrigger asChild>
                                 <Button variant="ghost" size="icon" className="h-8 w-8">
                                   <MoreHorizontal className="h-4 w-4" />
+                                  <span className="sr-only">
+                                    Actions for {student.firstName} {student.lastName}
+                                  </span>
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
                                 <DropdownMenuItem
-                                  onClick={() => handleDelete({
-                                    id: student.recordId!,
-                                    studentId: student.id,
-                                    student: { id: student.id, firstName: student.firstName, lastName: student.lastName, studentId: student.studentId },
-                                    status: student.status,
-                                    period: student.period,
-                                    notes: student.notes,
-                                    markedBy: null,
-                                    createdAt: new Date().toISOString(),
+                                  onClick={() => setHistoryRecord({
+                                    recordId: student.recordId!,
+                                    studentName: `${student.firstName} ${student.lastName}`,
                                   })}
+                                >
+                                  <History className="h-4 w-4 mr-2" aria-hidden="true" />
+                                  Amendment history
+                                </DropdownMenuItem>
+                                {/* Offered only to a caller who may delete the register
+                                    outright, which is the same authority the route
+                                    re-checks. Hidden rather than disabled so the screen
+                                    does not advertise an act this caller cannot
+                                    perform. */}
+                                {student.locked && mayUnlock && (
+                                  <DropdownMenuItem onClick={() => handleUnlock(student.record!)}>
+                                    <Lock className="h-4 w-4 mr-2" aria-hidden="true" />
+                                    Reopen with a reason
+                                  </DropdownMenuItem>
+                                )}
+                                <DropdownMenuItem
+                                  onClick={() => handleDelete(student.record!)}
                                   className="text-red-600 focus:text-red-600"
                                 >
                                   Delete
@@ -451,6 +664,24 @@ export default function AttendanceMarkPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* The trail for one register entry. Opened from the row menu, and keyed on
+          the record id so switching students re-reads rather than showing the
+          previous student's history. */}
+      {historyRecord && (
+        <AttendanceAmendmentHistory
+          open
+          onClose={() => setHistoryRecord(null)}
+          recordId={historyRecord.recordId}
+          studentName={historyRecord.studentName}
+          markedByName={
+            records.find(r => r.id === historyRecord.recordId)?.markedBy?.name ?? null
+          }
+          markedAt={
+            records.find(r => r.id === historyRecord.recordId)?.createdAt ?? null
+          }
+        />
+      )}
     </div>
   )
 }

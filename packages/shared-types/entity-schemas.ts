@@ -14,11 +14,123 @@ import { z } from 'zod'
  * Rule: this file must not import from `./index` or `./entity-api-config`.
  */
 
+// --- Boundary date parsing ---
+
+/**
+ * What a client is told to send, rather than what it sent wrong.
+ *
+ * Named because it is stated more than once below, and because a union reports
+ * which of its branches refused — so one shared sentence is what turns three
+ * branch complaints into one instruction.
+ */
+const JSON_DATE_MESSAGE =
+  'Expected an ISO-8601 date string such as "2026-09-01T00:00:00.000Z" ' +
+  'or "2026-09-01", not a number or a boolean.'
+
+/**
+ * A date as it arrives over the wire, validated and left as a `Date`.
+ *
+ * JSON has no date type. A date in a request body is a STRING, and this schema is
+ * the one place that fact is reconciled with the fact that Prisma wants a `Date`:
+ * it accepts the wire form, rejects everything else, and hands the rest of the
+ * program a real `Date`. It exists because the schemas below were built with
+ * `z.date()`, which accepts only an actual `Date` instance — so on the JSON
+ * boundary every create and update carrying a date was refused with a 400 for
+ * real clients, while in-process callers (the seed, tests) passed and stayed
+ * green.
+ *
+ * WHY NOT `z.coerce.date()`. Coercion is the one fix that looks right and is
+ * wrong. `z.coerce.date()` runs the input through `new Date(...)`, and
+ * `new Date(null)` is 1970-01-01, `new Date(0)` is 1970-01-01, and `new Date(true)`
+ * is one millisecond after it. So a client that sent `null` for `publishedAt`, or
+ * `0` for a date field, would get a row silently stamped at the epoch — no error,
+ * no 400, just a date that is wrong by 56 years and looks plausible in a report.
+ * A validation failure is recoverable; a wrong date that stored successfully is
+ * not. This schema accepts a Date or an ISO-8601 string and nothing else, so
+ * `null`, `0`, `1`, `true` and `""` are all rejected rather than guessed at.
+ *
+ * WHY ZOD'S OWN ISO VALIDATORS. The string branches are `z.iso.*`, not a regex
+ * written here. The grammar is the library's to own: it is already the canonical
+ * ISO-8601 check, it stays correct when Zod tightens it, and it rejects by
+ * construction the things `Date.parse` waves through (`Date.parse('2026')` and
+ * `Date.parse('Sep 1 2026')` are both valid, and neither is what a caller means).
+ * The permissive options are required, not generosity — they are dictated by what
+ * the portal's own settings form sends (`components/config/entity-form.tsx`):
+ *
+ * - `z.iso.date()` — `academic_year`/`term` dates are declared `type: 'date'`,
+ *   rendered as `<input type="date">`, and submitted as `"2026-09-01"`. A plain
+ *   `z.iso.datetime()` rejects that, so without this branch every academic-year
+ *   and term write from the settings form would still 400 after the fix.
+ * - `{ offset: true, local: true }` — `publishedAt` and the event dates are
+ *   declared `type: 'datetime'`, rendered as `<input type="datetime-local">`, and
+ *   submitted as `"2026-09-01T00:00"`: no offset, minute precision.
+ *
+ * The one honest caveat is `local: true`. A zone-less datetime means a different
+ * instant depending on the host's timezone, because `new Date('2026-09-01T00:00')`
+ * reads it as local time. The date-only form does not have this problem —
+ * ECMAScript fixes `"2026-09-01"` at UTC midnight, so it is deterministic
+ * everywhere. `local: true` is kept anyway because the alternative is refusing the
+ * event and news editors' own input outright, and a value stored a few hours off
+ * the browser's intent is recoverable in a way a 400 on every save is not.
+ *
+ * `z.instanceof(Date)` is in the union for the internal callers that never crossed
+ * a wire — the seed, and tests that already hold a `Date`. It deliberately does NOT
+ * also reject an `Invalid Date`: no untrusted input can produce one here (the ISO
+ * branches gate every string), so that would be guarding a programmer error at the
+ * wrong boundary, and it would stop a `Date` being accepted unchanged.
+ *
+ * WHY THE MESSAGE IS DECLARED TWICE. Once on the union, once per branch, and the
+ * duplication looks like a mistake until you know what Zod 4 does with each. The
+ * union's own `error` string reaches `error.issues` but is DISCARDED by
+ * `error.format()`; a branch's `error` string survives `format()`. Both are needed
+ * because the portal reads validation failures two incompatible ways:
+ *
+ * - The two config routes answer with `error.format()`
+ *   (`apps/portal/app/api/config/[entityType]/route.ts`, `[id]/route.ts`), which
+ *   the settings UI flattens field by field (`components/config/entity-list.tsx`,
+ *   `issueLines`).
+ * - The other ~39 routes answer with raw `error.issues`, which is the stricter of
+ *   the two here — it carries Zod's internal `pattern` — so this schema must not
+ *   push them toward it.
+ *
+ * With the message only on the union, the one client that reads the formatted tree
+ * — the settings form a school administrator actually uses — was handed Zod's
+ * internal branch complaints instead: "Invalid ISO datetime; Invalid ISO date;
+ * Invalid input: expected Date, received string". Three complaints about a field
+ * that wants one sentence. `format()` lists one entry per failing branch, so a
+ * per-branch message shows the guidance a few times over; that repetition is the
+ * price of `format()` being the transport, and it is still the difference between
+ * a form that says what to type and one that names Zod's internals.
+ *
+ * `z.iso.datetime()` is the one branch that keeps its own default wording. Its
+ * `error` parameter is not honoured the way `z.iso.date()`'s and
+ * `z.instanceof()`'s are, and the string it contributes is a correct statement
+ * about that branch, so overriding it would buy one fewer repetition at the cost of
+ * claiming to describe a branch that has already described itself.
+ */
+export const JsonDateSchema = z
+  .union(
+    [
+      z.iso.datetime({ offset: true, local: true }),
+      z.iso.date({ error: JSON_DATE_MESSAGE }),
+      z.instanceof(Date, { error: JSON_DATE_MESSAGE }),
+    ],
+    { error: JSON_DATE_MESSAGE },
+  )
+  // A Date is returned by reference rather than copied: `new Date(existing)` would
+  // make a passing write look like a change of value, and callers that already hold
+  // a Date should get back the object they handed in.
+  .transform((value) => (value instanceof Date ? value : new Date(value)))
+
 // --- Config Entity Base ---
 export const ConfigEntityBaseSchema = z.object({
   id: z.string().cuid(),
   tenantId: z.string().cuid(),
   schoolId: z.string().nullable().optional(),
+  // Deliberately still `z.date()`, unlike the business dates below. These two are
+  // written by the database, not by a client: every derived create schema `.omit()`s
+  // them, so no request body can reach this validator with one. Leave them alone —
+  // they are not an oversight to be tidied up into `JsonDateSchema`.
   createdAt: z.date(),
   updatedAt: z.date(),
 })
@@ -29,8 +141,8 @@ export type Phase = z.infer<typeof PhaseEnum>
 
 export const AcademicYearSchema = ConfigEntityBaseSchema.extend({
   name: z.string(),
-  startDate: z.date(),
-  endDate: z.date(),
+  startDate: JsonDateSchema,
+  endDate: JsonDateSchema,
   isCurrent: z.boolean().default(false),
 })
 
@@ -40,8 +152,8 @@ export type TermStatus = z.infer<typeof TermStatusEnum>
 export const TermSchema = ConfigEntityBaseSchema.extend({
   name: z.string(),
   academicYearId: z.string(),
-  startDate: z.date(),
-  endDate: z.date(),
+  startDate: JsonDateSchema,
+  endDate: JsonDateSchema,
   isCurrent: z.boolean().default(false),
   status: TermStatusEnum.default('PLANNING'),
   weeks: z.number().int().positive().default(14),
@@ -193,6 +305,61 @@ export const GradingLevelUpdateSchema = z
       assertBandOrder({ minScore: value.minScore, maxScore: value.maxScore }, ctx)
     }
   })
+
+/**
+ * The `@@unique([gradingScaleId, key])` and `@@unique([gradingScaleId, order])`
+ * constraints, for a caller that holds a whole scale at once.
+ *
+ * Those two indexes are what turn "silently arbitrary" into a rejected write, because
+ * band lookup is first-match: a duplicate key or a duplicate order position makes the
+ * winning band a function of row order rather than of the score. A single-row write
+ * leans on the index and gets a driver error. A BULK write cannot lean on it the same
+ * way — the collision surfaces part-way through, after the rows before it are staged,
+ * and the answer names a constraint rather than the two rows that met. So the rule
+ * lives here next to the two shapes it is a uniqueness of, and every bulk path can ask
+ * the same question once instead of each growing its own.
+ *
+ * Deliberately not `z.array(GradingLevelCreateSchema)`. The set a caller must judge is
+ * the scale's STORED bands merged with the ones it is writing, and a stored band's
+ * colour may predate `hexBandColor`; re-checking the whole create schema over the merge
+ * would refuse a caller for a value it never mentioned. Only the two unique columns are
+ * in the shape, and the range rules stay where they are — a single band is judged
+ * against its scale by `gradeBandWriteProblems`, which is the one place that knows a
+ * scale has to be built up over many writes.
+ */
+const assertBandPositionsUnique = (
+  positions: readonly { key: string; order: number }[],
+  ctx: { addIssue: (issue: { code: 'custom'; message: string; path: PropertyKey[] }) => void },
+) => {
+  const keyOwner = new Map<string, string>()
+  const orderOwner = new Map<number, string>()
+  positions.forEach((position, index) => {
+    const existingKey = keyOwner.get(position.key)
+    if (existingKey === undefined) {
+      keyOwner.set(position.key, String(position.order))
+    } else {
+      ctx.addIssue({
+        code: 'custom',
+        message: `"${position.key}" is already on this scale at order ${existingKey}`,
+        path: [index, 'key'],
+      })
+    }
+    const existingOrder = orderOwner.get(position.order)
+    if (existingOrder === undefined) {
+      orderOwner.set(position.order, position.key)
+    } else {
+      ctx.addIssue({
+        code: 'custom',
+        message: `order ${position.order} is already claimed by "${existingOrder}"`,
+        path: [index, 'order'],
+      })
+    }
+  })
+}
+
+export const GradingLevelPositionSetSchema = z
+  .array(z.object({ key: z.string(), order: z.number().int() }))
+  .superRefine(assertBandPositionsUnique)
 
 export const GradingScaleSchema = ConfigEntityBaseSchema.extend({
   name: z.string(),

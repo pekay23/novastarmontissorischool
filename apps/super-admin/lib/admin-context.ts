@@ -6,7 +6,7 @@ import {
   resolveLiveOperator,
   verifySessionToken,
 } from '@/lib/admin-auth'
-import { ForbiddenError, NotFoundError, UnauthorizedError } from '@/lib/errors'
+import { ForbiddenError, NotFoundError, TenantSuspendedError, UnauthorizedError } from '@/lib/errors'
 import { assertOperatorCapability, hasOperatorCapability, type OperatorCapability } from '@/lib/permissions'
 import { getTenantById } from '@/lib/queries'
 import type { TenantDetail } from '@/types/admin'
@@ -185,15 +185,123 @@ export function operatorCan(
 }
 
 /**
- * Resolves a tenant by id and proves it exists, or throws `NotFoundError`.
+ * Resolves a tenant by id, proves it exists, and proves it is switched on — or
+ * throws.
  *
  * Every drill-down route passes through this rather than calling
- * `getTenantById` itself, because the 404 is the security-relevant half: an
+ * `getTenantById` itself, because the refusals are the security-relevant half: an
  * unknown tenant id must not fall back to the fleet view, and must not fall back
  * to "the first tenant" either. Both of those would silently turn a stale
  * bookmark into a cross-tenant read.
+ *
+ * THE SUSPENSION GATE IS HERE, AND HERE IS WHY THAT IS ENOUGH
+ * -----------------------------------------------------------
+ * `Tenant.isActive` used to be written by the console and read only for a badge,
+ * which made `PATCH {"isActive": false}` — the endpoint `DELETE` points operators
+ * at as the tenant's off switch — a label rather than a switch. This function is
+ * the single existence gate on every drill-down route, so refusing here refuses
+ * all of them by construction rather than one at a time: `GET /api/tenants/:id`,
+ * `PATCH /api/tenants/:id/settings`, `POST /api/tenants/:id/users` and
+ * `POST /api/tenants/:id/provision` all reach a tenant only through it.
+ *
+ * `PATCH /api/tenants/:id` is the deliberate exception and does not come here,
+ * because the request it carries may *be* the suspension: `setTenantActive` has to
+ * keep working on a suspended tenant or nothing could ever be reactivated, which
+ * is the one thing the flag exists to make possible. That route reaches the
+ * suspension check inside `updateTenantFields` and `writeTenantSetting` instead,
+ * which refuse every other write against the same flag.
+ *
+ * 403 and not 404, because the tenant exists. `NotFoundError` below is reserved
+ * for a genuine miss, and a 404 here would tell an operator that a school they
+ * suspended yesterday had been deleted.
  */
 export async function requireTenantScope(tenantId: string): Promise<TenantDetail> {
+  const resolved = await requireExistingTenant(tenantId)
+  if (resolved.status === 'suspended') {
+    // The tenant id is already in the URL the operator is holding, so naming it
+    // discloses nothing; nothing about any other tenant is read to produce this.
+    throw new TenantSuspendedError(resolved.identity.id)
+  }
+  return resolved.tenant
+}
+
+/**
+ * What a suspended tenant is allowed to be *known* by.
+ *
+ * Id and code, and nothing else. Not the name, not the counts, not the settings
+ * document. Those are tenant data, and `TenantSuspendedNotice` renders on a page an
+ * operator reaches precisely when the tenant is switched off — so the whole question
+ * is whether the refusal path can be handed a `TenantDetail` and then decide what to
+ * show. Making the suspended arm of the union carry only this is what answers it.
+ */
+export interface TenantIdentity {
+  readonly id: string
+  readonly code: string
+}
+
+/**
+ * What `requireExistingTenant` hands back: the tenant, or the fact that it is off.
+ *
+ * THE PAYLOAD IS SPLIT, AND THAT IS THE WHOLE POINT
+ * -------------------------------------------------
+ * The obvious shape — `{ status: 'active', tenant } | { status: 'suspended', tenant }`
+ * — does not work, and the reason is worth stating because it is the difference
+ * between a type guarantee and a convention wearing a type's clothes.
+ *
+ * `tenant` is a property of *both* arms, so `const { tenant } = await
+ * requireExistingTenant(id)` compiles, and `resolved.tenant` compiles, and a page
+ * that never looks at `status` gets a full suspended `TenantDetail` with no compiler
+ * complaint at all. Verified against this repo's compiler: that variant produces zero
+ * errors. A union discriminates only the arms you branch on, and nothing forces the
+ * branch.
+ *
+ * So `tenant` exists on the active arm alone. A caller that has not narrowed gets
+ * `TS2339: Property 'tenant' does not exist on type 'ResolvedTenant'` the first time
+ * it reaches for the row, which means:
+ *
+ * - a fifth drill-down page cannot read a suspended tenant at all, rather than being
+ *   trusted to remember not to;
+ * - a page cannot reorder its own reads above the check, because the identifier it
+ *   would need for `listSchoolsForTenant(tenant.id)` is only in scope after
+ *   `resolved.status === 'suspended'` has been answered;
+ * - and the refusal path is handed `TenantIdentity` — two strings the roster already
+ *   showed the operator — so there is no suspended `TenantDetail` anywhere in a
+ *   component's props for it to leak by accident.
+ *
+ * `identity` rather than a narrower `tenant` on the suspended arm is the same
+ * argument one step on: a page still needs the id and the code to render the notice
+ * and the reactivation control, and it should get them from a type that cannot also
+ * carry `settings`.
+ */
+export type ResolvedTenant =
+  | { readonly status: 'active'; readonly tenant: TenantDetail }
+  | { readonly status: 'suspended'; readonly identity: TenantIdentity }
+
+/**
+ * `requireTenantScope` without the suspension refusal: resolves the tenant or
+ * throws `NotFoundError`.
+ *
+ * THIS DOES NOT REFUSE A SUSPENDED TENANT, and the reason it is exported at all is
+ * that the four tenant drill-down *pages* cannot use the gate. `/tenants/:tenantId`
+ * is where "Reactivate tenant" lives, so gating it would put the control behind the
+ * gate it exists to open; the other three are the tenant's schools, users and
+ * settings, and a suspended tenant must be able to show *why* it is suspended
+ * instead of rendering an error boundary or, worse, an empty list that reads as "this
+ * school has no users".
+ *
+ * Each of those four answers the suspension question for itself, and `ResolvedTenant`
+ * is how that obligation stops being a convention: the tenant row is unreachable
+ * until the caller has handled the suspended arm, so "forgot the branch" is a
+ * compile error rather than a silent leak. `tests/tenant-suspension-pages.test.ts`
+ * runs all four and pins that the suspension arm renders the notice and reads
+ * nothing; `tests/tenant-suspension.test.ts` pins the resolver and the routes.
+ *
+ * Split out rather than adding an option to `requireTenantScope` because the
+ * dangerous shape here is a boolean flag on a gate — a caller that passes the wrong
+ * value gets no refusal and no compiler complaint. The union is the same argument
+ * carried into the type: the caller cannot pick its way past the answer.
+ */
+export async function requireExistingTenant(tenantId: string): Promise<ResolvedTenant> {
   if (tenantId.trim().length === 0) {
     throw new NotFoundError('No tenant was named.')
   }
@@ -201,5 +309,8 @@ export async function requireTenantScope(tenantId: string): Promise<TenantDetail
   if (!tenant) {
     throw new NotFoundError(`No tenant with id "${tenantId}".`)
   }
-  return tenant
+  if (!tenant.isActive) {
+    return { status: 'suspended', identity: { id: tenant.id, code: tenant.code } }
+  }
+  return { status: 'active', tenant }
 }

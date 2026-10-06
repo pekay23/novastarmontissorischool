@@ -175,32 +175,76 @@ describe('switching the selection changes the scope and nothing else', () => {
     )
   })
 
-  it('should not carry the previous tenant into a later query', async () => {
+it('should not carry the previous tenant into a later query', async () => {
     selectTenant('tenant-a')
-    await listSchoolsForTenant('tenant-a')
+    await listUsersForTenant('tenant-a')
 
     // Signed back out of any drill-down: the selection cookie is cleared and a
     // fresh page load happens. Nothing from tenant-a may persist.
     setCookies({})
     expect(await getSelectedTenantId()).toBeNull()
+    // Reading the selection is a cookie read, not a lookup — so it cannot itself
+    // re-establish a scope it had lost. Counted as a delta rather than as zero:
+    // `listUsersForTenant` above now opens a suspension gate of its own, which is
+    // one tenant read, and the claim here is that clearing the cookie and reading it
+    // back adds none.
+    const lookupsBeforeReadingTheSelection = mocks.tenantFindFirst.mock.calls.length
+    setCookies({})
+    expect(await getSelectedTenantId()).toBeNull()
+    expect(mocks.tenantFindFirst).toHaveBeenCalledTimes(lookupsBeforeReadingTheSelection)
 
-    await listUsersForTenant('tenant-b')
-    expect(mocks.userFindMany.mock.calls[0][0].where).toEqual({ tenantId: 'tenant-b' })
+    // A tenant id that has never been in a cookie and appears in no other test: if
+    // the selection had leaked into any ambient state, this is the call that would
+    // show it, and the value asserted is one this test never selected rather than
+    // the one it did.
+    await listUsersForTenant('tenant-fresh')
+    expect(mocks.userFindMany).toHaveBeenCalledTimes(2)
+    const where = mocks.userFindMany.mock.calls[1][0].where
+    expect(where).toEqual({ tenantId: 'tenant-fresh' })
+    // And the tenant the operator had been looking at is nowhere in the query, so a
+    // scope that persisted anywhere — a module-level variable, a cached context — is
+    // caught even if it were combined with the new id.
+    expect(JSON.stringify(where)).not.toContain('tenant-a')
   })
+
 })
 
 describe('the two fleet-wide reads are the only unscoped ones', () => {
-  it('should page the platform audit trail with no tenant filter', async () => {
+  it('should page the platform audit trail, filtered on the tenants that are on', async () => {
     mocks.auditFindMany.mockImplementation(async () => [AUDIT_ROW])
     mocks.auditCount.mockImplementation(async () => 1)
+    // The fleet here has nothing switched off, so the exclusion set is empty and the
+    // query carries no `where`. Stated rather than left to the mock's default answer:
+    // this test used to assert `where` was `undefined` as a *property* of the call,
+    // which was the defect — a platform trail that returned a suspended school's rows.
+    mocks.tenantFindMany.mockImplementation(async () => [])
 
     await auditAcrossPlatform({ take: 25, skip: 0 })
 
-    // Unfiltered by design, and marked CROSS-TENANT in the source. Paged anyway:
-    // an unpaged fleet-wide audit log is how a control plane runs out of memory.
+    // Cross-tenant and marked as such in the source; paged anyway, because an unpaged
+    // fleet-wide audit log is how a control plane runs out of memory.
+    expect(mocks.tenantFindMany.mock.calls[0][0].where).toEqual({ isActive: false })
     expect(mocks.auditFindMany.mock.calls[0][0].where).toBeUndefined()
     expect(mocks.auditCount.mock.calls[0][0].where).toBeUndefined()
     expect(mocks.auditFindMany.mock.calls[0][0].take).toBe(25)
+  })
+
+  it('should exclude a suspended tenant once the fleet has one', async () => {
+    // The other half, on the same function. A filter that only ever runs against an
+    // empty exclusion set is a filter nobody has observed, and the assertion above
+    // passes against it either way.
+    mocks.auditFindMany.mockImplementation(async () => [AUDIT_ROW])
+    mocks.auditCount.mockImplementation(async () => 1)
+    mocks.tenantFindMany.mockImplementation(async () => [{ id: 'tenant-switch-suspended' }])
+
+    await auditAcrossPlatform({ take: 25, skip: 0 })
+
+    expect(mocks.auditFindMany.mock.calls[0][0].where).toEqual({
+      tenantId: { notIn: ['tenant-switch-suspended'] },
+    })
+    expect(mocks.auditCount.mock.calls[0][0].where).toEqual({
+      tenantId: { notIn: ['tenant-switch-suspended'] },
+    })
   })
 
   it('should project the roster narrowly rather than reading whole tenant rows', async () => {

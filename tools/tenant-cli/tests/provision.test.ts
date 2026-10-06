@@ -9,6 +9,7 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import { FakeDatabase, installFakeDatabase } from "./support/fake-prisma";
 import type { ProvisionInput } from "../provision";
+import { PERMISSION_CATALOG, PLATFORM_ROLE_NAMES } from "@novastar/shared-types";
 
 const fake = new FakeDatabase();
 await installFakeDatabase(fake);
@@ -97,14 +98,26 @@ expect(fake.rowsOf("tenant")[0].isActive).toBe(false);
 
   test("base RBAC is written once, on the create path", async () => {
     const created = await provisionTenant(baseInput());
-    expect(created.permissionsCreated).toBeGreaterThan(0);
-    expect(created.rolesCreated).toBeGreaterThan(0);
 
-    const before = fake.countOf("permission");
+    // Assert the ROWS, not the counters. `seedPermissions` returns
+    // `PERMISSION_CATALOG.length` and `seedPlatformRoles` returns
+    // `PLATFORM_ROLE_NAMES.length` — both constants, not counts of anything
+    // written — so `permissionsCreated > 0` held even when every
+    // `tx.permission.upsert` was deleted, and so did `rolesCreated > 0` with every
+    // `tx.role.upsert` deleted. A tenant provisioned with no permissions and no
+    // roles at all passed this test.
+    expect(fake.countOf("permission")).toBeGreaterThan(0);
+    expect(fake.countOf("role")).toBeGreaterThan(0);
+    expect(created.permissionsCreated).toBe(PERMISSION_CATALOG.length);
+    expect(created.rolesCreated).toBe(PLATFORM_ROLE_NAMES.length);
+
+    const beforePermissions = fake.countOf("permission");
+    const beforeRoles = fake.countOf("role");
     const second = await provisionTenant(baseInput());
+    expect(fake.countOf("permission")).toBe(beforePermissions);
+    expect(fake.countOf("role")).toBe(beforeRoles);
     expect(second.permissionsCreated).toBe(0);
     expect(second.rolesCreated).toBe(0);
-    expect(fake.countOf("permission")).toBe(before);
   });
 
   test("everything happens inside one transaction", async () => {

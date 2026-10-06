@@ -11,9 +11,13 @@ import {
   DEFAULT_PRIMARY_PROMOTION,
   DEFAULT_ASSESSMENT_WINDOWS,
   BECE_SUBJECT_MAPPING,
+  GES_CURRICULUM,
   WASSCE_SUBJECT_MAPPING,
   DEFAULT_REPORT_TEMPLATES,
-  type PromotionRule,
+  NACCA_5_LEVEL,
+  NACCA_6_LEVEL,
+  MONTESSORI_GRADING,
+  EYLF_GRADING,
 } from "../index";
 
 describe("DEFAULT_JHS_PROMOTION", () => {
@@ -217,8 +221,17 @@ describe("DEFAULT_ASSESSMENT_WINDOWS", () => {
 });
 
 describe("BECE_SUBJECT_MAPPING", () => {
-  test("contains all 9 JHS core subjects", () => {
-    expect(Object.keys(BECE_SUBJECT_MAPPING)).toHaveLength(9);
+  const jhsSubjects = GES_CURRICULUM.JHS.subjects;
+  const jhsCore = jhsSubjects.filter((subject) => subject.isCore).map((subject) => subject.code).sort();
+  const jhsElective = jhsSubjects
+    .filter((subject) => !subject.isCore)
+    .map((subject) => subject.code)
+    .sort();
+
+  test("contains exactly the JHS core subjects", () => {
+    // Derived, not a literal 9: a hardcoded count says nothing about which
+    // subjects it counts.
+    expect(Object.keys(BECE_SUBJECT_MAPPING)).toHaveLength(jhsCore.length);
   });
 
   test("maps each subject code to its full BECE name", () => {
@@ -233,17 +246,27 @@ describe("BECE_SUBJECT_MAPPING", () => {
     expect(BECE_SUBJECT_MAPPING.CULT).toBe("Creative Arts");
   });
 
-  test("keys match the JHS curriculum subject codes", () => {
-    const curriculumCodes = [
-      "ENG", "GLO", "MAT", "SCI", "SST", "RME", "ICT", "PHE", "CULT",
-      "FRENCH", "AGRIC", "BST"
-    ];
-    for (const code of curriculumCodes) {
-      if (code === "FRENCH" || code === "AGRIC" || code === "BST") {
-        // These are electives, not in BECE mapping
-        continue;
-      }
+  test("keys are the JHS curriculum subject codes, not a hand-written list", () => {
+    // The expectation is derived from `GES_CURRICULUM.JHS.subjects`, because the
+    // previous version looped a hardcoded twelve-string array that never touched
+    // the curriculum: adding a JHS subject with no mapping entry left this file
+    // green, which is precisely the defect a curriculum-to-exam mapping has.
+    //
+    // Every core subject a BECE candidate is examined in is mapped...
+    for (const code of jhsCore) {
       expect(BECE_SUBJECT_MAPPING[code]).toBeDefined();
+    }
+    // ...and nothing else is, so a mapping is never a claim BECE does not make.
+    expect(Object.keys(BECE_SUBJECT_MAPPING).sort()).toEqual(jhsCore);
+  });
+
+  test("the exemptions are the JHS electives, named rather than implied", () => {
+    // The one documented exemption set: French, Agricultural Science and
+    // Business Studies are taught at JHS but are not BECE subjects. Stating the
+    // set means adding a fourth unmapped subject is a visible failure.
+    expect(jhsElective).toEqual(["AGRIC", "BST", "FRENCH"]);
+    for (const code of jhsElective) {
+      expect(BECE_SUBJECT_MAPPING[code]).toBeUndefined();
     }
   });
 
@@ -273,6 +296,38 @@ describe("WASSCE_SUBJECT_MAPPING", () => {
     const values = Object.values(WASSCE_SUBJECT_MAPPING);
     const unique = new Set(values);
     expect(unique.size).toBe(values.length);
+  });
+});
+
+describe("GES_CURRICULUM gradingScale references", () => {
+  // Derived from the scales' own `id` fields, not written out as literals. The
+  // four phases used to name 'naCCA_EYLF', 'naCCA_6_1' and 'naCCA_5_1', none of
+  // which matched any `id` this module exports, so nothing anywhere could have
+  // resolved a phase's grading scale — and a literal list here would have pinned
+  // the dangling strings instead of catching them.
+  const exportedIds = [
+    NACCA_6_LEVEL.id,
+    NACCA_5_LEVEL.id,
+    MONTESSORI_GRADING.id,
+    EYLF_GRADING.id,
+  ];
+
+  test("every phase names a grading scale this module exports", () => {
+    const dangling = Object.entries(GES_CURRICULUM)
+      .filter(([, curriculum]) => !exportedIds.includes(curriculum.gradingScale))
+      .map(([phase, curriculum]) => `${phase} -> ${curriculum.gradingScale}`);
+
+    expect(dangling).toEqual([]);
+  });
+
+  test("each phase names the scale NaCCA uses for it", () => {
+    // Not just a member of the set: KG is early years, Primary and JHS are the
+    // 6-level scale, SHS is the 5-level A-G scale. A phase pointing at the wrong
+    // exported scale resolves, so only the set membership above would miss it.
+    expect(GES_CURRICULUM.KINDERGARTEN.gradingScale).toBe(EYLF_GRADING.id);
+    expect(GES_CURRICULUM.PRIMARY.gradingScale).toBe(NACCA_6_LEVEL.id);
+    expect(GES_CURRICULUM.JHS.gradingScale).toBe(NACCA_6_LEVEL.id);
+    expect(GES_CURRICULUM.SHS.gradingScale).toBe(NACCA_5_LEVEL.id);
   });
 });
 

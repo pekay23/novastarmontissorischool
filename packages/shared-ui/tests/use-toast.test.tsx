@@ -15,10 +15,16 @@
  * - The close button and the action button: the action must fire *and* remove
  *   the toast, and it must not bubble into the close button that sits beside it.
  *
- * A known gap is NOT asserted here: this Toaster renders no live region, so a
- * toast raised through `useToast` is not announced. `toast.tsx`'s `ToastViewport`
- * does declare one, but nothing renders it. Asserting the absence would enshrine
- * the defect; it is reported instead.
+ * - Whether the message is *spoken*. A toast is transient, un-focusable and
+ *   gone on a timer, so the live region is the only route to it for anyone who
+ *   cannot see it. The Toaster is that region: it is mounted before it has
+ *   anything to say, it is polite, and a `destructive` toast interrupts with an
+ *   assertive announcement of its own.
+ *
+ * That last one is asserted against `PortalToastProvider` because the live
+ * region used to sit on `toast.tsx`'s `ToastViewport`, which no renderer in
+ * any workspace mounts. A test that renders `ToastViewport` would have passed
+ * happily while every toast in the product stayed silent.
  */
 import { afterEach, describe, expect, jest, test } from "bun:test";
 import { act, cleanup, render, renderHook, screen } from "@testing-library/react";
@@ -56,6 +62,17 @@ function renderOne(props: Parameters<ReturnType<typeof useToast>["toast"]>[0]) {
 /** How many toasts are on screen. The container is the only fixed-position node. */
 const onScreen = (): number => document.querySelectorAll(".max-w-sm").length;
 
+/**
+ * The Toaster wrapper, found by its layout and not by its ARIA attributes.
+ * `.fixed.z-50` is the one positioned node a toast produces, so this resolves
+ * whether or not the region happens to be announcing anything. Looking it up by
+ * `role` instead would let every assertion below pass off some unrelated
+ * element claiming to be a live region — the exact failure mode this file
+ * exists to prevent.
+ */
+const region = (): HTMLElement | null =>
+  document.querySelector<HTMLElement>(".fixed.z-50");
+
 describe("useToast outside a provider", () => {
   test("throws, and names the provider it wanted", () => {
     // React logs the thrown error itself; the assertion is the point, not the log.
@@ -73,16 +90,6 @@ describe("rendering a toast", () => {
     renderOne({ title: "Saved", description: "The gradebook is up to date" });
     expect(screen.getByText("Saved")).toBeTruthy();
     expect(screen.getByText("The gradebook is up to date")).toBeTruthy();
-  });
-
-  test("renders nothing at all until a toast is raised", () => {
-    render(
-      <PortalToastProvider>
-        <span>page content</span>
-      </PortalToastProvider>,
-    );
-    expect(onScreen()).toBe(0);
-    expect(screen.getByText("page content")).toBeTruthy();
   });
 
   test("a toast with neither title nor description still occupies the corner", () => {
@@ -144,6 +151,130 @@ describe("variants", () => {
     renderOne({ title: "plain" });
     const el = document.querySelector(".max-w-sm");
     expect(el?.className).toContain("bg-background");
+  });
+});
+
+describe("announcement", () => {
+  /**
+   * A live region that arrives at the same instant as its own text is often
+   * never announced at all: assistive technology has no earlier state to
+   * compare against. The region therefore has to be mounted while it is still
+   * empty, which is why the Toaster renders even with nothing in it.
+   */
+  test("the live region is mounted, and empty, before any toast exists", () => {
+    render(
+      <PortalToastProvider>
+        <span>page content</span>
+      </PortalToastProvider>,
+    );
+    expect(region()).not.toBeNull();
+    expect(region()!.children).toHaveLength(0);
+    expect(onScreen()).toBe(0);
+    expect(screen.getByText("page content")).toBeTruthy();
+  });
+
+  /**
+   * Asserted on the real path — the provider every app mounts — because the
+   * region used to be declared on `toast.tsx`'s `ToastViewport`, which nothing
+   * renders, so this is the assertion that would have caught that.
+   */
+  test("the region that actually holds the toasts is a polite status region", () => {
+    renderOne({ title: "Saved" });
+    const container = region()!;
+    expect(container.getAttribute("role")).toBe("status");
+    expect(container.getAttribute("aria-live")).toBe("polite");
+    // Two rapid toasts must be two utterances, not one merged blob.
+    expect(container.getAttribute("aria-atomic")).toBe("false");
+    // The region has to be the message's ancestor, not a neighbour of it.
+    expect(container.contains(document.querySelector(".max-w-sm"))).toBe(true);
+  });
+
+  /**
+   * A failed save or a rejected mark is the one message that must not wait for
+   * a pause, so `destructive` interrupts instead of queueing. It nests an alert
+   * inside the polite region rather than replacing it: politeness is a property
+   * of a region, not of an update, so one region cannot serve both.
+   */
+  test("an error toast interrupts with an assertive, atomic announcement", () => {
+    function Trigger() {
+      const { toast } = useToast();
+      React.useEffect(() => {
+        toast.error({ title: "Save failed", description: "The grade was rejected" });
+      }, []);
+      return null;
+    }
+    render(
+      <PortalToastProvider>
+        <Trigger />
+      </PortalToastProvider>,
+    );
+    const item = document.querySelector<HTMLElement>(".max-w-sm")!;
+    expect(item.getAttribute("role")).toBe("alert");
+    expect(item.getAttribute("aria-live")).toBe("assertive");
+    // Title and description read as one message, not two fragments.
+    expect(item.getAttribute("aria-atomic")).toBe("true");
+    expect(region()!.contains(item)).toBe(true);
+  });
+
+  test.each(["default", "success", "warning", "info"] as const)(
+    "a %s toast leaves the politeness to the region it lands in",
+    (variant) => {
+      function Trigger() {
+        const { toast } = useToast();
+        React.useEffect(() => {
+          toast({ title: "x", variant });
+        }, []);
+        return null;
+      }
+      render(
+        <PortalToastProvider>
+          <Trigger />
+        </PortalToastProvider>,
+      );
+      const item = document.querySelector<HTMLElement>(".max-w-sm")!;
+      expect(item.getAttribute("role")).toBeNull();
+      expect(item.getAttribute("aria-live")).toBeNull();
+    },
+  );
+/**
+   * The dismiss control is an icon with no text, so it needs a name of its own.
+   * It is named after the toast's title because a stack of toasts is a stack of
+   * identically-shaped controls, and "button" tells the user nothing about which
+   * message they are about to lose.
+   */
+  test("the dismiss control is named, and named after its own toast", () => {
+    renderOne({ title: "Saved" });
+    const dismiss = screen.getByRole("button", { name: "Dismiss Saved" });
+    // The glyph must not be announced on top of the label.
+    expect(dismiss.querySelector("svg")?.getAttribute("aria-hidden")).toBe("true");
+  });
+
+  test("a toast with no title still gets a named dismiss control", () => {
+    renderOne({ description: "no title here" });
+    expect(screen.getByRole("button", { name: "Dismiss notification" })).toBeTruthy();
+  });
+
+  /**
+   * A <button> with no `type` is `submit`. Mounted inside a form, clicking the X
+   * to read a notification would post that form.
+   */
+  test("the dismiss control cannot submit a form it happens to sit inside", () => {
+    function Trigger() {
+      const { toast } = useToast();
+      React.useEffect(() => {
+        toast({ title: "Saved" });
+      }, []);
+      return null;
+    }
+    render(
+      <form>
+        <PortalToastProvider>
+          <Trigger />
+        </PortalToastProvider>
+      </form>,
+    );
+    const dismiss = screen.getByRole("button", { name: /^Dismiss/ });
+    expect(dismiss.getAttribute("type")).toBe("button");
   });
 });
 

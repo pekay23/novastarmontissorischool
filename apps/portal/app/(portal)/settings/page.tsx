@@ -41,6 +41,28 @@ const SETTINGS_SECTIONS = [
     entities: ['department', 'house'] as EntityType[],
   },
   {
+    // The register, and the only section that makes the amendment prompt
+    // reachable.
+    //
+    // `Student.finalizedAt` and `Parent.finalizedAt` are the ONLY two lock columns
+    // the lock migration adds to entities this registry manages (the other two are
+    // on the attendance tables, which have no registry entry), so `student` and
+    // `parent` are the only rows that can ever be reason-gated. Exposing them here
+    // through the ordinary `EntityList` — rather than a second edit screen — is
+    // what puts the prompt in front of a user at all, and it reuses the shared
+    // form instead of duplicating it.
+    //
+    // Flagged, because it is a second place to edit the register alongside
+    // /students and /parents: those pages have fuller forms. That duplication is
+    // pre-existing — both entries already had `allowEdit: true` and were simply
+    // unreachable — and the alternative was shipping a prompt that can never fire.
+    // Reconciling the two surfaces is the real fix and is out of scope here.
+    id: 'register',
+    label: 'Register',
+    icon: '📒',
+    entities: ['student', 'parent'] as EntityType[],
+  },
+  {
     id: 'branding',
     label: 'School Branding',
     icon: '🎨',

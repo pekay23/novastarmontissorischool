@@ -877,13 +877,41 @@ describe('requireCapability — deny by default', () => {
 
   it('should match wildcards with the shared matcher, not a second rule', () => {
     // `hasOperatorCapability` delegates to `permissionMatches`, so a delegated grant
-    // written elsewhere in the platform behaves identically here.
+    // written elsewhere in the platform behaves identically here. Asserting the
+    // delegation alone proved nothing about either answer — a `permissionMatches`
+    // that let `tenant:*` satisfy `platform:audit` satisfied both sides of the
+    // equality. So the outcomes are pinned as well as the agreement.
     expect(hasOperatorCapability(['tenant:*'], 'tenant:provision')).toBe(
       permissionMatches('tenant:*', 'tenant:provision'),
     )
     expect(hasOperatorCapability(['tenant:*'], 'platform:audit')).toBe(
       permissionMatches('tenant:*', 'platform:audit'),
     )
+
+    // The outcomes themselves. A wildcard covers its own prefix and nothing else:
+    // these are the answers a route's authorisation depends on, and each one is the
+    // negation of the mistake a widened matcher would make.
+    expect(hasOperatorCapability(['tenant:*'], 'tenant:read')).toBe(true)
+    expect(hasOperatorCapability(['tenant:*'], 'tenant:provision')).toBe(true)
+    // The load-bearing one: a tenant-scoped grant is not authority over the
+    // platform audit log, which reads every tenant's rows.
+    expect(hasOperatorCapability(['tenant:*'], 'platform:audit')).toBe(false)
+    expect(hasOperatorCapability(['tenant:*'], 'platform:read')).toBe(false)
+    expect(hasOperatorCapability(['platform:*'], 'tenant:provision')).toBe(false)
+    expect(hasOperatorCapability(['platform:*'], 'platform:audit')).toBe(true)
+    // A prefix is not a prefix of a partial segment: `tenant` is not `tenantX`.
+    expect(hasOperatorCapability(['tenant:*'], 'tenants:read' as never)).toBe(false)
+    // Deeper keys are covered by a deeper prefix and by no shallower one.
+    expect(hasOperatorCapability(['tenant:user:*'], 'tenant:user:create')).toBe(true)
+    expect(hasOperatorCapability(['tenant:user:*'], 'tenant:read')).toBe(false)
+    expect(hasOperatorCapability(['tenant:*'], 'tenant:user:create')).toBe(true)
+    // The global wildcard, and the empty set.
+    expect(hasOperatorCapability(['*'], 'platform:audit')).toBe(true)
+    expect(hasOperatorCapability([], 'tenant:read')).toBe(false)
+    // A grant that is not in the vocabulary grants nothing, even if it looks like a
+    // wildcard — `narrowCapabilities` is what guarantees the vocabulary, and this
+    // asserts the second half of that contract.
+    expect(hasOperatorCapability(['tenant:*:*'], 'tenant:provision')).toBe(false)
   })
 
   it('should refuse an unknown capability name', () => {
