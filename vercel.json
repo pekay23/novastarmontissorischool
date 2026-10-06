@@ -33,17 +33,5 @@
         "service": "public-site"
       }
     }
-  ],
-  "redirects": [
-    {
-      "source": "/admin",
-      "destination": "/admin/",
-      "permanent": true
-    },
-    {
-      "source": "/portal",
-      "destination": "/portal/",
-      "permanent": true
-    }
   ]
 }
