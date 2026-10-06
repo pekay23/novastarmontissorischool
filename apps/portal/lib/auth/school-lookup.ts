@@ -40,13 +40,68 @@ export async function resolveSchool(schoolCode?: string | null) {
 /**
  * The origin an emailed link should point at.
  *
- * `NEXTAUTH_URL` first, because that is the canonical, configured public origin
- * of this NextAuth deployment; `NEXT_PUBLIC_ORIGIN` as the fallback for setups
- * that only set the public one. A link built from the wrong origin is a link that
- * 404s in the recipient's browser, which for a one-hour reset token is a support
- * call.
+ * Dynamically determines the correct origin from the request headers when
+ * available, falling back to the configured NEXTAUTH_URL or NEXT_PUBLIC_ORIGIN.
+ * This follows the Aerojet Academy pattern of request-based URL detection,
+ * allowing email links to work correctly regardless of which address the
+ * user is accessing the portal from.
  */
-export function portalOrigin(): string {
+/**
+ * The set of origins trusted to build email links from.
+ *
+ * Populated from `NEXTAUTH_URL` (and `NEXT_PUBLIC_ORIGIN` as a fallback) at
+ * module load. Request-derived origins are validated against this allowlist
+ * before being used: the `Host` and `X-Forwarded-Proto` headers are
+ * attacker-controllable when the app is reachable without a trusted reverse
+ * proxy, and accepting them unchecked would let an attacker point
+ * password-reset and verification emails at a domain they control.
+ */
+function buildAllowedOrigins(): string[] {
+  const candidates = [process.env.NEXTAUTH_URL, process.env.NEXT_PUBLIC_ORIGIN]
+  const origins: string[] = []
+  for (const raw of candidates) {
+    if (!raw) continue
+    try {
+      origins.push(new URL(raw).origin)
+    } catch {
+      // An unparseable configured origin is a deployment error, not a security
+      // hole: it is ignored here and surfaced by the throw below when no
+      // request-derived origin matches either.
+    }
+  }
+  return origins
+}
+
+const ALLOWED_ORIGINS = buildAllowedOrigins()
+
+function originMatchesAllowlist(candidate: string): boolean {
+  try {
+    const origin = new URL(candidate).origin
+    return ALLOWED_ORIGINS.some((allowed) => allowed === origin)
+  } catch {
+    return false
+  }
+}
+
+export function portalOrigin(req?: Request): string {
+  // Try to determine origin from request headers first, but only if the
+  // resolved origin matches a configured allowlist. This prevents host header
+  // injection: an attacker who can reach the portal directly (or whose
+  // traffic bypasses the proxy's header rewrite) cannot cause email links to
+  // point at a domain they control.
+  if (req) {
+    const host = req.headers.get('host') || ''
+    const protocol = req.headers.get('x-forwarded-proto') || 'http'
+
+    if (host) {
+      const candidate = `${protocol}://${host}`.replace(/\/$/, '')
+      if (originMatchesAllowlist(candidate)) {
+        return candidate
+      }
+    }
+  }
+
+  // Fallback to configured environment variables
   const configured = process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_ORIGIN
   if (!configured) {
     throw new Error(
