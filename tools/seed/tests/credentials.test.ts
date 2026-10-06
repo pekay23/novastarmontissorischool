@@ -29,8 +29,8 @@ const STRONG = 'Chosen-By-An-Operator!42'
 const LOCAL_URL = 'postgresql://postgres:postgres@localhost:5432/novastar'
 const REMOTE_URL = 'postgresql://u:p@ep-tiny-firefly-abc.us-east-2.aws.neon.tech/neondb'
 
-const HEADMASTER_EMAIL = 'headmaster@novastarmontessori.com'
-const PORTAL_ADMIN_EMAIL = 'admin@novastarmontessori.com'
+const HEADMASTER_EMAIL = 'headmaster@nms.com'
+const PORTAL_ADMIN_EMAIL = 'admin@nms.com'
 
 /** Read once, at module scope: `describe` callbacks are not async. */
 const seedSource = await Bun.file(new URL('../index.ts', import.meta.url)).text()

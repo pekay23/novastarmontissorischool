@@ -38,6 +38,6 @@ export function getStorageStatePath(): string | undefined {
   return STORAGE_STATE_PATH
 }
 
-export default async function globalSetup(config: FullConfig) {
+export default async function globalSetup(_config: FullConfig) {
   await createStorageState()
 }

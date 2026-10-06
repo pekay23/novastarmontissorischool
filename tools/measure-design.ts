@@ -104,10 +104,7 @@ const CONVERTER = `
   };
 `;
 
-async function installConverter(page: import("@playwright/test").Page) {
-  await page.addInitScript(CONVERTER);
-  await page.addInitScript(LUMINANCE_AND_CONTRAST);
-}
+// Install converter is called directly in main()
 
 async function main() {
   const browser = await chromium.launch();
@@ -198,7 +195,7 @@ async function main() {
   // Fonts actually loaded
   await gotoMeasurable(page, BASE);
   const fonts = await page.evaluate(() =>
-    Array.from(document.fonts).map((f) => `${f.family} ${f.weight} ${f.status}`),
+    Array.from(document.fonts.values()).map((f) => `${f.family} ${f.weight} ${f.status}`),
   );
   console.log(`\nLOADED @font-face / FontFaceSet entries: ${fonts.length}`);
   for (const f of fonts.slice(0, 12)) console.log(`  ${f}`);

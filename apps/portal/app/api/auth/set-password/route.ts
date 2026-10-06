@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { checkRateLimit, clientIdentifier } from '@/lib/rate-limit'
 import { consumeEmailToken, lookupEmailToken } from '@/lib/auth/email-verification'
-import { hashPassword, MIN_PASSWORD_LENGTH } from '@/lib/password'
+import { hashPassword, MIN_PASSWORD_LENGTH, meetsPasswordComplexity, PASSWORD_COMPLEXITY_LABEL } from '@/lib/password'
 import { createAuditLog, AuditLogAction } from '@/lib/audit/logger'
 import { prisma } from '@/lib/prisma'
 
@@ -30,6 +30,10 @@ const SetPasswordSchema = z.object({
   token: z.string().min(1).max(512),
   password: z.string().min(MIN_PASSWORD_LENGTH).max(200),
 })
+
+function passwordPolicyMessage(): string {
+  return `Your password must be ${PASSWORD_COMPLEXITY_LABEL}.`
+}
 
 function invalidTokenResponse(reason: 'invalid' | 'expired') {
   const expired = reason === 'expired'
@@ -73,6 +77,16 @@ export async function POST(req: Request) {
           ? `Your password must be at least ${MIN_PASSWORD_LENGTH} characters.`
           : 'This request is missing a link or a password.',
       },
+      { status: 400 },
+    )
+  }
+
+  // Composition rules are enforced here as well as on the client: the client's
+  // check is a convenience for a person typing, and a direct caller (or a
+  // script that lifted the client's constants) would bypass it.
+  if (!meetsPasswordComplexity(parsed.data.password)) {
+    return NextResponse.json(
+      { error: 'password-too-weak', message: passwordPolicyMessage() },
       { status: 400 },
     )
   }

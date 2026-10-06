@@ -92,28 +92,38 @@ export async function POST(req: Request) {
 
   if (!user) return NextResponse.json(ACCEPTED, { status: 200 })
 
-  const { token } = await issueEmailToken(user.id)
+  // The response is returned before the token is minted or the email is sent.
+  // Token generation and email delivery add measurable latency, and the route
+  // answers byte-identically for an address that does not exist. Minting the
+  // token and sending the email after the response keeps the timing the same
+  // for every outcome, so a caller cannot use response latency to tell whether
+  // an account exists.
+  const response = NextResponse.json(ACCEPTED, { status: 200 })
 
-  try {
-    const rendered = verifyEmailTemplate({
-      schoolName: user.school?.name ?? school.name,
-      recipientName: user.name ?? 'there',
-      actionUrl: emailActionUrl(portalOrigin(), 'verify-email', token),
-      expiresInHours: EMAIL_TOKEN_TTL_HOURS,
-    })
-    await sendEmail({
-      to: user.email,
-      subject: rendered.subject,
-      html: rendered.html,
-      text: rendered.text,
-    })
-  } catch (error) {
-    // Logged, then answered with the same 200 as everything else. That log line
-    // is the whole point of `sendEmail` throwing: it used to swallow the failure
-    // and return null, so a person waiting on a link that was never sent had no
-    // way to learn that, and neither did the operator.
-    console.error('[auth] verification email was not delivered:', error)
-  }
+  void (async () => {
+    try {
+      const { token } = await issueEmailToken(user.id)
 
-  return NextResponse.json(ACCEPTED, { status: 200 })
+      const rendered = verifyEmailTemplate({
+        schoolName: user.school?.name ?? school.name,
+        recipientName: user.name ?? 'there',
+        actionUrl: emailActionUrl(portalOrigin(req), 'verify-email', token),
+        expiresInHours: EMAIL_TOKEN_TTL_HOURS,
+      })
+      await sendEmail({
+        to: user.email,
+        subject: rendered.subject,
+        html: rendered.html,
+        text: rendered.text,
+      })
+    } catch (error) {
+      // Logged, then answered with the same 200 as everything else. That log line
+      // is the whole point of `sendEmail` throwing: it used to swallow the failure
+      // and return null, so a person waiting on a link that was never sent had no
+      // way to learn that, and neither did the operator.
+      console.error('[auth] verification email was not delivered:', error)
+    }
+  })()
+
+  return response
 }

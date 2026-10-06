@@ -379,12 +379,12 @@ mock.module('@novastar/tenant-cli/provision', () => ({
   // these makes a module that imports them fail to load with
   // `SyntaxError: Export named '...' not found`.
   DEFAULT_ADMIN_ROLE: 'HEADMASTER',
-  MIN_ADMIN_PASSWORD_LENGTH: 12,
+  MIN_ADMIN_PASSWORD_LENGTH: 8,
   ADMIN_PASSWORD_ENV_VAR: 'TENANT_ADMIN_PASSWORD',
   ProvisionInputError: class ProvisionInputError extends Error {},
   assertAdminPassword: (admin?: { password?: string } | null): string => {
     const password = admin?.password ?? ''
-    if (password.length < 12) throw new Error('The administrator password must be at least 12 characters.')
+    if (password.length < 8) throw new Error('The administrator password must be at least 8 characters.')
     return password
   },
   normalizeProvisionInput: (input: unknown): unknown => input,
@@ -429,9 +429,9 @@ export interface FakeOperator {
  * plaintext is published here, which is fine and is the point: this fixture models a
  * credential whose hash is known to the test suite and grants nobody anything.
  */
-export const OPERATOR_PASSWORD = 'correct-horse-battery'
+export const OPERATOR_PASSWORD = 'Correct-Horse-Battery-1!'
 export const OPERATOR_HASH =
-  '$argon2id$v=19$m=19456,p=1,t=2$c4jxNDOfAz/X09MnZ0fMZQ$qxXKm1eidcVJDM4O8qulBGCrHUwC2vn4Wi8hptsfUkI'
+  '$argon2id$v=19$m=19456,p=1,t=2$alYyIEEl+7Bi1AhJLimOFA$wnOUmXaRVQDRmNYfvHeX7/AwCVVdOzYq+GuIy9k3AFY'
 
 /** A second published hash, for the "right operator, wrong password" cases. */
 export const OTHER_OPERATOR_PASSWORD = 'the-wrong-one-entirely'

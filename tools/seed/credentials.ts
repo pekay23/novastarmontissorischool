@@ -96,7 +96,7 @@ export const ALLOW_DEFAULT_PASSWORDS_VAR = 'SEED_ALLOW_DEFAULT_PASSWORDS'
  * because no local host can serve a schema through `@prisma/adapter-neon`. These
  * names document the shape of the escape hatch and nothing more.
  */
-export const DEFAULT_HEADMASTER_PASSWORD = 'Novastar2026!'
+export const DEFAULT_HEADMASTER_PASSWORD = 'Head@2026!'
 export const DEFAULT_PORTAL_ADMIN_PASSWORD = 'Admin@2026'
 
 export interface SeedCredentials {

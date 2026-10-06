@@ -372,7 +372,7 @@ export async function POST(req: Request) {
       const rendered = setPasswordTemplate({
         schoolName: school?.name ?? 'Novastar Montessori School',
         recipientName: fullName,
-        actionUrl: inviteActionUrl(portalOrigin(), created.token),
+        actionUrl: inviteActionUrl(portalOrigin(req), created.token),
         expiresInHours: INVITE_TOKEN_TTL_HOURS,
       })
       await sendEmail({

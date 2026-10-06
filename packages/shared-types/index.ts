@@ -139,6 +139,16 @@ export type {
 // with no error anywhere; see ./feature-flags for the full argument.
 export { ADMISSIONS_OPEN_DEFAULT, ADMISSIONS_OPEN_FLAG_KEY } from './feature-flags'
 
+// --- Portal mount path ---
+// The path the portal is mounted under on the single public origin. Shared
+// rather than duplicated because the portal's `basePath` (apps/portal/
+// next.config.ts), the emailed credential links (portalOrigin in
+// apps/portal/lib/auth/school-lookup.ts and its copies in the console, the
+// tenant CLI and the notifications package) and the dev proxy's rewrite
+// (apps/public-site/next.config.ts) must all agree on it; a drifted literal
+// would send a password-setup link to a 404 with no error anywhere.
+export const PORTAL_BASE_PATH = '/portal' as const
+
 // --- Roles & Permissions (DelegationRule defined before Role) ---
 
 /**

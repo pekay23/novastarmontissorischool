@@ -1,4 +1,12 @@
 import { hash as argon2Hash, verify as argon2Verify } from 'argon2'
+import {
+  MIN_PASSWORD_LENGTH,
+  PASSWORD_COMPLEXITY,
+  type PasswordComplexity,
+  meetsPasswordComplexity,
+  PASSWORD_COMPLEXITY_LABEL,
+  meetsPasswordPolicy,
+} from './password-policy'
 
 /**
  * Password verification and hashing for the portal server runtime.
@@ -14,6 +22,10 @@ import { hash as argon2Hash, verify as argon2Verify } from 'argon2'
  * its own. Hashing is the opposite case: the parameters have to be chosen, and
  * they have to be the ones Bun already wrote, or a hash produced here and a hash
  * produced by the seed would differ in cost for no reason.
+ *
+ * Not empirically re-measured here — correctness does not depend on it, only cost
+ * does — so a deployment that wants to move both writers to stronger parameters
+ * should change Bun's side and this side in the same commit.
  */
 
 /**
@@ -26,10 +38,6 @@ import { hash as argon2Hash, verify as argon2Verify } from 'argon2'
  * mean portal-issued passwords are ~3× more expensive to verify than
  * seed-issued ones for no security gain. Verification is unaffected either way:
  * `argon2Verify` reads m/t/p from the hash it is given.
- *
- * Not empirically re-measured here — correctness does not depend on it, only cost
- * does — so a deployment that wants to move both writers to stronger parameters
- * should change Bun's side and this side in the same commit.
  */
 export const ARGON2ID_PARAMS = {
   type: 2, // argon2id
@@ -38,15 +46,15 @@ export const ARGON2ID_PARAMS = {
   parallelism: 1,
 } as const
 
-/**
- * The shortest password the portal will store.
- *
- * Matches `MIN_ADMIN_PASSWORD_LENGTH` in `tools/tenant-cli/provision.ts`, so an
- * administrator can rotate their own password from the portal with the same rule
- * the provisioning CLI enforces, and no account can be created by one tool that
- * the other would refuse.
- */
-export const MIN_PASSWORD_LENGTH = 12
+// Re-export client-safe utilities
+export {
+  MIN_PASSWORD_LENGTH,
+  PASSWORD_COMPLEXITY,
+  type PasswordComplexity,
+  meetsPasswordComplexity,
+  PASSWORD_COMPLEXITY_LABEL,
+  meetsPasswordPolicy,
+}
 
 /**
  * Hashes a password with argon2id at `ARGON2ID_PARAMS`.

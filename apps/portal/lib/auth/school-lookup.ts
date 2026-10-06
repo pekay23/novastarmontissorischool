@@ -1,4 +1,5 @@
 import 'server-only'
+import { PORTAL_BASE_PATH } from '@novastar/shared-types'
 import { prisma } from '@/lib/prisma'
 
 /**
@@ -38,13 +39,15 @@ export async function resolveSchool(schoolCode?: string | null) {
 }
 
 /**
- * The origin an emailed link should point at.
+ * The public base URL an emailed link should point at: the request's
+ * origin (or the configured one) plus the portal's mount path.
  *
  * Dynamically determines the correct origin from the request headers when
  * available, falling back to the configured NEXTAUTH_URL or NEXT_PUBLIC_ORIGIN.
  * This follows the Aerojet Academy pattern of request-based URL detection,
  * allowing email links to work correctly regardless of which address the
- * user is accessing the portal from.
+ * user is accessing the portal from. The portal's base path is appended
+ * because the credential pages live under it, not at the bare origin.
  */
 /**
  * The set of origins trusted to build email links from.
@@ -96,12 +99,16 @@ export function portalOrigin(req?: Request): string {
     if (host) {
       const candidate = `${protocol}://${host}`.replace(/\/$/, '')
       if (originMatchesAllowlist(candidate)) {
-        return candidate
+        return `${candidate}${PORTAL_BASE_PATH}`
       }
     }
   }
 
-  // Fallback to configured environment variables
+  // Fallback to configured environment variables. `NEXTAUTH_URL` carries
+  // the portal's full auth API path (`.../portal/api/auth`) because
+  // next-auth's middleware derives its session-exempt path from it, so
+  // the origin is taken from it rather than the value used verbatim: the
+  // emailed links point at the portal's pages, not its auth API.
   const configured = process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_ORIGIN
   if (!configured) {
     throw new Error(
@@ -109,5 +116,11 @@ export function portalOrigin(req?: Request): string {
         'can be built. Set NEXTAUTH_URL in .env (see .env.example).',
     )
   }
-  return configured.replace(/\/$/, '')
+  let origin: string
+  try {
+    origin = new URL(configured).origin
+  } catch {
+    origin = configured.replace(/\/$/, '')
+  }
+  return `${origin}${PORTAL_BASE_PATH}`
 }

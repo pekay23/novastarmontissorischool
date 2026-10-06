@@ -1,6 +1,4 @@
 import { http, HttpResponse } from 'msw'
-import { studentFixtures } from '../fixtures/students'
-import { invoiceFixtures } from '../fixtures/invoices'
 
 const AUTH_BASE = '/api/auth'
 
@@ -12,8 +10,7 @@ export const authHandlers = [
 
   // NextAuth session
   http.get(`${AUTH_BASE}/session`, ({ request }) => {
-    const url = new URL(request.url)
-    const callbackUrl = url.searchParams.get('callbackUrl')
+    const _callbackUrl = new URL(request.url).searchParams.get('callbackUrl')
     return HttpResponse.json({
       user: null,
       expires: new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString(),
@@ -38,7 +35,7 @@ export const authHandlers = [
     const formData = await request.formData()
     const email = formData.get('email') as string
     const password = formData.get('password') as string
-    const schoolCode = formData.get('schoolCode') as string | null
+    const _schoolCode = formData.get('schoolCode') as string | null
 
     // Mock successful login for test credentials
     if (email === 'test@example.com' && password === 'password123') {

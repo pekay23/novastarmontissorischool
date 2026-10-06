@@ -70,7 +70,7 @@ export const DEFAULT_ADMIN_ROLE = "HEADMASTER";
  * to. There is no default and no generated value: the caller must supply one, or
  * omit `admin` entirely and create the account later with `commands/user.ts`.
  */
-export const MIN_ADMIN_PASSWORD_LENGTH = 12;
+export const MIN_ADMIN_PASSWORD_LENGTH = 8;
 
 export const ADMIN_PASSWORD_ENV_VAR = "TENANT_ADMIN_PASSWORD";
 
@@ -129,6 +129,37 @@ export class ProvisionInputError extends Error {
 }
 
 /**
+ * The composition rules an administrator password must satisfy on top of the
+ * length floor. Mirrors the portal's `PASSWORD_COMPLEXITY` in spirit —
+ * uppercase, lowercase, digit and symbol — because a tenant administrator
+ * credential is created by an operator and then rotated by its owner through
+ * the portal, so both sides must agree on what is acceptable. Duplicated as a
+ * literal rather than imported for the same reason as the minimum length:
+ * this is a Bun CLI without the portal's `@/` alias, and importing across that
+ * boundary would mean adding a dependency from the tool to the app.
+ */
+export const ADMIN_PASSWORD_COMPLEXITY = {
+  requireUppercase: true,
+  requireLowercase: true,
+  requireDigit: true,
+  requireSymbol: true,
+} as const;
+
+export function meetsAdminPasswordComplexity(password: string): boolean {
+  const hasUpper = /[A-Z]/.test(password);
+  const hasLower = /[a-z]/.test(password);
+  const hasDigit = /\d/.test(password);
+  const hasSymbol = /[^A-Za-z0-9]/.test(password);
+
+  if (ADMIN_PASSWORD_COMPLEXITY.requireUppercase && !hasUpper) return false;
+  if (ADMIN_PASSWORD_COMPLEXITY.requireLowercase && !hasLower) return false;
+  if (ADMIN_PASSWORD_COMPLEXITY.requireDigit && !hasDigit) return false;
+  if (ADMIN_PASSWORD_COMPLEXITY.requireSymbol && !hasSymbol) return false;
+
+  return true;
+}
+
+/**
  * Throws when an administrator email arrives with no usable password. The message
  * names `TENANT_ADMIN_PASSWORD` so the operator has something to act on instead
  * of a bare "missing field".
@@ -146,6 +177,12 @@ export function assertAdminPassword(admin: ProvisionInput["admin"]): string {
     throw new Error(
       `The administrator password must be at least ${MIN_ADMIN_PASSWORD_LENGTH} characters. ` +
         `Set ${ADMIN_PASSWORD_ENV_VAR} to a longer value.`,
+    );
+  }
+  if (!meetsAdminPasswordComplexity(password)) {
+    throw new Error(
+      `The administrator password must contain an uppercase letter, a lowercase letter, a ` +
+        `number and a symbol. Set ${ADMIN_PASSWORD_ENV_VAR} to a value that does.`,
     );
   }
   return password;

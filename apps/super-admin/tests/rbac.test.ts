@@ -417,14 +417,20 @@ describe('operator credentials — a username, an email, and a password', () => 
 
 describe('operator password hashing — argon2id on the Node runtime', () => {
   it('should refuse a password below the minimum and hash nothing', async () => {
-    expect(MIN_OPERATOR_PASSWORD_LENGTH).toBe(12)
-    expect('elevenchars'.length).toBe(11)
-    expect(isAcceptableOperatorPassword('elevenchars')).toBe(false)
-    expect(isAcceptableOperatorPassword('twelvechars!')).toBe(true)
+    expect(MIN_OPERATOR_PASSWORD_LENGTH).toBe(6)
+    expect('short'.length).toBe(5)
+    expect(isAcceptableOperatorPassword('short')).toBe(false)
+    // Six characters, all lowercase: meets the length floor but not the
+    // composition rules, which require uppercase, digit and symbol as well.
+    expect(isAcceptableOperatorPassword('sixchr')).toBe(false)
+    expect(isAcceptableOperatorPassword('Sixchr1!')).toBe(true)
 
     // A refusal rather than a warning: a weak hash that exists is a credential
     // somebody can eventually guess.
-    await expect(hashOperatorPassword('elevenchars')).rejects.toThrow(/at least 12 characters/)
+    await expect(hashOperatorPassword('short')).rejects.toThrow(/at least 6 characters/)
+    // A password that meets the length floor but not the composition rules is
+    // refused on composition, not on length.
+    await expect(hashOperatorPassword('sixchr')).rejects.toThrow(/uppercase letter, a lowercase letter, a number and a symbol/)
   })
 
   it('should write an argon2id hash carrying the OWASP parameters', async () => {

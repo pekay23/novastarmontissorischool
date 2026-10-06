@@ -11,9 +11,10 @@ import {
   Calendar, Clock, FileText, Settings, LogOut, Menu,
   Bell, Search, Shield, School, LibraryBig, Package,
   CalendarDays, NotebookText, TrendingUp,
+  ChevronLeft, ChevronRight, ChevronDown,
   type LucideIcon,
 } from 'lucide-react'
-import { Button, cn, ToastProvider, ConfirmProvider, useToast } from '@novastar/shared-ui'
+import { Button, cn, ToastProvider, ConfirmProvider, useToast, Avatar, AvatarFallback, AvatarImage } from '@novastar/shared-ui'
 import { reachableNavigation } from '@/lib/portal-sections'
 import { useState } from 'react'
 
@@ -44,7 +45,8 @@ export default function PortalLayout({
   const pathname = usePathname()
   const router = useRouter()
   const { data: session, status } = useSession()
-  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
 
   if (status === 'loading') {
     return (
@@ -70,22 +72,6 @@ export default function PortalLayout({
     session?.user?.name?.split(' ')[0] || 'School Portal'
 
   // The sidebar shows exactly the sections the proxy admits for this role.
-  //
-  // It used to keep its own answer: a `SETTINGS_ROLES` set plus an
-  // unconditional `return true`, which meant every role except the three in that
-  // set saw all sixteen links. A `CLASSROOM_TEACHER` could open four of them and
-  // was bounced from the rest by the proxy; `ASSISTANT_HEAD` was shown a Settings
-  // link the proxy always refused, because `SETTINGS_ROLES` admitted it and the
-  // proxy's section list never did. Two lists answering one question is the whole
-  // defect — each new role made it worse, and neither list could be read as
-  // authoritative next to the other.
-  //
-  // `reachableNavigation` applies the same function the proxy calls, so a link
-  // that renders here is a path the proxy admits by construction. It is still only
-  // the coarse filter: whether the caller may read this particular record is
-  // decided by the route handler, which is what the pages' empty and error states
-  // have always been written against. A role the section map has never heard of
-  // renders no links at all, which matches the proxy sending it to `/login`.
   const visibleNav = reachableNavigation(userRole, navigation)
 
   return (
@@ -93,103 +79,138 @@ export default function PortalLayout({
       <ToastProvider>
         <ConfirmProvider>
           {/* Mobile sidebar overlay */}
-      {sidebarOpen && (
-        <div
-          className="fixed inset-0 z-40 bg-background/80 backdrop-blur-sm md:hidden"
-          onClick={() => setSidebarOpen(false)}
-        />
-      )}
+          {sidebarOpen && (
+            <div
+              className="fixed inset-0 z-40 bg-background/80 backdrop-blur-sm md:hidden"
+              onClick={() => setSidebarOpen(false)}
+            />
+          )}
 
-      {/* Sidebar */}
-      <aside
-        className={cn(
-          'fixed md:fixed md:translate-x-0 z-50 flex h-full w-64 flex-col border-r bg-card transition-transform duration-200 ease-in-out',
-          sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
-        )}
-      >
-        <div className="flex h-14 items-center justify-between border-b px-4">
-          <Link href="/dashboard" className="font-heading text-xl font-bold text-primary">
-            {schoolName}
-          </Link>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="md:hidden"
-            onClick={() => setSidebarOpen(false)}
+          {/* Sidebar */}
+          <aside
+            className={cn(
+              'fixed md:fixed md:translate-x-0 z-50 flex h-full flex-col border-r bg-card transition-all duration-300 ease-in-out',
+              sidebarCollapsed
+                ? 'w-16'
+                : 'w-64',
+              !sidebarOpen && 'md:hidden -translate-x-full'
+            )}
           >
-            <Menu className="h-5 w-5" />
-          </Button>
-        </div>
-
-        <nav className="flex-1 overflow-y-auto py-2">
-          {visibleNav.map((item) => {
-            const Icon = item.icon
-            const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
-            return (
-              <Link
-                key={item.name}
-                href={item.href}
+            <div className="flex h-14 items-center justify-between border-b px-4">
+              {!sidebarCollapsed && (
+                <Link href="/dashboard" className="font-heading text-xl font-bold text-primary">
+                  {schoolName}
+                </Link>
+              )}
+              <Button
+                variant="ghost"
+                size="icon"
                 className={cn(
-                  'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
-                  isActive
-                    ? 'bg-primary/10 text-primary'
-                    : 'text-foreground hover:bg-accent hover:text-accent-foreground'
+                  'flex-shrink-0',
+                  sidebarCollapsed && 'ml-auto'
                 )}
-                onClick={() => setSidebarOpen(false)}
+                onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+                aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
               >
-                <Icon className="h-5 w-5" />
-                {item.name}
-              </Link>
-            )
-          })}
-        </nav>
+                {sidebarCollapsed ? (
+                  <ChevronRight className="h-5 w-5" />
+                ) : (
+                  <ChevronLeft className="h-5 w-5" />
+                )}
+              </Button>
+            </div>
 
-        <div className="border-t p-3">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="w-full justify-start gap-2"
-            onClick={() => signOut({ callbackUrl: '/login' })}
+            <nav className="flex-1 overflow-y-auto py-2">
+              {visibleNav.map((item) => {
+                const Icon = item.icon
+                const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
+                return (
+                  <Link
+                    key={item.name}
+                    href={item.href}
+                    className={cn(
+                      'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+                      sidebarCollapsed
+                        ? 'justify-center px-2'
+                        : 'justify-start px-3',
+                      isActive
+                        ? 'bg-primary/10 text-primary'
+                        : 'text-foreground hover:bg-accent hover:text-accent-foreground'
+                    )}
+                    onClick={() => setSidebarOpen(false)}
+                    title={sidebarCollapsed ? item.name : undefined}
+                  >
+                    <Icon className={cn('h-5 w-5 flex-shrink-0', sidebarCollapsed && 'mx-auto')} />
+                    {!sidebarCollapsed && <span className="truncate">{item.name}</span>}
+                  </Link>
+                )
+              })}
+            </nav>
+
+            <div className="border-t p-3">
+              {!sidebarCollapsed ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="w-full justify-start gap-2"
+                  onClick={() => signOut({ callbackUrl: '/login' })}
+                >
+                  <LogOut className="h-4 w-4" />
+                  Sign Out
+                </Button>
+              ) : (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="w-full justify-center"
+                  onClick={() => signOut({ callbackUrl: '/login' })}
+                  title="Sign Out"
+                >
+                  <LogOut className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
+          </aside>
+
+          {/* Main content */}
+          <div
+            className={cn(
+              'flex-1 flex flex-col overflow-hidden transition-all duration-300 ease-in-out',
+              sidebarCollapsed ? 'md:ml-16' : 'md:ml-64'
+            )}
           >
-            <LogOut className="h-4 w-4" />
-            Sign Out
-          </Button>
-        </div>
-      </aside>
+            {/* Header */}
+            <header className="relative flex h-14 items-center justify-between border-b bg-card px-4">
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="md:hidden"
+                  onClick={() => setSidebarOpen(true)}
+                >
+                  <Menu className="h-5 w-5" />
+                </Button>
+                <h1 className="font-heading text-xl font-bold">
+                  {navigation.find(n => pathname?.startsWith(n.href))?.name || 'Dashboard'}
+                </h1>
+              </div>
 
-      {/* Main content */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Header */}
-        <header className="relative flex h-14 items-center justify-between border-b bg-card px-4">
-          <div className="flex items-center gap-2">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="md:hidden"
-              onClick={() => setSidebarOpen(true)}
-            >
-              <Menu className="h-5 w-5" />
-            </Button>
-            <h1 className="font-heading text-xl font-bold">
-              {navigation.find(n => pathname?.startsWith(n.href))?.name || 'Dashboard'}
-            </h1>
+              <HeaderActions
+                userName={session?.user?.name}
+                userRole={userRole}
+                userEmail={session?.user?.email}
+                pages={visibleNav}
+              />
+            </header>
+
+            {/* Page content */}
+            <main className="flex-1 overflow-y-auto">
+              <div className="container mx-auto p-4 md:p-6">
+                {children}
+              </div>
+            </main>
           </div>
-
-          <HeaderActions
-            userName={session?.user?.name}
-            userRole={userRole}
-            pages={visibleNav}
-          />
-        </header>
-
-        {/* Page content */}
-        <main className="flex-1 overflow-y-auto">
-          <div className="container mx-auto p-4">
-            {children}
-          </div>
-        </main>
-      </div>
-      </ConfirmProvider>
+        </ConfirmProvider>
       </ToastProvider>
     </div>
   )
@@ -198,16 +219,19 @@ export default function PortalLayout({
 function HeaderActions({
   userName,
   userRole,
+  userEmail,
   pages,
 }: {
   userName?: string | null
   userRole: string
+  userEmail?: string | null
   pages: readonly { name: string; href: string; icon: LucideIcon }[]
 }) {
   const { toast } = useToast()
   const router = useRouter()
   const [searchOpen, setSearchOpen] = useState(false)
   const [query, setQuery] = useState('')
+  const [userMenuOpen, setUserMenuOpen] = useState(false)
 
   // The same list the sidebar renders. It used to search the unfiltered
   // `navigation`, so a role that could not open a section still found it by typing
@@ -224,6 +248,13 @@ function HeaderActions({
     setQuery('')
     router.push(href)
   }
+
+  const initials = userName
+    ?.split(' ')
+    .map((n) => n[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2) || 'US'
 
   return (
     <div className="flex items-center gap-2">
@@ -289,9 +320,49 @@ function HeaderActions({
         </ul>
       )}
 
-      <div className="flex items-center gap-2 rounded-md bg-muted px-3 py-1 text-sm">
-        <span className="hidden sm:inline">{userName}</span>
-        <span className="text-xs uppercase text-muted-foreground">({userRole})</span>
+      {/* User Menu */}
+      <div className="relative">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="flex items-center gap-2 rounded-md bg-muted px-3 py-1 text-sm"
+          onClick={() => setUserMenuOpen(!userMenuOpen)}
+          aria-expanded={userMenuOpen}
+          aria-haspopup="true"
+        >
+          <Avatar className="h-8 w-8">
+            <AvatarImage src={userEmail ? `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(userEmail)}` : undefined} alt={userName || 'User'} />
+            <AvatarFallback>{initials}</AvatarFallback>
+          </Avatar>
+          <span className="hidden sm:inline-block truncate max-w-[120px]">{userName}</span>
+          <ChevronDown className="h-4 w-4 text-muted-foreground" />
+        </Button>
+
+        {userMenuOpen && (
+          <>
+            <div
+              className="fixed inset-0 z-40"
+              onClick={() => setUserMenuOpen(false)}
+              aria-hidden="true"
+            />
+            <div className="absolute right-0 top-full z-50 mt-2 w-48 overflow-hidden rounded-md border bg-card shadow-lg py-1">
+              <div className="px-3 py-2 border-b text-sm">
+                <p className="font-medium truncate">{userName}</p>
+                <p className="text-xs text-muted-foreground capitalize">{userRole.toLowerCase()}</p>
+              </div>
+              <button
+                onClick={() => {
+                  setUserMenuOpen(false)
+                  signOut({ callbackUrl: '/login' })
+                }}
+                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-destructive hover:bg-accent hover:text-accent-foreground"
+              >
+                <LogOut className="h-4 w-4" />
+                Sign Out
+              </button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   )

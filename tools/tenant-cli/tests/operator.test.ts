@@ -24,7 +24,7 @@ const { MIN_OPERATOR_PASSWORD_LENGTH, OPERATOR_PASSWORD_ENV_VAR, runOperator } =
 
 process.env.DATABASE_URL ??= "postgresql://operator:operator@localhost:5432/novastar";
 
-const PASSWORD = "correct-horse-battery";
+const PASSWORD = "Correct-Horse-Battery-1!"
 
 /** Everything `runOperator` writes, captured rather than printed. */
 let output: string[];
@@ -147,10 +147,20 @@ describe("operator create", () => {
 
 describe("operator create refuses", () => {
   test("a password below the floor, having written nothing", async () => {
-    process.env[OPERATOR_PASSWORD_ENV_VAR] = "elevenchars";
+    process.env[OPERATOR_PASSWORD_ENV_VAR] = "short"
 
-    await expect(create()).rejects.toThrow(/at least 12 characters/);
-    expect(MIN_OPERATOR_PASSWORD_LENGTH).toBe(12);
+    await expect(create()).rejects.toThrow(/at least 6 characters/);
+    expect(MIN_OPERATOR_PASSWORD_LENGTH).toBe(6);
+    expect(fake.countOf("PlatformOperator")).toBe(0);
+  })
+
+  test("a password that meets the floor but not the composition rules", async () => {
+    // Six characters, lowercase only: long enough for the floor, missing the
+    // uppercase, digit and symbol the operator credential also requires.
+    process.env[OPERATOR_PASSWORD_ENV_VAR] = "abcdef"
+
+    await expect(create()).rejects.toThrow(/uppercase letter, a lowercase letter, a number and a symbol/);
+    expect(MIN_OPERATOR_PASSWORD_LENGTH).toBe(6);
     expect(fake.countOf("PlatformOperator")).toBe(0);
   });
 

@@ -73,9 +73,25 @@ async function recordFailedLogin(userId: string): Promise<void> {
   })
 }
 
+/**
+ * Dynamically determine the correct base URL for NextAuth.
+ *
+ * Supports both localhost (for local development) and network access via
+ * 192.168.8.202:3001 (for testing on other devices). The URL is derived from
+ * the request headers rather than a fixed environment variable, so the same
+ * deployment works regardless of which address the client uses.
+ *
+ * This follows the Aerojet Academy pattern of request-based URL detection,
+ * which allows the same NextAuth deployment to work via multiple addresses
+ * without redirecting to a hardcoded URL.
+ */
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma),
   secret: process.env.NEXTAUTH_SECRET,
+  // Note: `url` is intentionally NOT set here. NextAuth v4 automatically
+  // determines the base URL from the request headers, which allows the same
+  // deployment to work via both localhost and network IP addresses.
+  // This follows the Aerojet Academy pattern.
   session: {
     strategy: 'jwt',
     maxAge: 8 * 60 * 60, // 8 hours (reduced from 30 days for security)

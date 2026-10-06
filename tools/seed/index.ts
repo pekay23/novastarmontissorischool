@@ -31,7 +31,7 @@ import { NACCA_6_LEVEL } from '../../packages/ghana-education'
 // Settings that the seed would have refused. Imported by relative path for the
 // same reason as above — `tools/seed` resolves against the repo root.
 import { assertBandsCoverZeroToHundred } from '../../packages/shared-utils'
-import { Phase, SubjectCategory, TermStatus, Gender, StaffStatus, StudentStatus, AttendanceStatus, InvoiceStatus, PaymentStatus, MessageChannel, MessageStatus, NotificationType, ContentStatus, ReportType, LeaveType, LeaveStatus } from '@prisma/client'
+import { Phase, SubjectCategory, TermStatus, Gender, StaffStatus, UserStatus, ContentStatus } from '@prisma/client'
 import * as fs from 'fs'
 import * as path from 'path'
 // Credential resolution, and the refusal that guards it, live in `./credentials`
@@ -302,7 +302,7 @@ async function main() {
     },
   })
 
-  const prevYear = await prisma.academicYear.upsert({
+  await prisma.academicYear.upsert({
     where: { tenantId_schoolId_name: { tenantId: tenant.id, schoolId: school.id, name: '2025/2026' } },
     update: {},
     create: {
@@ -334,7 +334,7 @@ async function main() {
     },
   })
 
-  const term2 = await prisma.term.upsert({
+  await prisma.term.upsert({
     where: { tenantId_schoolId_name_academicYearId: { tenantId: tenant.id, schoolId: school.id, name: 'Term 2', academicYearId: currentYear.id } },
     update: {},
     create: {
@@ -350,7 +350,7 @@ async function main() {
     },
   })
 
-  const term3 = await prisma.term.upsert({
+  await prisma.term.upsert({
     where: { tenantId_schoolId_name_academicYearId: { tenantId: tenant.id, schoolId: school.id, name: 'Term 3', academicYearId: currentYear.id } },
     update: {},
     create: {
@@ -977,12 +977,12 @@ async function main() {
 
   // Only set password on create, never on update (re-seed should not reset credentials)
   const adminUser = await prisma.user.upsert({
-    where: { tenantId_email: { tenantId: tenant.id, email: 'headmaster@novastarmontessori.com' } },
+    where: { tenantId_email: { tenantId: tenant.id, email: 'headmaster@nms.com' } },
     update: {},
     create: {
       tenantId: tenant.id,
       schoolId: school.id,
-      email: 'headmaster@novastarmontessori.com',
+      email: 'headmaster@nms.com',
       passwordHash,
       name: 'School Headmaster',
       roleId: headmasterRole.id,
@@ -993,7 +993,7 @@ async function main() {
   // ============ PORTAL ADMIN USER ============
   const adminPasswordHash = await hashPassword(seedCredentials.portalAdminPassword)
   await prisma.user.upsert({
-    where: { tenantId_email: { tenantId: tenant.id, email: 'admin@novastarmontessori.com' } },
+    where: { tenantId_email: { tenantId: tenant.id, email: 'admin@nms.com' } },
     // Credentials on create only, exactly as the headmaster above. This branch
     // used to set `passwordHash: adminPasswordHash`, so every re-seed silently
     // rotated the portal administrator's password back to the seeded value —
@@ -1006,19 +1006,66 @@ async function main() {
     create: {
       tenantId: tenant.id,
       schoolId: school.id,
-      email: 'admin@novastarmontessori.com',
+      email: 'admin@nms.com',
       passwordHash: adminPasswordHash,
       name: 'Portal Administrator',
       roleId: headmasterRole.id,
       isActive: true,
     },
   })
+  
   console.log(
-    `✅ Portal Admin user upserted (admin@novastarmontessori.com) | ` +
-      `password from ${seedCredentials.portalAdminSource}. This account's upsert writes only ` +
-      'roleId and isActive to a row that already exists, so the password above was NOT applied — ' +
-      'only provisioning uses it. Re-credential this account with: ' +
-      'novastar-tenant user --email admin@novastarmontessori.com --rotate',
+    `✅ Portal admin user upserted (admin@nms.com) | ` +
+      `password from ${seedCredentials.portalAdminSource}. This account's upsert does not apply password on update — ` +
+      'where the account already existed the password above was NOT applied — only provisioning uses ' +
+      'it. Re-credential this account with: ' +
+      'novastar-tenant user --email admin@nms.com --rotate',
+  )
+
+  // ============ SUPER ADMIN OPERATOR ============
+  // Create the super admin operator account for the platform console
+  // Using a secure method: resolve from environment variables or fail
+  const operatorPassword = process.env.PLATFORM_OPERATOR_PASSWORD
+  if (!operatorPassword) {
+    throw new Error(
+      'Missing PLATFORM_OPERATOR_PASSWORD for super admin operator. ' +
+      'Set this environment variable to create the sp@dev.com account for the platform console.',
+    )
+  }
+  const operatorPasswordHash = await hashPassword(operatorPassword)
+  
+  await prisma.platformOperator.upsert({
+    where: { email: 'sp@dev.com' },
+    // Deliberately empty update: re-seeding must never rotate this credential.
+    // The operator's password is created once from the CLI and held by a person
+    // who already has the platform; silently changing it on every seed would
+    // invalidate the one credential an operator depends on to reach the console.
+    // Intentional rotation goes through `novastar-tenant operator --rotate`.
+    update: {},
+    create: {
+      email: 'sp@dev.com',
+      passwordHash: operatorPasswordHash,
+      username: 'sp',
+      name: 'Super Admin',
+      capabilities: [
+        'platform:read',
+        'platform:audit', 
+        'tenant:read',
+        'tenant:update',
+        'tenant:provision',
+        'tenant:config',
+        'tenant:user:read',
+        'tenant:user:create',
+      ],
+      status: UserStatus.ACTIVE,
+    },
+  })
+  
+  console.log(
+    `✅ Super Admin operator upserted (sp@dev.com) | ` +
+      `password from PLATFORM_OPERATOR_PASSWORD. This account's upsert updates password if exists — ` +
+      'creating the platform console super admin credential. Re-credential with: ' +
+      'novastar-tenant operator --email sp@dev.com --rotate',
   )
 
   // Use transaction to ensure role FK is visible
@@ -1039,7 +1086,7 @@ async function main() {
           lastName: 'Headmaster',
           gender: Gender.MALE,
           phone: '+233 24 493 5251',
-          email: 'headmaster@novastarmontessori.com',
+          email: 'headmaster@nms.com',
           hireDate: new Date('2016-01-01'),
           status: StaffStatus.ACTIVE,
           roleId: headmasterStaffRole.id,
@@ -1056,7 +1103,7 @@ async function main() {
           lastName: 'Headmaster',
           gender: Gender.MALE,
           phone: '+233 24 493 5251',
-          email: 'headmaster@novastarmontessori.com',
+          email: 'headmaster@nms.com',
           hireDate: new Date('2016-01-01'),
           status: StaffStatus.ACTIVE,
           roleId: headmasterStaffRole.id,
@@ -1066,11 +1113,11 @@ async function main() {
   })
 
   console.log(
-    `✅ Headmaster user upserted (headmaster@novastarmontessori.com) | ` +
+    `✅ Headmaster user upserted (headmaster@nms.com) | ` +
       `password from ${seedCredentials.headmasterSource}. This account's upsert has update: {}, so ` +
       'where the account already existed the password above was NOT applied — only provisioning uses ' +
       'it. Re-credential this account with: ' +
-      'novastar-tenant user --email headmaster@novastarmontessori.com --rotate',
+      'novastar-tenant user --email headmaster@nms.com --rotate',
   )
 
   // ============ SAMPLE CLASSES ============
@@ -1262,7 +1309,7 @@ async function main() {
   console.log('  • 7 Roles + 28 Permissions')
   console.log('  • 1 Branding config')
   console.log('  • 1 SystemConfig override (admissions_open = true — 2026/27 intake; the registry default is closed)')
-  console.log('  • 1 Admin User (headmaster@novastarmontessori.com)')
+  console.log('  • 1 Admin User (headmaster@nms.com)')
   console.log('  • 14 Classes')
   console.log('  • 4 Houses + 5 Departments')
   console.log('  • Sample News & Events')

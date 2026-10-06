@@ -187,6 +187,10 @@ export async function rateLimitByIPAsync(ip: string, limit: number = 20, windowM
 const TRUSTED_PROXY_HOPS = Math.max(0, Number.parseInt(process.env.TRUSTED_PROXY_HOPS ?? '1', 10) || 0)
 
 export function clientIdentifier(request: Request): string {
+  // When the app is not behind a trusted proxy, the client can set
+  // x-real-ip and x-forwarded-for arbitrarily, so trusting them would let an
+  // attacker rotate IPs to bypass per-address rate limits. Refuse all
+  // proxy-derived identity in that configuration and fall back to 'unknown'.
   if (TRUSTED_PROXY_HOPS === 0) {
     return 'unknown'
   }

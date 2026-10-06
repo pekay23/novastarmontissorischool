@@ -1,11 +1,84 @@
 'use client'
 
 import { Suspense, useEffect, useState } from 'react'
+import { Eye, EyeOff, Fingerprint } from 'lucide-react'
 import { getProviders, signIn, type ClientSafeProvider } from 'next-auth/react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import Link from 'next/link'
 import { Button, Card, CardContent, CardHeader, CardTitle, CardDescription, Input } from '@novastar/shared-ui'
 import { rememberSchoolCodeForSso } from '@/lib/auth/sso-school-code'
 import { ssoProviderLabel, ssoRefusalMessage } from '@/lib/auth/sso'
+
+interface SecretFieldProps {
+  id: string
+  name: string
+  label?: string
+  type: 'text' | 'password'
+  value: string
+  onChange: (value: string) => void
+  show: boolean
+  onToggleShow: () => void
+  placeholder?: string
+  required?: boolean
+  autoComplete?: string
+}
+
+function SecretField({
+  id,
+  name,
+  label,
+  type,
+  value,
+  onChange,
+  show,
+  onToggleShow,
+  placeholder,
+  required = false,
+  autoComplete,
+}: SecretFieldProps) {
+  const fieldLabel = label ?? id
+  return (
+    <div>
+      {label && (
+        <label htmlFor={id} className="block text-sm font-medium mb-1">
+          {label}
+        </label>
+      )}
+      <div className="relative">
+        <Input
+          id={id}
+          name={name}
+          type={show ? 'text' : type}
+          autoComplete={autoComplete}
+          placeholder={placeholder}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          required={required}
+          className="pr-12"
+        />
+        <button
+          type="button"
+          tabIndex={0}
+          aria-label={show ? `Hide ${fieldLabel.toLowerCase()}` : `Show ${fieldLabel.toLowerCase()}`}
+          onClick={onToggleShow}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault()
+              onToggleShow()
+            }
+          }}
+          className="absolute inset-y-0 right-0 flex w-12 items-center justify-center rounded-r-md bg-background text-muted-foreground hover:text-foreground"
+        >
+          {show ? (
+            <EyeOff className="h-4 w-4" aria-hidden="true" />
+          ) : (
+            <Eye className="h-4 w-4" aria-hidden="true" />
+          )}
+        </button>
+      </div>
+    </div>
+  )
+}
 
 export const dynamic = 'force-dynamic'
 
@@ -58,6 +131,7 @@ function LoginContent() {
   const [totpCode, setTotpCode] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [showTotp, setShowTotp] = useState(false)
+  const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
 
   const ssoProviders = useConfiguredSsoProviders()
@@ -280,60 +354,60 @@ function LoginContent() {
                     required
                   />
                 </div>
-                <div>
-                  <label htmlFor="email" className="block text-sm font-medium mb-1">
-                    Email
-                  </label>
-                  <Input
-                    id="email"
-                    name="email"
-                    type="email"
-                    autoComplete="email"
-                    placeholder="Enter your email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required
-                  />
-                </div>
-                <div>
-                  <label htmlFor="password" className="block text-sm font-medium mb-1">
-                    Password
-                  </label>
-                  <Input
-                    id="password"
-                    name="password"
-                    type="password"
-                    autoComplete="current-password"
-                    placeholder="Enter your password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                  />
-                </div>
+                  <div>
+                    <label htmlFor="email" className="block text-sm font-medium mb-1">
+                      Email
+                    </label>
+                    <Input
+                      id="email"
+                      name="email"
+                      type="email"
+                      autoComplete="email"
+                      placeholder="Enter your email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <div className="mb-2 flex items-center justify-between">
+                      <label htmlFor="password" className="block text-sm font-medium">
+                        Password
+                      </label>
+                      <Link
+                        href="/forgot-password"
+                        className="text-xs font-medium text-muted-foreground underline underline-offset-4 hover:text-foreground"
+                      >
+                        Forgot password?
+                      </Link>
+                    </div>
+                    <SecretField
+                      id="password"
+                      name="password"
+                      type="password"
+                      value={password}
+                      onChange={setPassword}
+                      show={showPassword}
+                      onToggleShow={() => setShowPassword((v) => !v)}
+                      placeholder="Enter your password"
+                      required
+                      autoComplete="current-password"
+                    />
+                  </div>
 
                 {error && (
-                  <p role="alert" className="text-sm text-destructive">
+                  <div
+                    role="alert"
+                    className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300"
+                  >
                     {error}
-                  </p>
+                  </div>
                 )}
 
-<Button type="submit" className="w-full" disabled={isLoading}>
-              {isLoading ? 'Signing in...' : 'Sign In'}
-            </Button>
-
-            {/*
-              Recovery is unreachable by typing a URL, so the entry point has to be
-              on the page people land on when their password stops working.
-            */}
-            <p className="text-center text-sm">
-              <a
-                href="/forgot-password"
-                className="text-muted-foreground underline underline-offset-4 hover:text-foreground"
-              >
-                Forgot your password?
-              </a>
-            </p>
-          </form>
+                <Button type="submit" className="w-full" disabled={isLoading}>
+                  {isLoading ? 'Signing in...' : 'Sign In'}
+                </Button>
+              </form>
             )}
 
             {showTotp && (
@@ -357,9 +431,12 @@ function LoginContent() {
                 </div>
 
                 {error && (
-                  <p role="alert" className="text-sm text-destructive">
+                  <div
+                    role="alert"
+                    className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300"
+                  >
                     {error}
-                  </p>
+                  </div>
                 )}
 
                 <div className="flex gap-2">
@@ -391,7 +468,10 @@ function LoginContent() {
                   disabled={isLoading || !email}
                   type="button"
                 >
-                  {isLoading ? 'Authenticating...' : 'Use Passkey'}
+                  <span className="inline-flex items-center gap-2">
+                    <Fingerprint size={16} className="block" />
+                    {isLoading ? 'Authenticating...' : 'Use Passkey'}
+                  </span>
                 </Button>
 
                 {/*
@@ -428,7 +508,7 @@ function LoginContent() {
         </Card>
 
         <p className="text-center text-xs text-muted-foreground mt-4">
-          Novastar Montessori School Management System
+          Secured and powered by Powered Solutions
         </p>
       </div>
     </div>

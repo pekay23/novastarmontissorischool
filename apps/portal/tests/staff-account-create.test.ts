@@ -1066,8 +1066,8 @@ describe('POST /api/teachers/invite - the setup email', () => {
     // passed for a link pointing anywhere on the internet, and a link built from
     // the wrong host is a 404 in the recipient's browser for a token that expires in
     // a day.
-    expect(SENT[0]!.text).toContain('https://portal.example.test/set-password?token=vem_')
-    expect(SENT[0]!.html).toContain('https://portal.example.test/set-password?token=vem_')
+    expect(SENT[0]!.text).toContain('https://portal.example.test/portal/set-password?token=vem_')
+    expect(SENT[0]!.html).toContain('https://portal.example.test/portal/set-password?token=vem_')
     // No other host appears anywhere in the message, so a second link cannot be the
     // one the recipient follows.
     const hosts = [...`${SENT[0]!.text} ${SENT[0]!.html}`.matchAll(/https?:\/\/[^/\s"'<>]+/g)].map(

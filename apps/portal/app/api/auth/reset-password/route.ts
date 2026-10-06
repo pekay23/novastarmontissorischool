@@ -6,7 +6,7 @@ import {
   matchesPasswordGeneration,
   verifyPasswordResetToken,
 } from '@/lib/auth/password-reset-token'
-import { hashPassword, MIN_PASSWORD_LENGTH } from '@/lib/password'
+import { hashPassword, MIN_PASSWORD_LENGTH, meetsPasswordComplexity, PASSWORD_COMPLEXITY_LABEL } from '@/lib/password'
 import { createAuditLog, AuditLogAction } from '@/lib/audit/logger'
 import { prisma } from '@/lib/prisma'
 
@@ -35,6 +35,10 @@ const ResetSchema = z.object({
   token: z.string().min(1).max(1024),
   password: z.string().min(MIN_PASSWORD_LENGTH).max(200),
 })
+
+function passwordPolicyMessage(): string {
+  return `Your password must be ${PASSWORD_COMPLEXITY_LABEL}.`
+}
 
 /**
  * Wording per failure.
@@ -80,6 +84,16 @@ export async function POST(req: Request) {
           ? `Your password must be at least ${MIN_PASSWORD_LENGTH} characters.`
           : 'This request is missing a link or a password.',
       },
+      { status: 400 },
+    )
+  }
+
+  // Composition rules are enforced here as well as on the client, for the same
+  // reason as the set-password route: the client check is a convenience, and a
+  // direct caller would bypass it.
+  if (!meetsPasswordComplexity(parsed.data.password)) {
+    return NextResponse.json(
+      { error: 'password-too-weak', message: passwordPolicyMessage() },
       { status: 400 },
     )
   }

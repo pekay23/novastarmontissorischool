@@ -4,8 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { signIn } from 'next-auth/react'
 import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Input } from '@novastar/shared-ui'
-
-const MIN_PASSWORD_LENGTH = 12
+import { MIN_PASSWORD_LENGTH, meetsPasswordComplexity, PASSWORD_COMPLEXITY_LABEL } from '@/lib/password-policy'
 
 /**
  * The one-time setup link's page.
@@ -32,6 +31,10 @@ export function SetPasswordForm({ token }: { token: string | null }) {
     }
     if (password.length < MIN_PASSWORD_LENGTH) {
       setError(`Your password must be at least ${MIN_PASSWORD_LENGTH} characters.`)
+      return
+    }
+    if (!meetsPasswordComplexity(password)) {
+      setError(`Your password must contain ${PASSWORD_COMPLEXITY_LABEL}.`)
       return
     }
 
@@ -74,7 +77,7 @@ export function SetPasswordForm({ token }: { token: string | null }) {
       <CardHeader>
         <CardTitle>Set Your Password</CardTitle>
         <CardDescription>
-          Choose a password of at least {MIN_PASSWORD_LENGTH} characters. It is never emailed.
+          Choose a password of {PASSWORD_COMPLEXITY_LABEL}. It is never emailed.
         </CardDescription>
       </CardHeader>
       <CardContent>

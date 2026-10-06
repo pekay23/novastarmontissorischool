@@ -48,9 +48,9 @@ function record(page: string, viewport: string, severity: "error" | "warning", m
 async function checkUnresolvedColors(page: Page) {
   return page.evaluate(() => {
     const bad: string[] = [];
-    const nodes = document.querySelectorAll<HTMLElement>(
+    const nodes = Array.from(document.querySelectorAll<HTMLElement>(
       "body, header, footer, main, section, div, h1, h2, h3, a, button, span, p",
-    );
+    ));
     for (const el of nodes) {
       const cs = getComputedStyle(el);
       // A transparent background on a large block is usually an unresolved token.
@@ -130,7 +130,7 @@ async function auditPage(context: BrowserContext, pageDef: { path: string; name:
   // checks ink coverage.
   const brokenImages = await page.evaluate(async () => {
     const out: string[] = [];
-    for (const i of Array.from(document.images)) {
+    for (const i of Array.from(document.images) as HTMLImageElement[]) {
       const src = i.currentSrc || i.src || "(no src)";
       try {
         if ("decode" in i) await i.decode();
@@ -198,7 +198,7 @@ async function main() {
 
   console.log(`\n${"=".repeat(70)}`);
   console.log(`FINDINGS: ${findings.length} (${findings.filter((f) => f.severity === "error").length} error, ${findings.filter((f) => f.severity === "warning").length} warning)`);
-  for (const [page, list] of byPage) {
+  for (const [page, list] of byPage.entries()) {
     console.log(`\n${page}:`);
     for (const f of list) console.log(`  [${f.severity}] (${f.viewport}) ${f.message}`);
   }

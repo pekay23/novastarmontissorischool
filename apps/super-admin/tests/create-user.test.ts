@@ -399,7 +399,7 @@ describe('POST /api/tenants/:tenantId/users — the setup email', () => {
     expect(sentEmails[0].to).toBe('new.teacher@novastar.test')
     // The link points at the *portal*, which is where the set-password page lives —
     // not at this console, which would 404 in the recipient's browser.
-    expect(sentEmails[0].text).toContain('https://portal.example.test/set-password?token=vem_')
+    expect(sentEmails[0].text).toContain('https://portal.example.test/portal/set-password?token=vem_')
     expect(body.setupEmail).toBe('sent')
     expect(body.setupEmailReason).toBeNull()
     // And no token or password in the response, which is what a console that logs

@@ -21,6 +21,7 @@ export function ForgotPasswordForm() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    if (busy) return
     setBusy(true)
     setMessage('')
     try {
@@ -29,9 +30,25 @@ export function ForgotPasswordForm() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, schoolCode: schoolCode || undefined }),
       })
+
+      if (!res.ok) {
+        // 429 is not an error: the route answers the same generic body whether
+        // the address exists or the request was throttled, so the message below
+        // is correct for both. The Retry-After header is the only signal that
+        // distinguishes them, and it is shown in the hint rather than surfacing
+        // a raw number.
+        const retryAfter = res.headers.get('Retry-After')
+        setMessage(
+          retryAfter
+            ? `Too many attempts. Please wait ${retryAfter} seconds before trying again.`
+            : 'We could not reach the server. Check your connection and try again.',
+        )
+        return
+      }
+
       const body = await res.json().catch(() => null)
       setMessage(
-        body?.message ?? 'If that address has an account, a password reset link is on its way.'
+        body?.message ?? 'If that address has an account, a password reset link is on its way. If you do not see it within a few minutes, contact your school office.',
       )
     } catch {
       setMessage('We could not reach the server. Check your connection and try again.')
@@ -63,6 +80,7 @@ export function ForgotPasswordForm() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
+              disabled={busy}
             />
           </div>
           <div>
@@ -73,9 +91,10 @@ export function ForgotPasswordForm() {
               id="schoolCode"
               name="schoolCode"
               type="text"
-              autoComplete="organization"
+              autoComplete="off"
               value={schoolCode}
               onChange={(e) => setSchoolCode(e.target.value)}
+              disabled={busy}
             />
           </div>
 

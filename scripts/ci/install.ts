@@ -19,16 +19,23 @@ import { log } from './shared'
 
 const step = 'ci:install'
 
-log(step, 'Installing workspace dependencies')
-await $`bun install --frozen-lockfile`.quiet()
+async function main() {
+  log(step, 'Installing workspace dependencies')
+  await $`bun install --frozen-lockfile`.quiet()
 
-if (process.env.TURBO_TOKEN && process.env.TURBO_TOKEN !== 'changeme') {
-  log(step, `Turbo remote cache enabled (team: ${process.env.TURBO_TEAM ?? 'unset'})`)
-} else {
-  log(step, 'TURBO_TOKEN not set - local Turbo cache only (slower builds)')
+  if (process.env.TURBO_TOKEN && process.env.TURBO_TOKEN !== 'changeme') {
+    log(step, `Turbo remote cache enabled (team: ${process.env.TURBO_TEAM ?? 'unset'})`)
+  } else {
+    log(step, 'TURBO_TOKEN not set - local Turbo cache only (slower builds)')
+  }
+
+  log(step, 'Generating Prisma client')
+  await $`bun run --cwd packages/database db:generate`.quiet()
+
+  log(step, 'Done')
 }
 
-log(step, 'Generating Prisma client')
-await $`bun run --cwd packages/database db:generate`.quiet()
-
-log(step, 'Done')
+main().catch((e) => {
+  console.error(e)
+  process.exit(1)
+})

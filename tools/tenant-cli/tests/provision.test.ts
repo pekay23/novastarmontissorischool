@@ -138,7 +138,11 @@ expect(fake.rowsOf("tenant")[0].isActive).toBe(false);
 });
 
 describe("provisionTenant administrator password", () => {
-  const withAdmin = (password: string): ProvisionInput =>
+  // A password that clears the new composition floor (upper + lower + digit +
+  // symbol) as well as the length minimum. The old examples in this block were
+  // memorable but did not meet the rules, which is exactly why the rules exist.
+  const COMPLEX = "Correct-Horse-Battery-1!"
+  const withAdmin = (password: string = COMPLEX): ProvisionInput =>
     baseInput({ admin: { email: "head@another.example.com", password } });
 
   test("throws and names the environment variable when no password is supplied", async () => {
@@ -172,20 +176,19 @@ describe("provisionTenant administrator password", () => {
   });
 
   test("the hash is argon2id and not the plaintext", async () => {
-    const password = "correct horse battery";
-    await provisionTenant(withAdmin(password));
+    await provisionTenant(withAdmin());
     const row = fake.rowsOf("user")[0];
     expect(row.passwordHash).toBeString();
-    expect(String(row.passwordHash)).not.toContain(password);
+    expect(String(row.passwordHash)).not.toContain(COMPLEX);
     expect(String(row.passwordHash).startsWith("$argon2id$")).toBe(true);
   });
 
   test("sets the password on create and never on update", async () => {
-    await provisionTenant(withAdmin("correct horse battery"));
+    await provisionTenant(withAdmin());
     const firstHash = fake.rowsOf("user")[0].passwordHash;
 
     fake.resetCalls();
-    await provisionTenant(withAdmin("a completely different one"));
+    await provisionTenant(withAdmin("Another-Complex-Password-2!"));
 
     const upsert = fake.callsTo("user", "upsert")[0];
     expect(upsert.args.update).toEqual({});
@@ -194,9 +197,9 @@ describe("provisionTenant administrator password", () => {
   });
 
   test("reports whether the administrator already existed", async () => {
-    const first = await provisionTenant(withAdmin("correct horse battery"));
+    const first = await provisionTenant(withAdmin());
     expect(first.admin?.created).toBe(true);
-    const second = await provisionTenant(withAdmin("correct horse battery"));
+    const second = await provisionTenant(withAdmin());
     expect(second.admin?.created).toBe(false);
     expect(fake.countOf("user")).toBe(1);
   });

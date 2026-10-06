@@ -48,6 +48,35 @@ const nextConfig: NextConfig = {
   },
   // Multi-tenant: generate static paths for each tenant
   // For first school, Novastar only
+  //
+  // Dev-only reverse proxy so `bun dev` is one URL, like a single-app
+  // repo. The public site owns port 3000; the portal dev server runs on
+  // 3001 and the console on 3200, each behind its own `basePath`. These
+  // rewrites forward the two prefixed path families to those servers, so
+  // `localhost:3000/portal/*` and `localhost:3000/admin/*` reach the
+  // right app while `localhost:3000/*` stays the marketing site.
+  //
+  // Gated on development because `output: 'export'` cannot host rewrites
+  // in a static build — production routing is the root `vercel.json`'s
+  // job (its service rewrites), not this file's. `next dev` sets
+  // NODE_ENV=development before loading this config, so the gate is
+  // reliable and the production build never sees a rewrite.
+  ...(process.env.NODE_ENV === 'development'
+    ? {
+        async rewrites() {
+          return [
+            {
+              source: '/portal/:path*',
+              destination: 'http://localhost:3001/portal/:path*',
+            },
+            {
+              source: '/admin/:path*',
+              destination: 'http://localhost:3200/admin/:path*',
+            },
+          ]
+        },
+      }
+    : {}),
 }
 
 export default nextConfig

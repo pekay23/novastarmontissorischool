@@ -7,7 +7,6 @@ import {
   PERMISSION_CATEGORIES,
   PLATFORM_ROLE_NAMES,
   ROLE_DEFAULT_SCOPE,
-  ROLE_GRANT_RULES,
   ROLE_READ_SCOPE,
   parsePermissionKey,
   permissionMatches,
@@ -279,7 +278,6 @@ describe('controlled vocabularies', () => {
   })
 
   it('grants every role a non-empty, non-total permission set', () => {
-    const catalogSize = PERMISSION_CATALOG.length
     for (const role of PLATFORM_ROLE_NAMES) {
       const granted = permissionsForRole(role)
       expect(granted.length, `${role} has no permissions`).toBeGreaterThan(0)

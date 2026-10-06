@@ -133,7 +133,10 @@ function looksLikeUtf16(buf) {
   let evenNul = 0
   let oddNul = 0
   for (let i = 0; i < sample.length; i += 1) {
-    if (sample[i] === 0) (i % 2 === 0 ? (evenNul += 1) : (oddNul += 1))
+    if (sample[i] === 0) {
+      if (i % 2 === 0) evenNul += 1
+      else oddNul += 1
+    }
   }
   const pairs = Math.floor(sample.length / 2)
   if (pairs === 0) return null
@@ -230,7 +233,6 @@ for (const file of files) {
   }
 }
 
-const rel = (p) => path.relative(ROOT, p).split(path.sep).join('/')
 const show = (s) => JSON.stringify(s)
 
 console.log('='.repeat(78))

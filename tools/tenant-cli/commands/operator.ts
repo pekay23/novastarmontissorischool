@@ -46,7 +46,38 @@ import { requireConfirmation, readSecret, type ArgMap } from "./shared";
  * drifting, and the console refuses to sign anyone in below its own floor, so a
  * drift shows up as an account that cannot be used rather than as a weak one.
  */
-export const MIN_OPERATOR_PASSWORD_LENGTH = 12;
+export const MIN_OPERATOR_PASSWORD_LENGTH = 6;
+
+/**
+ * The composition rules an operator password must satisfy on top of the length
+ * floor. Kept identical in spirit to the portal's `PASSWORD_COMPLEXITY` —
+ * uppercase, lowercase, digit and symbol — because an operator credential
+ * reaches every tenant in the fleet and deserves the same baseline as a school
+ * administrator's. Duplicated as a literal rather than imported for the same
+ * reason as the minimum length: this is a Bun CLI without the console's `@/`
+ * alias, and importing across that boundary would mean adding a dependency
+ * from the tool to the app.
+ */
+export const OPERATOR_PASSWORD_COMPLEXITY = {
+  requireUppercase: true,
+  requireLowercase: true,
+  requireDigit: true,
+  requireSymbol: true,
+} as const;
+
+export function meetsOperatorPasswordComplexity(password: string): boolean {
+  const hasUpper = /[A-Z]/.test(password);
+  const hasLower = /[a-z]/.test(password);
+  const hasDigit = /\d/.test(password);
+  const hasSymbol = /[^A-Za-z0-9]/.test(password);
+
+  if (OPERATOR_PASSWORD_COMPLEXITY.requireUppercase && !hasUpper) return false;
+  if (OPERATOR_PASSWORD_COMPLEXITY.requireLowercase && !hasLower) return false;
+  if (OPERATOR_PASSWORD_COMPLEXITY.requireDigit && !hasDigit) return false;
+  if (OPERATOR_PASSWORD_COMPLEXITY.requireSymbol && !hasSymbol) return false;
+
+  return true;
+}
 
 export const OPERATOR_PASSWORD_ENV_VAR = "PLATFORM_OPERATOR_PASSWORD";
 
@@ -183,6 +214,16 @@ export async function runOperator(args: ArgMap): Promise<void> {
       {
         path: "password",
         message: `Must be at least ${MIN_OPERATOR_PASSWORD_LENGTH} characters. Nothing was written.`,
+      },
+    ]);
+  }
+  if (!meetsOperatorPasswordComplexity(password)) {
+    throw new ValidationError([
+      {
+        path: "password",
+        message:
+          `Must contain an uppercase letter, a lowercase letter, a number and a symbol. ` +
+          `Nothing was written.`,
       },
     ]);
   }

@@ -1604,7 +1604,7 @@ async function readProjectName() {
         .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
         .join(' ')
     }
-  } catch (e) {}
+  } catch (_e) {}
   return 'Project'
 }
 

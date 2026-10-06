@@ -41,7 +41,27 @@ const HEX_TOKEN_PATTERN = /^[0-9a-f]+$/i
  * own per-route protections. Demanding a header there would break sign-in, which
  * is the one flow that cannot present one.
  */
-export const CSRF_EXEMPT_PATH_PREFIXES = ['/api/auth']
+export const CSRF_EXEMPT_PATH_PREFIXES: string[] = []
+
+/**
+ * NextAuth built-in routes that must not require a CSRF token.
+ *
+ * Sign-in happens before a session exists, so the client cannot echo a
+ * double-submit cookie it has not received yet. These routes are the ones
+ * NextAuth registers internally; custom public auth routes under the same
+ * prefix (`forgot-password`, `reset-password`, `verify-email`, …) are NOT
+ * listed here and therefore DO require a matching `X-CSRF-Token` header.
+ */
+function isNextAuthRoute(pathname: string): boolean {
+  if (pathname === '/api/auth/signin') return true
+  if (pathname === '/api/auth/signout') return true
+  if (pathname === '/api/auth/csrf') return true
+  if (pathname === '/api/auth/session') return true
+  if (pathname === '/api/auth/providers') return true
+  if (pathname === '/api/auth/protected') return true
+  if (pathname.startsWith('/api/auth/callback/')) return true
+  return false
+}
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
 
@@ -156,10 +176,8 @@ export function evaluateCsrf({ method, pathname, cookieToken, headerToken }: Csr
   if (SAFE_METHODS.has(method.toUpperCase())) return { allow: true, reason: 'safe-method' }
   if (!pathname.startsWith('/api/')) return { allow: true, reason: 'not-api' }
 
-  const exempt = CSRF_EXEMPT_PATH_PREFIXES.some(
-    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
-  )
-  if (exempt) return { allow: true, reason: 'exempt-path' }
+  // NextAuth routes are exempt because sign-in cannot present a CSRF token.
+  if (isNextAuthRoute(pathname)) return { allow: true, reason: 'exempt-path' }
 
   if (!cookieToken) return { allow: false, reason: 'missing-cookie' }
   if (!headerToken) return { allow: false, reason: 'missing-header' }

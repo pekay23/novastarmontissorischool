@@ -4,8 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { signIn } from 'next-auth/react'
 import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Input } from '@novastar/shared-ui'
-
-const MIN_PASSWORD_LENGTH = 12
+import { MIN_PASSWORD_LENGTH, meetsPasswordComplexity, PASSWORD_COMPLEXITY_LABEL } from '@/lib/password-policy'
 
 /**
  * Chooses a new password from an emailed reset link.
@@ -31,6 +30,10 @@ export function ResetPasswordForm({ token }: { token: string | null }) {
     }
     if (password.length < MIN_PASSWORD_LENGTH) {
       setError(`Your password must be at least ${MIN_PASSWORD_LENGTH} characters.`)
+      return
+    }
+    if (!meetsPasswordComplexity(password)) {
+      setError(`Your password must contain ${PASSWORD_COMPLEXITY_LABEL}.`)
       return
     }
 
@@ -65,7 +68,7 @@ export function ResetPasswordForm({ token }: { token: string | null }) {
       <CardHeader>
         <CardTitle>Choose a New Password</CardTitle>
         <CardDescription>
-          Your new password must be at least {MIN_PASSWORD_LENGTH} characters. Signing out of your
+          Your new password must be {PASSWORD_COMPLEXITY_LABEL}. Signing out of your
           other devices happens automatically.
         </CardDescription>
       </CardHeader>

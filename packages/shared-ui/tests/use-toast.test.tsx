@@ -36,20 +36,13 @@ afterEach(() => {
   jest.useRealTimers();
 });
 
-/** Renders `useToast` inside the provider, so the hook can be called legally. */
-function renderToast() {
-  return renderHook(() => useToast(), {
-    wrapper: ({ children }) => <PortalToastProvider>{children}</PortalToastProvider>,
-  });
-}
-
 /** Renders a consumer that fires one toast on mount, then hands back the DOM. */
 function renderOne(props: Parameters<ReturnType<typeof useToast>["toast"]>[0]) {
   function Trigger() {
     const { toast } = useToast();
     React.useEffect(() => {
       toast(props);
-    }, []);
+    }, [toast]);
     return null;
   }
   return render(
@@ -106,7 +99,7 @@ describe("rendering a toast", () => {
         toast({ title: "first" });
         toast({ title: "second" });
         toast({ title: "third" });
-      }, []);
+      }, [toast]);
       return null;
     }
     render(
@@ -135,7 +128,7 @@ describe("variants", () => {
       const { toast } = useToast();
       React.useEffect(() => {
         toast[helper]({ title: "x" });
-      }, []);
+      }, [toast]);
       return null;
     }
     render(
@@ -200,7 +193,7 @@ describe("announcement", () => {
       const { toast } = useToast();
       React.useEffect(() => {
         toast.error({ title: "Save failed", description: "The grade was rejected" });
-      }, []);
+      }, [toast]);
       return null;
     }
     render(
@@ -223,7 +216,7 @@ describe("announcement", () => {
         const { toast } = useToast();
         React.useEffect(() => {
           toast({ title: "x", variant });
-        }, []);
+        }, [toast]);
         return null;
       }
       render(
@@ -263,7 +256,7 @@ describe("announcement", () => {
       const { toast } = useToast();
       React.useEffect(() => {
         toast({ title: "Saved" });
-      }, []);
+      }, [toast]);
       return null;
     }
     render(
@@ -285,7 +278,7 @@ describe("dismissal", () => {
       React.useEffect(() => {
         toast({ title: "keep" });
         toast({ title: "dismiss" });
-      }, []);
+      }, [toast]);
       return null;
     }
     render(
@@ -322,7 +315,7 @@ describe("dismissal", () => {
             },
           },
         });
-      }, []);
+      }, [toast]);
       return null;
     }
     render(
@@ -347,7 +340,7 @@ describe("the auto-dismiss timer", () => {
       const { toast } = useToast();
       React.useEffect(() => {
         toast({ title: "brief", duration: 1000 });
-      }, []);
+      }, [toast]);
       return null;
     }
     render(
@@ -374,7 +367,7 @@ describe("the auto-dismiss timer", () => {
       const { toast } = useToast();
       React.useEffect(() => {
         toast({ title: "default" });
-      }, []);
+      }, [toast]);
       return null;
     }
     render(
@@ -421,7 +414,7 @@ describe("the auto-dismiss timer", () => {
       React.useEffect(() => {
         toast({ title: "brief", duration: 1000 });
         toast({ title: "enduring", duration: 60_000 });
-      }, []);
+      }, [toast]);
       return null;
     }
     render(

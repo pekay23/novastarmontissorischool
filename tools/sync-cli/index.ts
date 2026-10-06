@@ -117,14 +117,12 @@ export function createOutput(flags: CommandContext['flags']): Output {
 
 /** One line from stdin. Empty string when stdin is closed or not a terminal. */
 async function readLine(): Promise<string> {
-  const decoder = new TextDecoder()
-  let buffered = ''
-  for await (const chunk of process.stdin) {
-    buffered += decoder.decode(chunk as Uint8Array, { stream: true })
-    const newline = buffered.indexOf('\n')
-    if (newline !== -1) return buffered.slice(0, newline)
-  }
-  return buffered.trim()
+  return new Promise((resolve) => {
+    const chunks: Uint8Array[] = []
+    process.stdin.on('data', (chunk) => chunks.push(chunk as Uint8Array))
+    process.stdin.on('end', () => resolve(Buffer.concat(chunks).toString('utf8').trim()))
+    process.stdin.on('error', () => resolve(''))
+  })
 }
 
 /** Prompt on stderr: with --json, stdout carries the JSON document and nothing else. */

@@ -316,6 +316,18 @@ function post(path: string, body: unknown, ip = '198.51.100.10'): Request {
   })
 }
 
+/**
+ * The two public token-issuing routes now return their response before the
+ * background email send. Yield to the microtask queue so the async work
+ * (issueEmailToken / createPasswordResetToken + sendEmail) completes before
+ * the test inspects SENT.
+ */
+async function flushBackgroundWork() {
+  await Promise.resolve()
+  await Promise.resolve()
+  await Promise.resolve()
+}
+
 beforeEach(() => {
   for (const { specifier, factory } of FAKES) {
     mock.module(specifier, factory)
@@ -644,7 +656,7 @@ describe('POST /api/auth/set-password', () => {
   it('should store an argon2id hash and complete the invitation', async () => {
     const token = await invite()
     const res = await setPasswordPOST(
-      post('/api/auth/set-password', { token, password: 'correct horse battery' }),
+      post('/api/auth/set-password', { token, password: 'Correct-Horse-Battery-1!' }),
     )
 
     expect(res.status).toBe(200)
@@ -663,7 +675,7 @@ describe('POST /api/auth/set-password', () => {
     expect(row.verifyToken).toBeNull()
   })
 
-  it('should refuse a password shorter than the minimum, writing nothing', async () => {
+it('should refuse a password shorter than the minimum, writing nothing', async () => {
     const token = await invite()
     const res = await setPasswordPOST(post('/api/auth/set-password', { token, password: 'short' }))
 
@@ -676,7 +688,7 @@ describe('POST /api/auth/set-password', () => {
   it('should refuse to overwrite a password, so the link cannot become a reset-by-email', async () => {
     const { token } = await issueEmailToken('user-1')
     const res = await setPasswordPOST(
-      post('/api/auth/set-password', { token, password: 'correct horse battery' }),
+      post('/api/auth/set-password', { token, password: 'Correct-Horse-Battery-1!' }),
     )
     expect(res.status).toBe(409)
     expect((await res.json()).error).toBe('already-has-password')
@@ -685,9 +697,9 @@ describe('POST /api/auth/set-password', () => {
 
   it('should be single-use', async () => {
     const token = await invite()
-    await setPasswordPOST(post('/api/auth/set-password', { token, password: 'correct horse battery' }))
+    await setPasswordPOST(post('/api/auth/set-password', { token, password: 'Correct-Horse-Battery-1!' }))
     const replay = await setPasswordPOST(
-      post('/api/auth/set-password', { token, password: 'another good passphrase' }),
+      post('/api/auth/set-password', { token, password: 'Another-Good-Phrase-2!' }),
     )
     expect(replay.status).toBe(400)
     expect(users[0]!.passwordHash).toStartWith('$argon2id$')
@@ -695,7 +707,7 @@ describe('POST /api/auth/set-password', () => {
 })
 
 describe('POST /api/auth/reset-password', () => {
-  const PASSWORD = 'a whole new passphrase'
+  const PASSWORD = 'A whole new passphrase 1!'
 
   it('should rotate the hash and move the password generation', async () => {
     const { token } = createPasswordResetToken('user-1', null)
@@ -801,6 +813,7 @@ describe('POST /api/auth/forgot-password reveals nothing', () => {
 
   it('should still send to the real account, so the identical response is not just a no-op', async () => {
     await forgotPOST(post('/api/auth/forgot-password', { email: 'teacher@novastarmontessori.com' }))
+    await flushBackgroundWork()
     expect(SENT).toHaveLength(1)
     expect(SENT[0]!.to).toBe('teacher@novastarmontessori.com')
     expect(SENT[0]!.text).toContain('/reset-password?token=prt_')
@@ -809,6 +822,7 @@ describe('POST /api/auth/forgot-password reveals nothing', () => {
 
   it('should keep the token out of the subject line', async () => {
     await forgotPOST(post('/api/auth/forgot-password', { email: 'teacher@novastarmontessori.com' }))
+    await flushBackgroundWork()
     const sent = SENT[0]!
     const token = sent.text!.split('token=')[1]!.split('\n')[0]!
     expect(sent.subject).not.toContain(token)
@@ -830,14 +844,19 @@ describe('POST /api/auth/forgot-password reveals nothing', () => {
     users[0]!.passwordHash = null
     const res = await forgotPOST(post('/api/auth/forgot-password', { email: 'teacher@novastarmontessori.com' }))
     expect(res.status).toBe(200)
+    await flushBackgroundWork()
     expect(SENT).toHaveLength(0)
   })
 
   it('should rate limit per address, and keep the same body when it does', async () => {
-    // Three requests are allowed and the fourth is refused: the limiter checks
+    // Three requests are allowed and the fourth is throttled: the limiter checks
     // `recent.length >= limit` before recording the attempt, so a limit of 3
     // permits exactly 3. Each comes from a different client address, so the
     // per-address bucket is what does it, not the per-client one.
+    //
+    // Rate-limited requests answer 429 with the same generic body as a success,
+    // so a caller cannot use the status to tell whether an account exists —
+    // only the Retry-After header distinguishes throttling from acceptance.
     const responses = []
     for (let i = 0; i < 4; i++) {
       responses.push(
@@ -879,6 +898,7 @@ describe('POST /api/auth/verify-email/resend reveals nothing', () => {
   it('should mail a verification link that names the school', async () => {
     users[0]!.emailVerified = null
     await resendPOST(post('/api/auth/verify-email/resend', { email: 'teacher@novastarmontessori.com' }))
+    await flushBackgroundWork()
     expect(SENT).toHaveLength(1)
     expect(SENT[0]!.text).toContain('/verify-email?token=vem_')
     expect(SENT[0]!.subject).toContain('Novastar Montessori School')

@@ -1,5 +1,5 @@
 import { loadEnv, requireEnv } from "./env";
-import { createInterface } from "node:readline";
+import { createInterface } from "node:readline/promises";
 import { decideProductionAck, type ApplyTarget } from "./guards/production-ack";
 /**
  * Applies a reviewed DDL file to a chosen database.
@@ -101,23 +101,24 @@ async function main() {
 
   if (verdict.how === "prompt") {
     const rl = createInterface({ input: process.stdin, output: process.stdout });
-    const answer = await new Promise<string>((resolvePromise) => {
-      const timer = setTimeout(() => {
-        rl.close();
-        resolvePromise("");
-      }, 120_000);
+    // A 120s timeout: an operator who walks away from a production DDL prompt
+    // must not hang the run indefinitely. The timeout rejects with the same
+    // refusal path as a "no" answer, so the process exits cleanly either way.
+    const answer = await Promise.race<string | Error>([
       rl.question(
         `\nYou are about to apply DDL to a PRODUCTION database (${host}).\n` +
           `Type "yes" to proceed: `,
-        (a) => {
-          clearTimeout(timer);
-          rl.close();
-          resolvePromise(a.trim().toLowerCase());
-        },
-      );
-    });
-    if (answer !== "yes") {
-      console.error("Refused. Nothing applied.");
+      ).then((s) => s as string | Error),
+      new Promise<Error>((resolve) =>
+        setTimeout(
+          () => resolve(new Error("Timed out waiting for confirmation after 120s")),
+          120_000,
+        ),
+      ),
+    ]);
+    rl.close();
+    if (answer instanceof Error || answer.trim().toLowerCase() !== "yes") {
+      console.error(answer instanceof Error ? answer.message : "Refused. Nothing applied.");
       process.exit(1);
     }
     console.log(

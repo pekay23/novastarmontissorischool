@@ -168,13 +168,13 @@ function storedStrings(): string[] {
 // ---------------------------------------------------------------------------
 
 describe("setup-link mints a link", () => {
-  test("prints an absolute URL on the /set-password path with the token in the query", async () => {
+  test("prints an absolute URL on the /portal/set-password path with the token in the query", async () => {
     seedInvitedUser();
 
     await mint();
 
     const parsed = new URL(printedUrl());
-    expect(parsed.pathname).toBe("/set-password");
+    expect(parsed.pathname).toBe("/portal/set-password");
     expect(parsed.origin).toBe(ORIGIN);
     expect(parsed.searchParams.has("token")).toBe(true);
     // The shape `authorize()` and `isEmailToken` expect, so the link really is
@@ -346,7 +346,7 @@ describe("setup-link refuses", () => {
   test("a positional argument, without echoing what it was", async () => {
     // The value is not named back: a pasted link carries the token, and a usage
     // error that quotes it is a usage error that leaks it.
-    const pasted = `${ORIGIN}/set-password?token=vem_pasted`;
+    const pasted = `${ORIGIN}/portal/set-password?token=vem_pasted`;
     await expect(
       runSetupLink(ArgMap.parse(["--tenant", TENANT_CODE, "--email", EMAIL, pasted, "--yes"])),
     ).rejects.toThrow(/may be a setup link/);
@@ -401,7 +401,7 @@ describe("setup-link never leaks the token", () => {
     const noToken = await failure(() => mint("--token", "vem_supplied"));
     const pasted = await failure(() =>
       runSetupLink(
-        ArgMap.parse(["--tenant", TENANT_CODE, "--email", EMAIL, `${ORIGIN}/set-password?token=vem_pasted`, "--yes"]),
+        ArgMap.parse(["--tenant", TENANT_CODE, "--email", EMAIL, `${ORIGIN}/portal/set-password?token=vem_pasted`, "--yes"]),
       ),
     );
 

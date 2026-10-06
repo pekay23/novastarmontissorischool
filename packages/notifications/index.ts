@@ -4,6 +4,7 @@
 
 import { Resend } from 'resend'
 import { prisma } from '@novastar/database'
+import { PORTAL_BASE_PATH } from '@novastar/shared-types'
 import type { NotificationType } from '@novastar/shared-types'
 
 /**
@@ -53,16 +54,26 @@ let _resend: Resend | null = null
  *
  * Hardcoding a hostname here is what broke the last deploy: the portal moved
  * hosts and every notification email pointed at a dead domain. The origin is
- * already configured for the portal as `NEXTAUTH_URL` (its canonical public
- * origin) with `NEXT_PUBLIC_ORIGIN` as the build-time fallback, so read the
- * same variable rather than a second copy that can drift.
+ * already configured for the portal as `NEXTAUTH_URL` (its canonical
+ * configured origin, carrying the auth API path, so the origin is read off
+ * it) with `NEXT_PUBLIC_ORIGIN` as the build-time fallback, so read the
+ * same variable rather than a second copy that can drift. The portal's mount
+ * path is appended, because the portal's root lives under it.
  *
  * Falls back to a bare origin-less empty string only when neither is set, in
  * which case the link renders as a relative `/` — still clickable, still
  * same-origin, and never a 404 on a domain this package does not own.
  */
 function portalUrl(): string {
-  return (process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_ORIGIN || '').replace(/\/$/, '')
+  const configured = process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_ORIGIN || ''
+  if (!configured) return ''
+  let origin: string
+  try {
+    origin = new URL(configured).origin
+  } catch {
+    origin = configured.replace(/\/$/, '')
+  }
+  return `${origin}${PORTAL_BASE_PATH}`
 }
 
 /**
@@ -306,8 +317,8 @@ export function setPasswordTemplate(input: AuthEmailInput): RenderedEmail {
     ctaLabel: 'Set my password',
     actionUrl: input.actionUrl,
     schoolName: input.schoolName,
-    noteHtml: 'Set a password of at least 8 characters. If you did not expect this invitation, ignore this message.',
-    noteText: 'Set a password of at least 8 characters. If you did not expect this invitation, ignore this message.',
+    noteHtml: 'Set a password of at least 8 characters, including an uppercase letter, a lowercase letter, a number and a symbol. If you did not expect this invitation, ignore this message.',
+    noteText: 'Set a password of at least 8 characters, including an uppercase letter, a lowercase letter, a number and a symbol. If you did not expect this invitation, ignore this message.',
     expiresInHours: input.expiresInHours,
   })
 }

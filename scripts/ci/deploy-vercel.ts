@@ -59,54 +59,61 @@ const apps = [
 
 const skippedApps: string[] = []
 
-for (const app of apps) {
-  const projectId = process.env[app.projectIdEnv]
+async function main() {
+  for (const app of apps) {
+    const projectId = process.env[app.projectIdEnv]
 
-  // Not a soft default, and not an oversight: this script is called by
-  // `.teamcity/settings.kts` (DeployVercelPreview and DeployVercelProduction),
-  // which declares parameters for the first two project ids only. A required
-  // check here would abort the whole run -- including the two apps that do have
-  // a project -- until that file is edited to declare the third. Skipping keeps
-  // today's behaviour byte-identical for an operator who has not created a
-  // super-admin Vercel project yet, and deploys it the moment they have.
-  if (app.optIn === true && !projectId) {
-    log(step, `${app.name}: SKIPPED - ${app.projectIdEnv} is unset (opt-in app)`)
-    skippedApps.push(app.name)
-    continue
+    // Not a soft default, and not an oversight: this script is called by
+    // `.teamcity/settings.kts` (DeployVercelPreview and DeployVercelProduction),
+    // which declares parameters for the first two project ids only. A required
+    // check here would abort the whole run -- including the two apps that do have
+    // a project -- until that file is edited to declare the third. Skipping keeps
+    // today's behaviour byte-identical for an operator who has not created a
+    // super-admin Vercel project yet, and deploys it the moment they have.
+    if (app.optIn === true && !projectId) {
+      log(step, `${app.name}: SKIPPED - ${app.projectIdEnv} is unset (opt-in app)`)
+      skippedApps.push(app.name)
+      continue
+    }
+
+    requireEnv(app.projectIdEnv)
+
+    const env = {
+      VERCEL_TOKEN: token!,
+      VERCEL_ORG_ID: orgId!,
+      VERCEL_PROJECT_ID: projectId!,
+    }
+
+    // Run from the app directory so the CLI treats that app as the project root,
+    // which is how a Vercel monorepo project is configured.
+    const cwd = resolve(repoRoot, app.dir)
+
+    log(step, `${app.name}: pulling project configuration (${environment})`)
+    await $`bunx vercel@latest pull --yes --environment=${environment}`
+      .cwd(cwd)
+      .env(env)
+      .quiet()
+
+    log(step, `${app.name}: building`)
+    await $`bunx vercel@latest build`.cwd(cwd).env(env).quiet()
+
+    log(step, `${app.name}: deploying (${target})`)
+    await $`bunx vercel@latest deploy --prebuilt --yes ${target === 'production' ? '--prod' : ''}`
+      .cwd(cwd)
+      .env(env)
+
+    log(step, `${app.name}: deployed`)
   }
 
-  requireEnv(app.projectIdEnv)
-
-  const env = {
-    VERCEL_TOKEN: token!,
-    VERCEL_ORG_ID: orgId!,
-    VERCEL_PROJECT_ID: projectId!,
-  }
-
-  // Run from the app directory so the CLI treats that app as the project root,
-  // which is how a Vercel monorepo project is configured.
-  const cwd = resolve(repoRoot, app.dir)
-
-  log(step, `${app.name}: pulling project configuration (${environment})`)
-  await $`bunx vercel@latest pull --yes --environment=${environment}`
-    .cwd(cwd)
-    .env(env)
-    .quiet()
-
-  log(step, `${app.name}: building`)
-  await $`bunx vercel@latest build`.cwd(cwd).env(env).quiet()
-
-  log(step, `${app.name}: deploying (${target})`)
-  await $`bunx vercel@latest deploy --prebuilt --yes ${target === 'production' ? '--prod' : ''}`
-    .cwd(cwd)
-    .env(env)
-
-  log(step, `${app.name}: deployed`)
+  log(
+    step,
+    skippedApps.length === 0
+      ? 'All apps deployed'
+      : `All apps deployed except: ${skippedApps.join(', ')} (no Vercel project configured)`,
+  )
 }
 
-log(
-  step,
-  skippedApps.length === 0
-    ? 'All apps deployed'
-    : `All apps deployed except: ${skippedApps.join(', ')} (no Vercel project configured)`,
-)
+main().catch((e) => {
+  console.error(e)
+  process.exit(1)
+})

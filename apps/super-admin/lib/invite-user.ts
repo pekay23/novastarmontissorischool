@@ -4,6 +4,7 @@ import {
   INVITE_TOKEN_TTL_HOURS,
   inviteActionUrl,
 } from '@novastar/auth/invite'
+import { PORTAL_BASE_PATH } from '@novastar/shared-types'
 import { AdminAuditAction, auditTenantAction } from '@/lib/audit'
 import { RequestError } from '@/lib/errors'
 import { getSchoolInTenant, type TenantMutationContext } from '@/lib/queries'
@@ -41,22 +42,30 @@ import type { CreatedTenantUser, SetupEmailOutcome } from '@/types/admin'
  * Where the recipient's setup link points.
  *
  * The set-password page lives in the **portal**, not in this console, so the link is
- * built from the portal's origin. `NEXTAUTH_URL` is the portal's own canonical,
- * configured public origin; `NEXT_PUBLIC_ORIGIN` is the fallback for a setup that has
- * only the public one. Failing loudly is the alternative — a link built from the
- * console's own origin 404s in the recipient's browser, and for a 24-hour single-use
- * token that is a support call.
+ * built from the portal's public base URL: its origin plus the portal's mount
+ * path. `NEXTAUTH_URL` is the portal's own canonical, configured origin (it
+ * carries the auth API path, so the origin is read off it); 
+ * `NEXT_PUBLIC_ORIGIN` is the fallback for a setup that has only the public
+ * one. Failing loudly is the alternative — a link built from the console's own
+ * origin 404s in the recipient's browser, and for a 24-hour single-use token
+ * that is a support call.
  */
 function portalOrigin(): string {
   const configured = process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_ORIGIN
   if (!configured) {
     throw new RequestError(
       'Neither NEXTAUTH_URL nor NEXT_PUBLIC_ORIGIN is set, so no password-setup link can be ' +
-        'built. Set NEXTAUTH_URL to the portal origin in .env (see .env.example).',
+        'built. Set NEXTAUTH_URL to the portal auth URL (origin plus /portal/api/auth) in .env (see .env.example).',
       503,
     )
   }
-  return configured
+  let origin: string
+  try {
+    origin = new URL(configured).origin
+  } catch {
+    origin = configured.replace(/\/$/, '')
+  }
+  return `${origin}${PORTAL_BASE_PATH}`
 }
 
 export interface InviteTenantUserInput {

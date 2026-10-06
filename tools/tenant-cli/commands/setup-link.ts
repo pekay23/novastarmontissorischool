@@ -70,6 +70,7 @@ import {
   inviteActionUrl,
   issueEmailToken,
 } from "@novastar/auth/invite";
+import { PORTAL_BASE_PATH } from "@novastar/shared-types";
 import { databaseHost, getPrisma, isLocalHost } from "../config";
 import { out } from "../output";
 import { ValidationError, validateEmail } from "../validate";
@@ -120,10 +121,13 @@ export function redactSetupToken(text: string, token: string): string {
 /**
  * Where the recipient's setup link points.
  *
- * `NEXTAUTH_URL` first, because that is the portal's own canonical public origin;
- * `NEXT_PUBLIC_ORIGIN` as the fallback for a setup that has only the public one.
- * A link built from the wrong origin is a link that 404s in the recipient's
- * browser, which for a single-use token is a support call.
+ * `NEXTAUTH_URL` first, because that is the portal's own canonical
+ * configured origin (it carries the auth API path, so the origin is
+ * read off it); `NEXT_PUBLIC_ORIGIN` as the fallback for a setup that
+ * has only the public one. The portal's mount path is appended,
+ * because the set-password page lives under it. A link built from the
+ * wrong origin is a link that 404s in the recipient's browser, which
+ * for a single-use token is a support call.
  *
  * Duplicated as a literal from `apps/portal/lib/auth/school-lookup.ts` and
  * `apps/super-admin/lib/invite-user.ts`, which both already carry their own copy,
@@ -141,10 +145,17 @@ export function portalOrigin(env: NodeJS.ProcessEnv = process.env): string {
   if (!configured) {
     throw new Error(
       "Neither NEXTAUTH_URL nor NEXT_PUBLIC_ORIGIN is set, so no setup link can be " +
-        "built. Set NEXTAUTH_URL to the portal origin in .env (see .env.example).",
+        "built. Set NEXTAUTH_URL to the portal auth URL (origin plus " +
+        "/portal/api/auth) in .env (see .env.example).",
     );
   }
-  return configured.replace(/\/$/, "");
+  let origin: string;
+  try {
+    origin = new URL(configured).origin;
+  } catch {
+    origin = configured.replace(/\/$/, "");
+  }
+  return `${origin}${PORTAL_BASE_PATH}`;
 }
 
 /**

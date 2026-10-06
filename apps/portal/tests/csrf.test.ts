@@ -86,11 +86,26 @@ describe('evaluateCsrf', () => {
     ).toBe(false)
   })
 
-  it('exempts /api/auth/* so sign-in still works', () => {
-    for (const pathname of ['/api/auth', '/api/auth/callback/credentials', '/api/auth/totp/verify']) {
+  it('exempts NextAuth routes so sign-in still works', () => {
+    for (const pathname of ['/api/auth/signin', '/api/auth/callback/credentials', '/api/auth/session']) {
       const decision = evaluateCsrf({ method: 'POST', pathname, cookieToken: null, headerToken: null })
       expect(decision.allow).toBe(true)
       expect(decision.allow && decision.reason).toBe('exempt-path')
+    }
+  })
+
+  it('does not exempt custom public auth routes under /api/auth', () => {
+    for (const pathname of [
+      '/api/auth/forgot-password',
+      '/api/auth/reset-password',
+      '/api/auth/verify-email',
+      '/api/auth/verify-email/resend',
+      '/api/auth/set-password',
+      '/api/auth/invite',
+    ]) {
+      const decision = evaluateCsrf({ method: 'POST', pathname, cookieToken: null, headerToken: null })
+      expect(decision.allow).toBe(false)
+      expect(decision.allow === false && decision.reason).toBe('missing-cookie')
     }
   })
 

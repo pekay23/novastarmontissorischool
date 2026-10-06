@@ -40,16 +40,40 @@ const ARGON2_OPTIONS = {
 } as const
 
 /**
- * The shortest operator password accepted, matching `MIN_ADMIN_PASSWORD_LENGTH`
- * in `tools/tenant-cli/provision.ts`.
+ * The shortest operator password accepted.
  *
- * One figure for every credential the platform issues, so a password policy does
- * not depend on which tool created the account. It is a floor and not the whole
- * policy: length is the only property enforced here, because the console has no
- * composition rules and adding some would be a rule nobody could satisfy
- * consistently.
+ * Deliberately lower than `MIN_ADMIN_PASSWORD_LENGTH` (the tenant
+ * administrator floor in `tools/tenant-cli/provision.ts`): an operator
+ * credential is created once from the CLI and held by a person who already has
+ * the platform, while school administrators are provisioned in bulk and choose
+ * their own passwords through an emailed link. It is a floor and not the whole
+ * policy: length is deliberately kept low because the console has no
+ * composition rules of its own and adding some would be a rule nobody could
+ * satisfy consistently, but composition is still required — a 6-character
+ * password with no uppercase, no digit and no symbol is not acceptable even
+ * here, because that is the difference between a short memorable credential
+ * and a dictionary word.
  */
-export const MIN_OPERATOR_PASSWORD_LENGTH = 12
+export const MIN_OPERATOR_PASSWORD_LENGTH = 6
+
+/**
+ * The composition rules an operator password must satisfy on top of the floor.
+ *
+ * Kept identical to the portal's `PASSWORD_COMPLEXITY` in spirit — uppercase,
+ * lowercase, digit and symbol — because an operator credential reaches every
+ * tenant in the fleet and deserves the same baseline as a school
+ * administrator's. The literal is duplicated rather than imported for the same
+ * reason `MIN_OPERATOR_PASSWORD_LENGTH` is: this module runs on Node under
+ * `next start` and cannot reach the portal's `@/` alias, and importing across
+ * that boundary would mean adding a dependency from the console to the
+ * portal.
+ */
+export const OPERATOR_PASSWORD_COMPLEXITY = {
+  requireUppercase: true,
+  requireLowercase: true,
+  requireDigit: true,
+  requireSymbol: true,
+} as const
 
 /**
  * Whether a candidate password meets the floor.
@@ -60,7 +84,19 @@ export const MIN_OPERATOR_PASSWORD_LENGTH = 12
  * be able to ask.
  */
 export function isAcceptableOperatorPassword(password: string): boolean {
-  return password.length >= MIN_OPERATOR_PASSWORD_LENGTH
+  if (password.length < MIN_OPERATOR_PASSWORD_LENGTH) return false
+
+  const hasUpper = /[A-Z]/.test(password)
+  const hasLower = /[a-z]/.test(password)
+  const hasDigit = /\d/.test(password)
+  const hasSymbol = /[^A-Za-z0-9]/.test(password)
+
+  if (OPERATOR_PASSWORD_COMPLEXITY.requireUppercase && !hasUpper) return false
+  if (OPERATOR_PASSWORD_COMPLEXITY.requireLowercase && !hasLower) return false
+  if (OPERATOR_PASSWORD_COMPLEXITY.requireDigit && !hasDigit) return false
+  if (OPERATOR_PASSWORD_COMPLEXITY.requireSymbol && !hasSymbol) return false
+
+  return true
 }
 
 /**
@@ -80,9 +116,15 @@ export function isAcceptableOperatorPassword(password: string): boolean {
  */
 export async function hashOperatorPassword(password: string): Promise<string> {
   if (!isAcceptableOperatorPassword(password)) {
+    if (password.length < MIN_OPERATOR_PASSWORD_LENGTH) {
+      throw new Error(
+        `An operator password must be at least ${MIN_OPERATOR_PASSWORD_LENGTH} characters. ` +
+          'Nothing was hashed.',
+      )
+    }
     throw new Error(
-      `An operator password must be at least ${MIN_OPERATOR_PASSWORD_LENGTH} characters. ` +
-        'Nothing was hashed.',
+      'An operator password must contain an uppercase letter, a lowercase letter, a number ' +
+        'and a symbol. Nothing was hashed.',
     )
   }
   return argon2Hash(password, ARGON2_OPTIONS)
