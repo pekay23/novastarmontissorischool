@@ -1,15 +1,53 @@
-﻿node_modules
+﻿# Node modules
+node_modules
 **/node_modules
+
+# Git
 .git
 .github
 .gitignore
+
+# Config
+.vercelignore
 Dockerfile
 docker-compose*.yml
 .env.local
 .env
 *.log
-.storybook
-coverage
+
+# Build artifacts
+.next
 out
-.vercel
+dist
+build
+coverage
+
+# IDE
+.vscode
+.idea
+
+# Documentation
+docs/
+*.md
+!README.md
+
+# Scripts
+scripts/
+
+# Tests
+tests/
+*.test.*
+*.spec.*
+
+# Storybook
+.storybook
+
+# Kilo/Kilo-specific
+kilo.json
+AGENTS.md
+CLAUDE.md
+kilo.lock
+
+# Bun
+bun.lockb
 
