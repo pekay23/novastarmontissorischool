@@ -3,15 +3,18 @@
   "services": {
     "portal": {
       "root": "apps/portal",
-      "framework": "nextjs"
+      "framework": "nextjs",
+      "buildCommand": "bun run build"
     },
     "public-site": {
       "root": "apps/public-site",
-      "framework": "nextjs"
+      "framework": "nextjs",
+      "buildCommand": "bun run build"
     },
     "super-admin": {
       "root": "apps/super-admin",
-      "framework": "nextjs"
+      "framework": "nextjs",
+      "buildCommand": "bun run build"
     }
   },
   "rewrites": [
