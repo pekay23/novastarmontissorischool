@@ -4,17 +4,20 @@
     "portal": {
       "root": "apps/portal",
       "framework": "nextjs",
-      "buildCommand": "bun run build"
+      "buildCommand": "bun run build",
+      "installCommand": "bun install"
     },
     "public-site": {
       "root": "apps/public-site",
       "framework": "nextjs",
-      "buildCommand": "bun run build"
+      "buildCommand": "bun run build",
+      "installCommand": "bun install"
     },
     "super-admin": {
       "root": "apps/super-admin",
       "framework": "nextjs",
-      "buildCommand": "bun run build"
+      "buildCommand": "bun run build",
+      "installCommand": "bun install"
     }
   },
   "rewrites": [
