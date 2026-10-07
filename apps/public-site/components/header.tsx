@@ -42,28 +42,30 @@ export default function Header({ navigation, siteName, contact }: HeaderProps) {
   const pathname = usePathname().replace(/\/+$/, '') || '/'
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
-  /*
-   * Eight items, in the order the owner specified: Home, Academics, Admissions,
-   * Fees, News, Events, About Us, Contact.
+/*
+   * Ten items, in the order the owner specified: Home, Preschool, Primary School,
+   * Academics, Admissions, Fees, News, Events, About Us, Contact.
    *
    * This reverses the earlier five-item row, which omitted Admissions, News and
    * Events on the reasoning that News and Events render permanent empty states
    * ("No news posted yet") and so competed for attention while unable to answer
    * a question. The owner has now seen the site and wants every section
-   * reachable from the primary row, so all eight are here. The empty-state pages
+   * reachable from the primary row, so all ten are here. The empty-state pages
    * are a content gap, not a navigation problem, and burying them in the footer
    * is what made them look unwritten.
    *
-   * Home leads and About Us / Contact close the row, which is the conventional
+   * Home leads, About Us / Contact close the row, which is the conventional
    * shape: orientation at the front, trust and reach at the end.
    *
    * The list is load-bearing for the breakpoint on the nav below. At the old
-   * five items the inline row fitted at 1024px; at eight it does not, and the
+   * five items the inline row fitted at 1024px; at ten it does not, and the
    * row is hidden below `xl` instead of `lg` so that no width overflows it. See
    * the note on the `<header>`.
    */
   const navItems = [
     { label: navigation.home, href: '/', key: 'home' },
+    { label: navigation.preschool, href: '/preschool', key: 'preschool' },
+    { label: navigation.primarySchool, href: '/primary-school', key: 'primary-school' },
     { label: navigation.academics, href: '/academics', key: 'academics' },
     { label: navigation.admissions, href: '/admissions', key: 'admissions' },
     { label: navigation.fees, href: '/fees', key: 'fees' },
@@ -144,22 +146,25 @@ export default function Header({ navigation, siteName, contact }: HeaderProps) {
 
       <div className="container">
         <div className="flex h-16 items-center justify-between gap-6">
-          <Link href="/" className="flex shrink-0 items-center">
+          <Link href="/" className="flex shrink-0 items-center gap-3">
             <Image
-              src="/logo.svg"
-              /* The wordmark lives inside the SVG, so the image IS the link's
-                 accessible name. This was `alt=""` only while the "Novastar"
-                 text span sat beside it; removing that span without changing this
-                 would have left the home link with no name at all. */
-              alt={siteName}
-              /* logo.svg is 340x54, so the intrinsic box must keep that 6.296:1
-                 ratio or next/image warns and distorts the mark. */
-              width={252}
-              height={40}
-              className="h-9 w-auto"
-              /* `priority` is deprecated in 16.3 in favour of `preload`. */
+              src="/logo_nms.png"
+              /* The mark is a decorative graphic; the wordart beside it is the
+                 accessible name. */
+              alt=""
+              width={124}
+              height={80}
+              className="h-10 w-auto"
               preload
             />
+            <div className="flex flex-col">
+              <span className="type-title text-foreground leading-tight">
+                Novastar
+              </span>
+              <span className="type-label text-muted-foreground leading-tight">
+                Montessori School
+              </span>
+            </div>
           </Link>
 
           {/*

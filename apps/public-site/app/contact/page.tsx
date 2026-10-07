@@ -237,47 +237,43 @@ export default async function ContactPage() {
             */}
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               {/*
-                `[&_svg]:grow-0` on every icon button: the shared recipe
-                carries `[&_svg]:grow`, which in a full-width flex row
-                grows the icon's box to absorb the free space — measured
-                410px wide for a 16px icon at 768px. The glyph stays
-                16x16 (SVG preserveAspectRatio) but paints centred inside
-                the stretched box, so the visible icon floated ~200px from
-                its label and the icon+label pair sat ~99px right of the
-                button's centre. The override rides `className`, the one
-                channel `MarketingButton` exposes, because its `BASE` is
-                shared by every button on the site and this page does not
-                own it.
-              */}
-              <MarketingButton
-                href={whatsapp}
-                size="lg"
-                external
-                className="[&_svg]:grow-0 sm:col-span-2"
-              >
-                <MessageCircle className="h-4 w-4" aria-hidden="true" />
-                Message us on WhatsApp
-              </MarketingButton>
-              <MarketingButton
-                href={`tel:${SCHOOL_INFO.phoneHref}`}
-                variant="outline"
-                size="lg"
-                external
-                className="[&_svg]:grow-0"
-              >
-                <Phone className="h-4 w-4" aria-hidden="true" />
-                Call {SCHOOL_INFO.phone}
-              </MarketingButton>
-              <MarketingButton
-                href={`mailto:${SCHOOL_INFO.email}`}
-                variant="outline"
-                size="lg"
-                external
-                className="[&_svg]:grow-0"
-              >
-                <Mail className="h-4 w-4" aria-hidden="true" />
-                Email the school
-              </MarketingButton>
+                 Icon stretching was worked around here per-button until
+                 2026-10-06, when `MarketingButton`'s `BASE` took
+                 `[&_svg]:grow-0`: the shared recipe's `[&_svg]:grow`
+                 grew a 16px icon's box to 410px at 768px in a
+                 full-width flex row, the glyph stayed 16x16
+                 (SVG preserveAspectRatio) but painted centred inside
+                 the stretched box, so the visible icon floated ~200px
+                 from its label. `BASE` now pins every marketing icon,
+                 so these buttons need no override.
+               */}
+               <MarketingButton
+                 href={whatsapp}
+                 size="lg"
+                 external
+                 className="sm:col-span-2"
+               >
+                 <MessageCircle className="h-4 w-4" aria-hidden="true" />
+                 Message us on WhatsApp
+               </MarketingButton>
+               <MarketingButton
+                 href={`tel:${SCHOOL_INFO.phoneHref}`}
+                 variant="outline"
+                 size="lg"
+                 external
+               >
+                 <Phone className="h-4 w-4" aria-hidden="true" />
+                 Call {SCHOOL_INFO.phone}
+               </MarketingButton>
+               <MarketingButton
+                 href={`mailto:${SCHOOL_INFO.email}`}
+                 variant="outline"
+                 size="lg"
+                 external
+               >
+                 <Mail className="h-4 w-4" aria-hidden="true" />
+                 Email the school
+               </MarketingButton>
               {/* Only when there is something to apply to. Rendered unconditionally it
                   offered a one-click route to a page that would refuse the
                   visitor's application a scroll later. */}

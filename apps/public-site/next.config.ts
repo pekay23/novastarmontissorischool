@@ -1,7 +1,7 @@
 import type { NextConfig } from 'next'
 
 const nextConfig: NextConfig = {
-  experimental: {
+experimental: {
     // The `typescript` dependency is aliased to @typescript/typescript6, which ships
     // `lib/typescript.js` but no `typescript/bin/tsc`. Next's CLI mode (the 16.3 default)
     // hard-requires `typescript/bin/tsc` and otherwise tries to npm-install TypeScript,

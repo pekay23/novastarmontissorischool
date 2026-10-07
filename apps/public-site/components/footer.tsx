@@ -21,15 +21,20 @@ const FALLBACK = {
   hours: SCHOOL_INFO.hours.map((entry) => `${entry.days}: ${entry.time}`).join(' · '),
 }
 
+/*
+ * "Academic Programs" and "Contact Us" are intentionally absent from Quick Links:
+ * the Programs column below anchors every program to `/academics#<slug>` (or falls
+ * back to the page itself), and the Visit Us column's "Book a campus visit" CTA
+ * already links to `/contact`. Keeping them here too would show the same
+ * destination twice per viewport-width column.
+ */
 const QUICK_LINKS = [
   { href: '/about', label: 'About Us' },
-  { href: '/academics', label: 'Academic Programs' },
   { href: '/admissions', label: 'Admissions' },
   { href: '/fees', label: 'Fee Structure' },
   { href: '/policies', label: 'Policies for Parents' },
   { href: '/news', label: 'News' },
   { href: '/events', label: 'Events' },
-  { href: '/contact', label: 'Contact Us' },
 ]
 
 export async function Footer() {

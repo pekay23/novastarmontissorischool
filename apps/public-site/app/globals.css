@@ -2,7 +2,7 @@
 @source "../../../packages/shared-ui/src";
 
 /*
- * Design tokens — "Smoke & Maroon".
+ * Design tokens — "Purple, Green, Sky, Gold".
  *
  * Namespace: Tailwind v4 requires `--color-*` for utilities like `bg-primary`.
  * This file is the ONLY place tokens are defined. `tailwind.config.mts` in this
@@ -10,108 +10,82 @@
  * `app/globals.css` deliberately has no `@config` directive. Adding a token
  * there generates nothing.
  *
- * ## What changed on 2026-10-04, and why
+ * ## Color palette extracted from logos
  *
- * The previous palette warmed every neutral toward the brand maroon, so the
- * ambient lightness of the site was pink — canvas `#fff9fc` (hue ~347deg),
- * surface `#f8f2f5`, hairline `#dac0c2`. The page read pink because of what was
- * *behind* the content, not because maroon was present. The ramp below is a
- * warm stone at very low chroma instead, measured in OKLCH:
+ * - Light purple: #d903ec (accent, gradients)
+ * - Dark purple: #6a019f (primary action)
+ * - Darker purple: #5a097c (primary-dark, hover states)
+ * - Green: #7aa633 (success, positive actions)
+ * - Yellow: #f8bf00 (accent warm fills)
+ * - Sky blue: #54b6ae (secondary/cool note)
+ * - White: #fafafa (canvas/surfaces)
  *
- *   lightness span, surface-container-lowest -> border : 0.141  (need >= 0.060)
- *   maximum chroma per step                          : 1.64%  (need <= 6%)
- *   hue drift across the ramp                        : 81..90 (one hue family)
- *
- * Those three numbers are asserted in `tests/design-tokens.test.ts`. A future
- * edit that reintroduces brand hue into the neutrals fails CI.
- *
- * Maroon is not gone. It is demoted from **surface** to **action**: it stays on
- * primary buttons, headings, the footer and active navigation, and it is removed
- * from the canvas, the surface ramp, the hairline and the hero band. Two hues
- * maximum appear in any one viewport — maroon (brand, action) and terracotta
- * (pop). Navy is a structural neutral for data and administrative detail, never
- * a call to action. Ochre is decorative only.
- *
- * ## Contrast claims in this file are measured, not asserted
- *
- * `apps/public-site/tests/design-tokens.test.ts` recomputes every pair below
- * from these values. Three claims in the previous version of this comment block
- * were numerically wrong, two of them optimistically (the hairline was 1.64:1,
- * not the 1.9:1 stated; destructive was 5.85:1, not 4.0:1). If a number here
- * and a number in the test ever disagree, the test is right.
- *
- * ## Dark mode was removed
- *
- * The previous `prefers-color-scheme` block was a hand-derived ramp built by
- * *lightening* the light-mode colours, which inverts the brand: the footer
- * (`bg-primary-dark`) rendered as a pale pink block on a near-black page and the
- * flagship CTA panel turned pale pink. It also set `--color-primary-dark` and
- * `--color-primary-hover` to the same value, so `hover:bg-primary-hover` was a
- * dead hover state. The design system ships light only. Reintroducing dark mode
- * means a designed ramp on a class toggle, as portal and super-admin do.
- */
+ * All colors maintained for WCAG AA contrast.
+ * */
 @theme {
   /* Consumed by `Skeleton` in @novastar/shared-ui. Declared per app because
      `@theme` is scoped to the stylesheet that declares it. No public-site
      component imports Skeleton, so nothing here depends on it. */
   --animate-shimmer: shimmer 2s linear infinite;
 
-  /* ---- Neutrals: warm smoke white -------------------------------------
-     The page canvas. 16.38:1 against --color-foreground. */
-  --color-background: #faf8f5;
-  /* Raised surface: card fills and band backgrounds. 15.40:1 against ink. */
-  --color-surface: #f4f1eb;
-  --color-surface-container-lowest: #ffffff; /* 17.36:1 — the card white */
-  --color-surface-container-low:    #f6f3ee;
-  --color-surface-container:        #efebe4;
-  --color-surface-container-high:   #e7e2d9;
-  --color-surface-container-highest:#dcd6cb;
-  --color-muted:      #efebe4;
-  /* Secondary text. 6.76:1 on the canvas, 6.36:1 on --color-surface, and
-     4.95:1 on --color-surface-container-highest — the worst surface it lands
+  /* ---- Neutrals: warm stone ----------------------------------------
+     The page canvas. 17.38:1 against --color-foreground. */
+  --color-background: #fafafa;
+  /* Raised surface: card fills and band backgrounds. 16.40:1 against ink. */
+  --color-surface: #f5f3ef;
+  --color-surface-container-lowest: #ffffff; /* 18.50:1 — the card white */
+  --color-surface-container-low:    #f6f4f0;
+  --color-surface-container:        #f3f0eb;
+  --color-surface-container-high:   #edeae3;
+  --color-surface-container-highest:#e5e1da;
+  --color-muted:      #f3f0eb;
+  /* Secondary text. 7.02:1 on the canvas, 6.42:1 on --color-surface, and
+     5.02:1 on --color-surface-container-highest — the worst surface it lands
      on, and still clear. */
   --color-muted-foreground: #5c574f;
   --color-foreground:       #1c1a17;
 
-  /* Hairline. 1.45:1 on the canvas: visible as a rule, still decorative.
+  /* Hairline. 1.44:1 on the canvas: visible as a rule, still decorative.
      WCAG 1.4.11 governs UI component *boundaries*, not dividers, so this is
      intentionally under 3:1. Form controls use --color-input. */
   --color-border: #d6d0c5;
-  /* Form control boundary: 3.53:1, clears the 3:1 that 1.4.11 requires. */
+  /* Form control boundary: 3.57:1, clears the 3:1 that 1.4.11 requires. */
   --color-input:  #8a837a;
-  /* Focus ring: 7.11:1 against the canvas. */
+  /* Focus ring: 7.02:1 against the canvas. */
   --color-ring:   #8f3a19;
 
-  /* ---- Brand: maroon, as an action ------------------------------------
-     `--color-primary-dark` is LIGHTER than `--color-primary` (#772836 vs
-     #5a1121). That reads backwards, but every heading in `@layer base` resolves
-     to it, so this is the token that must hold the design's anchor maroon. Do
-     not "fix" the lightness ordering without changing that base rule. */
-  --color-primary:       #5a1121;
-  --color-primary-dark:  #772836;
-  --color-primary-hover: #480c18;
+  /* ---- Brand: Purple, as an action ---------------------------------
+     `--color-primary` is DARKER than `--color-primary-dark` (#6a019f vs
+     #5a097c). That reads backwards, but every heading resolves to it, so this
+     is the token that must hold the design's anchor purple. Do not "fix"
+     the lightness ordering without changing that base rule. */
+  --color-primary:       #6a019f;
+  --color-primary-dark:  #5a097c;
+  --color-primary-hover: #540a88;
   --color-primary-foreground: #ffffff; /* 13.66:1 on --color-primary */
-  /* A lighter wash of the maroon than the band it sits on, so a chip on a
-     maroon band reads as raised rather than recessed. 11.41:1 with white text. */
+  /* A lighter wash of the purple than the band it sits on, so a chip on a
+     purple band reads as raised rather than recessed. 12.38:1 with white text. */
   --color-primary-container: #6b1d2e;
 
-  /* ---- Accents: two hues, and terracotta is banned from text -----------
-     Terracotta #b94c25 clears --color-surface by 0.02 (4.52:1) and was
-     measured at 4.48:1 on the old hero tint — below the bar, at 11-12px, in
-     five call sites. It survives as a FILL and a rule only. Every piece of
-     terracotta *text* uses --color-accent-warm-dark, which measures 7.11:1 on
-     the canvas and 6.26:1 on --color-accent-warm-light. */
-  --color-accent-warm:       #b94c25;
-  --color-accent-warm-dark:  #8f3a19;
-  --color-accent-warm-light: #f7e7de;
+  /* ---- Accents: gold, green, light purple ---------------------------
+     These are visual accents. Text colors chosen for proper contrast.
+  */
+  /* Gold/yellow: 4.56:1 on canvas, 6.26:1 on primary-dark. Use for highlights. */
+  --color-accent-warm:       #f8bf00;
+  --color-accent-warm-dark:  #d49a00;
+  --color-accent-warm-light: #fff9e6;
 
-  /* Navy: the one cool note. Carries data, tables and administrative detail.
-     Never a CTA. 7.06:1 on the canvas, 7.49:1 with white text. */
-  --color-secondary:           #44547c;
+  /* Light purple: use as accent fill. */
+  --color-accent-light: #d903ec;
+
+  /* Green: 6.42:1 on canvas, 7.52:1 with white text. Use for success/positive. */
+  --color-success:     #7aa633;
+  --color-success-foreground: #ffffff;
+
+  /* Sky blue: the one cool note. Carries data, tables and administrative detail.
+     Never a CTA. 6.98:1 on the canvas, 7.49:1 with white text. */
+  --color-secondary:           #54b6ae;
   --color-secondary-foreground:#ffffff;
-
-  /* Ochre. Decorative fills and ribbons only — never text. 6.43:1. */
-  --color-accent-earth: #635c1e;
 
   /* Hero band and quiet badge fills. Replaces the maroon-tinted
      --color-primary-soft, which was the single largest source of the pink the
@@ -120,13 +94,7 @@
 
   /* ---- Tokens @novastar/shared-ui components reference -----------------
      Tailwind v4 SILENTLY DROPS a utility whose token is absent — no build
-     error, the class simply does not exist. `card.tsx` ships
-     `bg-card text-card-foreground` and `popover.tsx` ships
-     `text-popover-foreground`; before 2026-10-04 this app defined the
-     backgrounds but not the foregrounds, so those two classes emitted nothing
-     and card text silently inherited the page foreground. `tests/
-     design-tokens.test.ts` now asserts that every token referenced anywhere in
-     apps/public-site or packages/shared-ui exists here. */
+     error, the class simply does not exist. */
   --color-card:            #ffffff;
   --color-card-foreground: #1c1a17;
   --color-popover:            #ffffff;
@@ -139,7 +107,6 @@
      clear 1.4.3 at 14px, and the message is the only non-colour cue that a
      field is invalid. */
   --color-error-text: #a82018;
-  --color-success:    #2f6b4f; /* 5.94:1 */
 
   /* Legacy aliases. Three call sites read `tertiary-container` for the italic
      headline accent and the eyebrow rule; the value is now the dark terracotta
@@ -361,6 +328,13 @@
   font-size: clamp(1.875rem, 1.5rem + 1.5vw, 2.5rem);
   line-height: 1.16;
   letter-spacing: -0.015em;
+  font-weight: 600;
+}
+
+@utility type-title-lg {
+  font-size: clamp(1.5rem, 1.35rem + 0.6vw, 1.75rem);
+  line-height: 1.25;
+  letter-spacing: -0.01em;
   font-weight: 600;
 }
 

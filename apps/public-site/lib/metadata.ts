@@ -12,7 +12,7 @@ export const SCHOOL_INFO = {
   established: 2016,
   website: 'https://novastarmontissorischool.com',
   description: 'Bringing quality care and experience to learning through authentic Montessori education that nurtures each child\'s natural curiosity, independence, and love for discovery.',
-  motto: 'Learning Through Discovery',
+  motto: 'Bringing Out Joy and Expression in Learning',
   /**
    * Single source of truth for opening hours. Pages must not restate these —
    * a parent calling at the wrong hour because two sections disagreed is a
@@ -202,5 +202,49 @@ export function generateContactMetadata(): Metadata {
     /* Trailing slash matches `trailingSlash: true` in next.config.ts. */
     alternates: { canonical: `${SCHOOL_INFO.website}/contact/` },
     openGraph: { ...baseMetadata.openGraph, url: `${SCHOOL_INFO.website}/contact/` },
+  }
+}
+
+export function generatePreschoolMetadata(): Metadata {
+  return {
+    ...baseMetadata,
+    title: 'Preschool — Crèche & Kindergarten (6 Months–5 Years)',
+    description: 'Novastar Montessori Preschool: authentic Montessori from Crèche through Kindergarten. Mixed-age classrooms, 1:6 guide ratio, uninterrupted work cycles. Book a visit.',
+    /* Trailing slash matches `trailingSlash: true` in next.config.ts. */
+    alternates: { canonical: `${SCHOOL_INFO.website}/preschool/` },
+    openGraph: {
+      ...baseMetadata.openGraph,
+      url: `${SCHOOL_INFO.website}/preschool/`,
+      images: [
+        {
+          url: '/logo_preschool.png',
+          width: 1200,
+          height: 630,
+          alt: 'Novastar Montessori Preschool Logo',
+        },
+      ],
+    },
+  }
+}
+
+export function generatePrimarySchoolMetadata(): Metadata {
+  return {
+    ...baseMetadata,
+    title: 'Primary School — Grades 1–6 (6–11 Years)',
+    description: 'Novastar Montessori Primary School: GES/NaCCA aligned curriculum with Montessori method. Bilingual English-Twi, cosmic education, mathematics exhibition. Schedule a visit.',
+    /* Trailing slash matches `trailingSlash: true` in next.config.ts. */
+    alternates: { canonical: `${SCHOOL_INFO.website}/primary-school/` },
+    openGraph: {
+      ...baseMetadata.openGraph,
+      url: `${SCHOOL_INFO.website}/primary-school/`,
+      images: [
+        {
+          url: '/logo_primaryschool.png',
+          width: 1200,
+          height: 630,
+          alt: 'Novastar Montessori Primary School Logo',
+        },
+      ],
+    },
   }
 }

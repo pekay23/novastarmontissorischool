@@ -239,13 +239,14 @@ export default function PoliciesPage() {
           eyebrow="Read these first"
           title="Two rules worth reading twice"
           lede="Two ordinary rules that catch new families out, and both are much cheaper to know the night before than on the morning."
+          layout="centered"
         />
         <div className="mt-10 grid gap-5 md:grid-cols-2">
           {ALERTS.map(({ icon: Icon, title, body }) => (
-            <Card key={title} className={cn(CARD_PAD, 'flex flex-col gap-3')}>
+            <Card key={title} className={cn(CARD_PAD, 'flex flex-col gap-5')}>
               <IconTile icon={Icon} />
-              <h3 className="type-title text-primary">{title}</h3>
-              <p className="text-sm leading-relaxed text-muted-foreground">{body}</p>
+              <h3 className="type-title-lg text-primary">{title}</h3>
+              <p className="type-body-lg leading-relaxed text-foreground">{body}</p>
             </Card>
           ))}
         </div>
@@ -277,14 +278,17 @@ export default function PoliciesPage() {
           eyebrow="The pledge"
           title="Read them, and keep them somewhere you can find them"
           lede="A parent and the proprietress sign these policies on paper, and a signed copy of that policy statement is held on file for every child."
+          layout="centered"
         />
-        <p className="mt-8 max-w-[60ch] text-lg leading-relaxed text-muted-foreground">
-          The policies that catch people out are the ordinary ones: the time the gate locks,
-          the hour the child must be collected by, the bank, and the national ID a third party
-          has to carry. None of them are difficult to follow once you know them, and all of
-          them are easier to follow than the morning they are discovered.
-        </p>
-        <div className="mt-8 flex flex-wrap gap-3">
+        <div className="mt-10 max-w-[70ch] mx-auto">
+          <p className="text-lg leading-relaxed text-foreground text-center">
+            The policies that catch people out are the ordinary ones: the time the gate locks,
+            the hour the child must be collected by, the bank, and the national ID a third party
+            has to carry. None of them are difficult to follow once you know them, and all of
+            them are easier to follow than the morning they are discovered.
+          </p>
+        </div>
+        <div className="mt-10 flex flex-wrap gap-3 justify-center">
           <MarketingButton href="/contact">Ask us about a policy</MarketingButton>
           <MarketingButton
             href={whatsappHref(
@@ -315,7 +319,12 @@ function PolicyGroups({ groups }: { groups: PolicyGroup[] }) {
     <div className="space-y-14 lg:space-y-16">
       {groups.map((group) => (
         <div key={group.id}>
-          <SectionHeading title={group.title} lede={group.lede} />
+          <SectionHeading
+            title={group.title}
+            lede={group.lede}
+            layout="centered"
+            titleClassName={group.id === 'who-to-speak-to' ? 'max-w-none' : undefined}
+          />
           {/*
             A `<ul>` of `<li>`s rather than a `<div>` of `<div>`s: these are a
             list of separate obligations, and the count is announced by assistive
@@ -328,20 +337,43 @@ function PolicyGroups({ groups }: { groups: PolicyGroup[] }) {
             its left edge away from the header's and the footer's — the exact
             regression `app/not-found.tsx` documents.
           */}
-          <ul
-            className={cn(
-              'mt-10 grid gap-5',
-              group.policies.length === 1
-                ? 'max-w-3xl'
-                : group.policies.length === 3
-                  ? 'md:grid-cols-2 lg:grid-cols-3'
-                  : 'md:grid-cols-2',
-            )}
-          >
-            {group.policies.map((policy) => (
-              <PolicyCard key={policy.number} policy={policy} />
-            ))}
-          </ul>
+
+          {/* Food, rest and health: custom two-column layout with policies 5 & 6 stacked left, policy 7 right */}
+          {group.id === 'food-rest-health' ? (
+            <div className="mt-10 grid gap-5 md:grid-cols-2">
+              <div className="flex flex-col gap-5">
+                {group.policies.slice(0, 2).map((policy) => (
+                  <PolicyCard key={policy.number} policy={policy} />
+                ))}
+              </div>
+              <div className="flex flex-col gap-5">
+                {group.policies.slice(2).map((policy) => (
+                  <PolicyCard key={policy.number} policy={policy} />
+                ))}
+              </div>
+            </div>
+          ) : (group.id === 'fees' ? (
+            <div className="mt-10">
+              {group.policies.map((policy) => (
+                <PolicyCard key={policy.number} policy={policy} />
+              ))}
+            </div>
+          ) : (
+            <ul
+              className={cn(
+                'mt-10 grid gap-5',
+                group.policies.length === 1
+                  ? 'max-w-3xl'
+                  : group.policies.length === 3
+                    ? 'md:grid-cols-2 lg:grid-cols-3'
+                    : 'md:grid-cols-2',
+              )}
+            >
+              {group.policies.map((policy) => (
+                <PolicyCard key={policy.number} policy={policy} />
+              ))}
+            </ul>
+          ))}
         </div>
       ))}
     </div>
@@ -357,16 +389,16 @@ function PolicyGroups({ groups }: { groups: PolicyGroup[] }) {
  */
 function PolicyCard({ policy }: { policy: Policy }) {
   return (
-    <Card as="li" className={cn(CARD_PAD, 'flex flex-col gap-3')}>
+    <Card as="li" className={cn(CARD_PAD, 'flex flex-col gap-5')}>
       {/*
         `self-start` because the card is `flex flex-col`: without it the chip's
         auto cross-size stretches to the full card width and reads as a banner
         rather than a label.
       */}
       <Eyebrow className="self-start">Policy {policy.number}</Eyebrow>
-      <h3 className="type-title text-primary">{policy.title}</h3>
+      <h3 className="type-title-lg text-primary">{policy.title}</h3>
       {policy.paragraphs.map((paragraph) => (
-        <p key={paragraph.slice(0, 32)} className="text-sm leading-relaxed text-muted-foreground">
+        <p key={paragraph.slice(0, 32)} className="type-body-lg leading-relaxed text-foreground">
           {paragraph}
         </p>
       ))}

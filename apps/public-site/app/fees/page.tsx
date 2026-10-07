@@ -64,7 +64,7 @@ export default async function FeesPage() {
                 className={cn(
                   'inline-flex items-center justify-center gap-2 rounded-md',
                   'h-11 px-5 text-sm font-medium',
-                  'bg-accent-warm text-accent-warm-dark',
+                  'bg-accent-warm text-card-foreground',
                   'hover:bg-accent-warm/90 focus:outline-2 focus:outline-offset-2',
                   'focus:outline-accent-warm',
                 )}

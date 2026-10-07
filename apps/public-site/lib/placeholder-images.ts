@@ -149,6 +149,78 @@ export const PHOTOS = {
     licence: 'CC BY-SA 4.0',
     source: 'https://commons.wikimedia.org/wiki/File:Indo-German_School,_Nelavoy_16.jpg',
   },
+
+  /**
+   * Novastar Preschool - Photo 1
+   * Real photograph from Novastar Montessori School preschool classroom.
+   */
+  'preschool-1': {
+    id: 'preschool-1',
+    src: '/images/photo_1_2026-10-05_11-06-55 for preschool.jpg',
+    local: true,
+    placeholder: false,
+    width: 1280,  // Assuming standard size, actual will be read by next/image
+    height: 853,  // Based on aspect ratio from file size
+    alt: 'Preschool children engaged in practical life activities at Novastar Montessori School',
+    caption: 'Preschool students practicing pouring and transferring activities',
+    credit: '',
+    licence: '',
+    source: '',
+  },
+
+  /**
+   * Novastar Preschool - Photo 2
+   * Real photograph from Novastar Montessori School preschool outdoor play area.
+   */
+  'preschool-2': {
+    id: 'preschool-2',
+    src: '/images/photo_4_2026-10-05_11-06-55 for preschool.jpg',
+    local: true,
+    placeholder: false,
+    width: 1280,
+    height: 853,
+    alt: 'Preschool children playing outdoors at Novastar Montessori School campus',
+    caption: 'Outdoor playtime for preschool students in the prepared environment',
+    credit: '',
+    licence: '',
+    source: '',
+  },
+
+  /**
+   * Novastar Primary School - Photo 1
+   * Real photograph from Novastar Montessori School primary classroom.
+   */
+  'primary-1': {
+    id: 'primary-1',
+    src: '/images/photo_2_2026-10-05_11-06-55 for primary school.jpg',
+    local: true,
+    placeholder: false,
+    width: 1280,
+    height: 853,
+    alt: 'Primary school students working with Montessori mathematics materials',
+    caption: 'Primary students exploring golden bead place value materials',
+    credit: '',
+    licence: '',
+    source: '',
+  },
+
+  /**
+   * Novastar Primary School - Photo 2
+   * Real photograph from Novastar Montessori School primary collaborative work.
+   */
+  'primary-2': {
+    id: 'primary-2',
+    src: '/images/photo_3_2026-10-05_11-06-55 for primary school.jpg',
+    local: true,
+    placeholder: false,
+    width: 1280,
+    height: 853,
+    alt: 'Primary school children collaborating on a language project',
+    caption: 'Upper primary students engaged in bilingual reading activity',
+    credit: '',
+    licence: '',
+    source: '',
+  },
 } as const satisfies Record<string, PlaceholderPhoto>
 
 export type PhotoId = keyof typeof PHOTOS

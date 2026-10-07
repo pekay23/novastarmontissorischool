@@ -60,10 +60,13 @@ export default function RootLayout({
       data-scroll-behavior="smooth"
     >
       <head>
-        <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-        <link rel="apple-touch-icon" href="/favicon.svg" />
+        <link rel="icon" href="/favicon.ico" sizes="any" />
+        <link rel="icon" href="/favicon-32x32.png" sizes="32x32" type="image/png" />
+        <link rel="icon" href="/favicon-16x16.png" sizes="16x16" type="image/png" />
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+        <link rel="manifest" href="/site.webmanifest" />
         {/* Tracks --color-primary. Kept in sync with app/globals.css. */}
-        <meta name="theme-color" content="#5a1121" />
+        <meta name="theme-color" content="#6a019f" />
       </head>
       <body className="min-h-screen bg-background font-sans text-foreground antialiased">
         <ToastProvider>

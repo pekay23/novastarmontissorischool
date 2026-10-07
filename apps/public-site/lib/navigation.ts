@@ -16,6 +16,8 @@ export interface NavigationLabels {
   home: string
   about: string
   academics: string
+  preschool: string
+  primarySchool: string
   admissions: string
   fees: string
   facilities: string

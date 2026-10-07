@@ -59,16 +59,27 @@ type Size = 'sm' | 'md' | 'lg'
  * Restating the recipe here keeps every marketing decision inside this app.
  *
  * The parts kept verbatim from the shared version are deliberate: the focus ring
- * (`focus-visible:ring-ring ring-offset-2`), the disabled treatment, and the
- * `[&_svg]` shrink/grow rules, because those are behaviour rather than styling
+ * (`focus-visible:ring-ring ring-offset-2`), the disabled treatment, and
+ * `[&_svg]:shrink-0`, because those are behaviour rather than styling
  * and there is no reason for the marketing site to differ on them.
+ *
+ * The shared recipe's `[&_svg]:grow` is deliberately NOT kept. On a
+ * content-sized button there is no free space, so `grow` is inert —
+ * which is why the defect never showed in the portal. On a `w-full`
+ * control it makes the icon absorb all the free space: in the
+ * admissions CTA the 16px WhatsApp icon measured 138px wide and the
+ * mail icon 218px, the label was shoved to the far edge, and the
+ * ArrowLink's arrow box ran 171px so its glyph sat mid-button —
+ * neither end nor beginning. `grow-0` pins every icon to its
+ * `h-4 w-4` box, so `justify-between`/`justify-start` position the
+ * glyph where the layout says it should be.
  */
 
 const BASE =
   'inline-flex items-center justify-center gap-2 whitespace-nowrap select-none ' +
   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ' +
   'disabled:pointer-events-none disabled:opacity-50 ' +
-  '[&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:grow'
+  '[&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:grow-0'
 
 const SIZES: Record<Size, string> = {
   sm: 'h-9 px-3.5 text-sm',
@@ -152,6 +163,18 @@ export function MarketingButton({
  * The hero's primary action, with its trailing arrow. The arrow nudges 4px on
  * hover, which is the cheapest honest affordance available and does not move the
  * label.
+ *
+ * `justify-between` puts the label at the start and the arrow at the end. Under
+ * `justify-center` the arrow sat mid-button — between the text and the right edge
+ * — which is neither end nor beginning, and on a `w-full` control the gap to the
+ * border was invisible. The label wraps in a flex span so an icon+label pair
+ * (the hero's "Book a campus visit") keeps its own `gap-2` instead of collapsing
+ * against the arrow.
+ *
+ * `justify-between` only positions the arrow's *box*; `BASE`'s `[&_svg]:grow-0`
+ * is what keeps that box 16px. With the shared recipe's `grow`, the box absorbs
+ * every spare pixel and `preserveAspectRatio` centres the glyph inside it, so the
+ * arrow reads as floating mid-button even under `justify-between`.
  */
 export function ArrowLink({
   href,
@@ -161,8 +184,8 @@ export function ArrowLink({
   className,
 }: MarketingButtonProps) {
   return (
-    <MarketingButton href={href} variant={variant} size={size} className={className}>
-      {children}
+    <MarketingButton href={href} variant={variant} size={size} className={cn('justify-between', className)}>
+      <span className="flex items-center gap-2">{children}</span>
       <ArrowRight
         className="h-4 w-4 transition-transform duration-base ease-out-soft group-hover:translate-x-0.5"
         aria-hidden="true"

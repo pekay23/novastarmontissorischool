@@ -106,16 +106,18 @@ interface SectionHeadingProps {
   lede?: string
   as?: 'h1' | 'h2' | 'h3'
   align?: 'start' | 'center'
+  layout?: 'default' | 'centered' | 'offset'
   className?: string
+  titleClassName?: string
 }
 
 /**
  * Section title block: optional eyebrow, title, optional lede.
  *
- * The lede sits in its own column beside the title on wide screens and stacks
- * under it below `md`, so the title's left edge and the lede's left edge are the
- * same edge at every width. That is the alignment contract: nothing on this site
- * indents body copy relative to the heading above it.
+ * Layout options:
+ * - 'default': lede sits beside title on wide screens, stacks below on mobile
+ * - 'centered': title and lede centered, lede below title
+ * - 'offset': title at 2/5 (40%) from left, lede below title, both left-aligned
  */
 export function SectionHeading({
   eyebrow,
@@ -123,35 +125,49 @@ export function SectionHeading({
   lede,
   as: Tag = 'h2',
   align = 'start',
+  layout = 'default',
   className,
+  titleClassName,
 }: SectionHeadingProps) {
-  const centered = align === 'center'
+  const isCentered = layout === 'centered' || align === 'center'
+  const isOffset = layout === 'offset'
 
   return (
     <div
       className={cn(
         'flex flex-col gap-5',
-        lede && !centered && 'md:flex-row md:items-end md:justify-between md:gap-12',
-        centered && 'items-center text-center',
+        layout === 'default' && lede && !isCentered && 'md:flex-row md:items-end md:justify-between md:gap-12',
+        (isCentered || isOffset) && 'items-start',
+        isCentered && 'text-center',
         className,
       )}
     >
-      <div className={cn('flex flex-col gap-3', centered && 'items-center')}>
+      <div className={cn(
+        'flex flex-col gap-3 w-full',
+        isCentered && 'items-center',
+        isOffset && 'ml-[40%]',
+      )}>
         {eyebrow ? <Eyebrow>{eyebrow}</Eyebrow> : null}
-        <Tag className="type-headline max-w-[22ch]">{title}</Tag>
-      </div>
-      {lede ? (
-        <p
-          className={cn(
-            // 60ch measure. The previous `max-w-2xl` (42rem) was ~64ch at this
-            // face, which is fine for a sentence and too wide for a paragraph.
+        <Tag className={cn('type-headline max-w-[22ch]', isOffset && 'max-w-[60%]', titleClassName)}>{title}</Tag>
+        {lede && (
+          <p className={cn(
             'max-w-[60ch] text-muted-foreground',
-            centered && 'mx-auto',
-          )}
-        >
+            isCentered && 'mx-auto',
+            isOffset && 'w-full',
+          )}>
+            {lede}
+          </p>
+        )}
+      </div>
+      {/* Default layout: lede in separate column on wide screens */}
+      {layout === 'default' && lede && !isCentered && (
+        <p className={cn(
+          'max-w-[60ch] text-muted-foreground',
+          'hidden md:block',
+        )}>
           {lede}
         </p>
-      ) : null}
+      )}
     </div>
   )
 }
