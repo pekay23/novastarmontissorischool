@@ -303,8 +303,9 @@ export default async function HomePage() {
                       Three uninterrupted hours, no bells
                     </p>
                     <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                      Long stretches of self-directed work at the shelf beside the
-                      material, returned in condition.
+                      From Crèche to Junior High, children work in long,
+                      self-directed blocks at the shelf beside the material,
+                      returned in condition.
                     </p>
                   </div>
                 </div>
@@ -459,10 +460,10 @@ export default async function HomePage() {
               <div className="flex flex-col gap-4 text-[0.9375rem] leading-relaxed text-muted-foreground">
                 <p>{SCHOOL_INFO.description}</p>
                 <p>
-                  The work cycle is uninterrupted. A child chooses a material,
-                  takes it to a mat or table, works there, and returns it in
-                  condition. There are no bells, and no child waiting to be told
-                  what to do next.
+                  The work cycle is uninterrupted. From Crèche to Junior High,
+                  a child chooses a material, takes it to a mat or table, works
+                  there, and returns it in condition. There are no bells, and
+                  no child waiting to be told what to do next.
                 </p>
               <p>
                   Founded in 2016 in Ayeduase, Kumasi, Novastar brings together the

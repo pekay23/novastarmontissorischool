@@ -231,10 +231,11 @@ export default async function PrimarySchoolPage() {
                   <div className="rounded-md bg-surface-container-lowest/80 p-5 shadow-raised backdrop-blur-[2px]">
                     <Eyebrow className="mb-2">The work cycle</Eyebrow>
                     <p className="type-title text-foreground">
-                      Three uninterrupted hours, no bells
+                      Three hours for deep inquiry
                     </p>
                     <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                      Long stretches of self-directed work at the shelf beside the material, returned in condition.
+                      Elementary children follow questions across work cycles,
+                      building research projects that end in class presentation.
                     </p>
                   </div>
 
@@ -338,10 +339,11 @@ export default async function PrimarySchoolPage() {
               <div className="flex flex-col gap-4 text-[0.9375rem] leading-relaxed text-muted-foreground">
                 <p>{SCHOOL_INFO.description}</p>
                 <p>
-                  The work cycle is uninterrupted. A child chooses a material,
-                  takes it to a mat or table, works there, and returns it in
-                  condition. There are no bells, and no child waiting to be told
-                  what to do next.
+                  The work cycle is uninterrupted. An elementary child with a
+                  question — "Why do we have seasons?", "How does water travel
+                  through a plant?" — can follow it across three hours of work
+                  and into a presentation to the class. There are no bells, and
+                  no child waiting to be told what to do next.
                 </p>
                 <p>
                   Six to twelve is the age of the explorer and the

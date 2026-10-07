@@ -1,6 +1,1 @@
-{
-  "$schema": "https://openapi.vercel.sh/vercel.json",
-  "packageManager": "bun@1.4.0",
-  "installCommand": "bun install --frozen-lockfile",
-  "buildCommand": "bun run build --filter=public-site"
-}
+{"$schema":"https://openapi.vercel.sh/vercel.json","installCommand":"bun install","buildCommand":"bun run build --filter=public-site"}

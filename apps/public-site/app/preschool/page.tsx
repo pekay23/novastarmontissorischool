@@ -234,8 +234,8 @@ export default async function PreschoolPage() {
                       Uninterrupted work time, no bells
                     </p>
                     <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                      Long stretches of self-directed activity, with materials chosen
-                      and returned in condition.
+                      Long stretches of hands-on activity, with materials chosen
+                      and returned in condition — the absorbent mind at work.
                     </p>
                   </div>
 
@@ -338,10 +338,10 @@ export default async function PreschoolPage() {
               <div className="flex flex-col gap-4 text-[0.9375rem] leading-relaxed text-muted-foreground">
                 <p>{SCHOOL_INFO.description}</p>
                 <p>
-                  The work cycle is uninterrupted. A child chooses a material,
-                  takes it to a mat or table, works there, and returns it in
-                  condition. There are no bells, and no child waiting to be told
-                  what to do next.
+                  The work cycle is uninterrupted. A young child chooses a
+                  material, takes it to a mat, works there, and returns it in
+                  condition. There are no bells — the absorbent mind is allowed
+                  to complete its work.
                 </p>
                 <p>
                   From six months to five years, a child's mind forms itself from
