@@ -1,43 +1,6 @@
-{
+﻿{
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "services": {
-    "portal": {
-      "root": "apps/portal",
-      "framework": "nextjs",
-      "buildCommand": "bun run build",
-      "installCommand": "bun install"
-    },
-    "public-site": {
-      "root": "apps/public-site",
-      "framework": "nextjs",
-      "buildCommand": "bun run build",
-      "installCommand": "bun install"
-    },
-    "super-admin": {
-      "root": "apps/super-admin",
-      "framework": "nextjs",
-      "buildCommand": "bun run build",
-      "installCommand": "bun install"
-    }
-  },
-  "rewrites": [
-    {
-      "source": "/admin/(.*)",
-      "destination": {
-        "service": "super-admin"
-      }
-    },
-    {
-      "source": "/portal/(.*)",
-      "destination": {
-        "service": "portal"
-      }
-    },
-    {
-      "source": "/(.*)",
-      "destination": {
-        "service": "public-site"
-      }
-    }
-  ]
+  "packageManager": "bun@1.4.0",
+  "buildCommand": "bun run build --filter=public-site",
+  "installCommand": "bun install --frozen-lockfile"
 }
