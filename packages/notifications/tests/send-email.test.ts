@@ -1,10 +1,11 @@
-// The unconfigured-key case lives in `send-email-unconfigured.test.ts`, and it
-// has to. `getResend()` caches its client in a module-level variable for the
-// lifetime of the module, so within one file the not-configured assertion is
-// only reachable until the first successful send — declared first, it passes by
-// luck of ordering, and declared last it fails. Bun gives each test file its own
-// module registry, so a file of its own is not order-sensitive at all; both
-// orders were run and both pass.
+// The unconfigured-key case lives in `send-email-unconfigured.test.ts`.
+// It used to have to: `getResend()` cached its client in a module-level
+// variable before reading the key, so within one file the not-configured
+// assertion was only reachable until the first successful send — declared
+// first it passed by luck of ordering, declared last it failed. `getResend()`
+// now reads the key first, so the case below (unset after a memoized send)
+// passes in any position, and the file split is organizational, not
+// load-bearing.
 import { describe, it, expect, beforeEach, mock, afterEach } from 'bun:test'
 
 // Set RESEND_API_KEY before any imports so getResend() doesn't throw
@@ -129,5 +130,35 @@ describe('sendEmail from-address resolution', () => {
 
     expect(SENT).toHaveLength(1)
     expect(SENT[0]!.from).toBe('Override Sender <override@example.test>')
+  })
+
+  it('throws not-configured when the key is unset after a send has memoized the client', async () => {
+    // A successful send memoizes the Resend client. The key check must
+    // still run on every send: a cached client must not make the
+    // not-configured state unreachable for the rest of the process, which
+    // is what made the unconfigured case pass or fail depending on which
+    // test file ran first (the CI failure this guards against).
+    await sendEmail({
+      to: 'recipient@example.test',
+      subject: 'Test',
+      text: 'Body',
+    })
+
+    const saved = process.env.RESEND_API_KEY
+    delete process.env.RESEND_API_KEY
+
+    try {
+      const { EmailDeliveryError } = await import('@novastar/notifications')
+      const err = await sendEmail({
+        to: 'recipient@example.test',
+        subject: 'Test',
+        text: 'Body',
+      }).then(() => null, (e: unknown) => e)
+
+      expect(err).toBeInstanceOf(EmailDeliveryError)
+      expect((err as EmailDeliveryError).reason).toBe('not-configured')
+    } finally {
+      process.env.RESEND_API_KEY = saved
+    }
   })
 })

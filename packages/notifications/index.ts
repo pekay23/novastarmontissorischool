@@ -85,15 +85,21 @@ function portalUrl(): string {
  * "something went wrong" has no way to find it.
  */
 function getResend(): Resend {
+  // Read the key before the memoized client. The other order makes
+  // the not-configured state unreachable for the rest of the process
+  // once any send has succeeded: the cached client is returned and the
+  // key is never read again, so a missing key is indistinguishable
+  // from a working one until something tries to send — and whether
+  // that send fails then depends on module state no caller can see.
+  const apiKey = process.env.RESEND_API_KEY
+  if (!apiKey || apiKey.trim().length === 0) {
+    throw new EmailDeliveryError(
+      'not-configured',
+      'RESEND_API_KEY is not set, so no email can be sent. Set it in .env (see .env.example). ' +
+        'Without it every verification, password-setup and password-reset email is undeliverable.',
+    )
+  }
   if (!_resend) {
-    const apiKey = process.env.RESEND_API_KEY
-    if (!apiKey || apiKey.trim().length === 0) {
-      throw new EmailDeliveryError(
-        'not-configured',
-        'RESEND_API_KEY is not set, so no email can be sent. Set it in .env (see .env.example). ' +
-          'Without it every verification, password-setup and password-reset email is undeliverable.',
-      )
-    }
     _resend = new Resend(apiKey)
   }
   return _resend

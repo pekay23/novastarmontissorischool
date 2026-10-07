@@ -1,19 +1,15 @@
 /**
  * `sendEmail` with no `RESEND_API_KEY` in the environment.
  *
- * WHY THIS IS ITS OWN FILE
- * ------------------------
- * `getResend()` memoises the client in a module-level variable, so within a
- * single file the not-configured branch is unreachable once any test has sent a
- * message: the cached client is returned and the key is never read again. The
- * original version of this test sat at the top of `send-email.test.ts` under a
- * comment saying it "MUST run first", which is a claim about the order Bun
- * happens to execute `describe` blocks in — nothing enforces it, and moving the
- * block to the bottom of that file made it fail.
- *
- * Bun gives every test file its own module registry, so a file of its own has no
- * ordering constraint to satisfy. Both file orders were run against this layout
- * and both pass; within one file, only the accidental one does.
+ * HISTORY: `getResend()` used to memoise its client before reading the
+ * key, so the not-configured branch was unreachable once any test in the
+ * process had sent a message. Within a single file only the accidental
+ * execution order passed, and on CI — where the other test file ran
+ * first and shared the module registry — the assertion failed.
+ * `getResend()` now reads the key before the cached client, so this
+ * passes in any position in any order. It stays its own file to keep
+ * the never-configured case separate from the configured-then-unset
+ * case guarded at the bottom of send-email.test.ts.
  */
 import { describe, it, expect, mock } from 'bun:test'
 
