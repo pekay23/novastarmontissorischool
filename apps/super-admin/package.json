@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --port 3200",
+    "dev": "NEXT_TURBOPACK=0 HOST=0.0.0.0 next dev --port 3200",
     "build": "next build",
     "start": "next start --port 3200",
     "lint": "eslint . --ext .ts,.tsx",
@@ -24,6 +24,7 @@
     "next": "16.3.3",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
+    "server-only": "^0.0.1",
     "zod": "^4.4.3"
   },
   "devDependencies": {

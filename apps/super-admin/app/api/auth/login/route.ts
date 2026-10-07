@@ -60,6 +60,9 @@ export async function POST(request: NextRequest): Promise<Response> {
 
     const identifier = typeof body.identifier === 'string' ? body.identifier : ''
     const password = typeof body.password === 'string' ? body.password : ''
+    const returnTo = typeof body.returnTo === 'string' && body.returnTo.startsWith('/admin/')
+      ? body.returnTo
+      : '/admin/tenants'
 
     const operator = await authenticateOperator({ identifier, password })
     if (!operator) {
@@ -109,7 +112,7 @@ export async function POST(request: NextRequest): Promise<Response> {
       )
     }
 
-    const response = NextResponse.json({ operator: toOperatorProfile(operator) })
+    const response = NextResponse.json({ operator: toOperatorProfile(operator), returnTo })
     response.cookies.set(
       ADMIN_SESSION_COOKIE,
       createSessionToken(operator),

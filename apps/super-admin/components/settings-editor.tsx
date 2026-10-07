@@ -59,7 +59,7 @@ export function SettingsEditor({
 
     try {
       const response = await fetch(
-        `/api/tenants/${encodeURIComponent(tenantId)}/settings`,
+        `/admin/api/tenants/${encodeURIComponent(tenantId)}/settings`,
         {
           method: 'PATCH',
           headers: { 'content-type': 'application/json' },

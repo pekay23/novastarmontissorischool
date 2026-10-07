@@ -1,4 +1,5 @@
 import type { NextRequest } from 'next/server'
+import type { Prisma } from '@novastar/database'
 import { requireCapability, requireTenantScope } from '@/lib/admin-context'
 import { RequestError, toErrorResponse } from '@/lib/errors'
 import { json, mutationContext } from '@/lib/http'
@@ -72,7 +73,7 @@ export async function PATCH(
       })
     }
 
-    throw new RequestError('Nothing to update. Supply `name`, `domain` or `isActive`.', 400)
+    throw new RequestError('Nothing to update. Supply `name`, `domain`, `settings` or `isActive`.', 400)
   } catch (error) {
     return toErrorResponse(error)
   }
@@ -114,6 +115,9 @@ function mutableFieldsOf(body: Record<string, unknown>): MutableTenantFields {
     fields.domain = null
   } else if (typeof body.domain === 'string' && body.domain.trim().length > 0) {
     fields.domain = body.domain.trim()
+  }
+  if (body.settings !== undefined && body.settings !== null && typeof body.settings === 'object' && !Array.isArray(body.settings)) {
+    fields.settings = body.settings as Prisma.InputJsonValue
   }
   return fields
 }

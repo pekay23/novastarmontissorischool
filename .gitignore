@@ -136,3 +136,5 @@ test-results/
 # machine. Committable `.kilo/` config (kilo.jsonc, command/, agent/) stays
 # tracked; only the runtime worktree state is excluded.
 .kilo/worktrees/
+
+.vercel

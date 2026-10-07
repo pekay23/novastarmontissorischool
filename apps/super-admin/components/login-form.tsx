@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Alert, AlertDescription, AlertTitle } from '@novastar/shared-ui'
 
 /**
@@ -17,8 +17,18 @@ import { Alert, AlertDescription, AlertTitle } from '@novastar/shared-ui'
  * tell that case apart from a wrong password and inventing the distinction here
  * would put it back.
  */
-export function LoginForm({ configured }: { configured: boolean }) {
+export function LoginForm({
+  configured,
+  callbackUrl,
+  returnTo,
+}: {
+  configured: boolean
+  callbackUrl?: string
+  returnTo?: string
+}) {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const resolvedReturnTo = returnTo ?? callbackUrl ?? searchParams.get('returnTo') ?? searchParams.get('callbackUrl') ?? '/tenants'
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
 
@@ -27,20 +37,21 @@ export function LoginForm({ configured }: { configured: boolean }) {
     if (pending) return
 
     const form = event.currentTarget
-    const data = new FormData(form)
+    const formData = new FormData(form)
     setPending(true)
     setError(null)
 
     try {
-      const response = await fetch('/api/auth/login', {
+      const response = await fetch('/admin/api/auth/login', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           // One field, because the server resolves a username or an address from
           // the same string. Two fields would make the client guess which one the
           // operator meant, and guess wrong in a way the server cannot report.
-          identifier: String(data.get('identifier') ?? ''),
-          password: String(data.get('password') ?? ''),
+          identifier: String(formData.get('identifier') ?? ''),
+          password: String(formData.get('password') ?? ''),
+          returnTo: resolvedReturnTo,
         }),
       })
 
@@ -55,7 +66,11 @@ export function LoginForm({ configured }: { configured: boolean }) {
         return
       }
 
-      router.replace('/tenants')
+      const result: { returnTo?: string } = await response.json()
+      const redirectUrl = result.returnTo ?? resolvedReturnTo
+      // router.replace auto-prepends the Next.js basePath (/admin), so strip a
+      // leading /admin from server-supplied URLs to avoid a double prefix.
+      router.replace(redirectUrl.replace(/^\/admin/, '') || '/tenants')
       router.refresh()
     } catch {
       setError('Could not reach the server.')

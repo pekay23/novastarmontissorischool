@@ -1,5 +1,4 @@
 import Link from 'next/link'
-import Image from 'next/image'
 import type { LucideIcon } from 'lucide-react'
 import { ArrowRight, Award, BookOpen, CalendarDays, CheckCircle2, Compass, FlaskConical, Languages, Mail, MapPin, MessageCircle, Phone, ShieldCheck, Sprout, SquareFunction, Users } from 'lucide-react'
 
@@ -22,7 +21,6 @@ import {
   whatsappHref,
 } from '@/components/marketing-button'
 import { HeroField } from '@/components/hero-field'
-import { Photo } from '@/components/photo'
 import { HeroParallax } from '@/components/hero-parallax'
 import { ProgramCard } from '@/components/program-card'
 import {
@@ -95,7 +93,7 @@ export default async function PrimarySchoolPage() {
       getHeroContent(),
       getFeatures(),
       getTestimonials(),
-      getCTAContent(),
+       getCTAContent('primary'),
       getAcademicPrograms(),
       getAdmissionsStatus(),
     ])
@@ -110,8 +108,8 @@ export default async function PrimarySchoolPage() {
   const ctaTitle = cta?.title || 'Ready to join our primary school community?'
   const ctaSubtitle =
     cta?.subtitle ||
-    'Give your child the foundation for a lifetime of learning through authentic Montessori education during the reasoning mind years.'
-  const ctaButton = cta?.cta || 'Start your application'
+    'Give your child the foundation for a lifetime of learning through authentic Montessori education during the reasoning mind years, ages 6 to 11.'
+  const ctaButton = cta?.cta || 'Apply for primary'
 
   const whatsapp = whatsappHref(
     SCHOOL_INFO.whatsapp,
@@ -334,12 +332,39 @@ export default async function PrimarySchoolPage() {
             <div className="flex flex-col gap-6 p-8 lg:col-span-7 lg:p-10">
               <Eyebrow>Our approach</Eyebrow>
               <SectionTitle>
-                We do not simply deliver lessons. We prepare an environment in which a child can teach themselves through dignified inquiry.
+                In the second plane of development, children seek to understand
+                the world.
               </SectionTitle>
               <div className="flex flex-col gap-4 text-[0.9375rem] leading-relaxed text-muted-foreground">
                 <p>{SCHOOL_INFO.description}</p>
                 <p>
-                  The work cycle is uninterrupted. A child chooses a material, works at the shelf beside it, and returns it in condition. There are no bells, and no child waiting to be told what to do next.
+                  The work cycle is uninterrupted. A child chooses a material,
+                  takes it to a mat or table, works there, and returns it in
+                  condition. There are no bells, and no child waiting to be told
+                  what to do next.
+                </p>
+                <p>
+                  Six to twelve is the age of the explorer and the
+                  question-asker. Primary children at Novastar work through
+                  research projects that begin with a question — "Why do we
+                  have seasons?", "How does water travel through a plant?" —
+                  and end with a presentation to the class. The Great Lessons,
+                  told once a year, connect mathematics, history, geography,
+                  and science into one unfolding story that reaches from the
+                  formation of the earth to the present day. This is cosmic
+                  education, and it is grounded in the GES curriculum sequence
+                  that prepares children for the BECE.
+                </p>
+                <p>
+                  Children arriving from our preschool programme are already fluent with the work
+                  cycle, the language of materials, and the grace of mixed-age
+                  collaboration. From there, the focus shifts to abstract
+                  thinking: colour-coded bead materials become written
+                  numerals, and the movable alphabet gives way to expository
+                  writing. When they step into Junior High, they carry not just
+                  academic habits but the habit of sustained, self-directed
+                  work.{' '}
+                  <Link href="/preschool">Explore our preschool programme</Link>.
                 </p>
               </div>
 
@@ -362,7 +387,7 @@ export default async function PrimarySchoolPage() {
                   Aligned to Ghana Education Service and NaCCA standards
                 </p>
                 <LinkRow href="/academics">
-                  See how the curriculum continues to JHS
+                  See the full curriculum from Crèche to JHS
                   <ArrowRight className="h-4 w-4" aria-hidden="true" />
                 </LinkRow>
               </div>
@@ -399,7 +424,16 @@ export default async function PrimarySchoolPage() {
             <Eyebrow>Transition to Junior High</Eyebrow>
             <SectionTitle>{SCHOOL_INFO.location}</SectionTitle>
             <p className="max-w-[52ch] text-[0.9375rem] leading-relaxed text-muted-foreground">
-              Our primary school programme prepares children for the transition to junior high school by developing executive function, social skills, and academic readiness.
+              The transition from primary to Junior High at Novastar is designed
+              so that cosmic education, research skills, and self-direction
+              developed through the Great Lessons carry forward naturally. Our
+              GES-aligned programme means the mathematical abstraction, written
+              language, and presentation confidence built here align directly
+              with what the next classroom expects. The three-hour work cycle
+              that has been second nature since preschool gives students the
+              stamina for the sustained, exam-driven workload of JHS.{' '}
+              <Link href="/academics">Review the academic progression</Link> or
+              {' '}<Link href="/preschool">Explore our preschool programme</Link>.
             </p>
             <dl className="grid gap-3 pt-1 sm:grid-cols-2">
               <Card className={cn(CARD_PAD, 'p-4')}>
@@ -558,8 +592,8 @@ function splitHeadline(title: string) {
  * two cards of the same fill.
  */
 const GATEWAY_TARGETS: Record<string, string> = {
-  'Montessori Method': '/primary-school',
-  'GES Curriculum': '/primary-school',
+  'Montessori Method': '/about',
+  'GES Curriculum': '/academics',
   'Prepared Environment': '/admissions',
 }
 

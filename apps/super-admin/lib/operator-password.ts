@@ -1,4 +1,10 @@
+import 'server-only'
 import { argon2id, hash as argon2Hash, verify as argon2Verify } from 'argon2'
+import {
+  MIN_OPERATOR_PASSWORD_LENGTH,
+  OPERATOR_PASSWORD_COMPLEXITY,
+  isAcceptableOperatorPassword,
+} from './operator-password-policy'
 
 /**
  * Operator password hashing for the control plane, on the Node runtime.
@@ -39,64 +45,11 @@ const ARGON2_OPTIONS = {
   parallelism: 1,
 } as const
 
-/**
- * The shortest operator password accepted.
- *
- * Deliberately lower than `MIN_ADMIN_PASSWORD_LENGTH` (the tenant
- * administrator floor in `tools/tenant-cli/provision.ts`): an operator
- * credential is created once from the CLI and held by a person who already has
- * the platform, while school administrators are provisioned in bulk and choose
- * their own passwords through an emailed link. It is a floor and not the whole
- * policy: length is deliberately kept low because the console has no
- * composition rules of its own and adding some would be a rule nobody could
- * satisfy consistently, but composition is still required — a 6-character
- * password with no uppercase, no digit and no symbol is not acceptable even
- * here, because that is the difference between a short memorable credential
- * and a dictionary word.
- */
-export const MIN_OPERATOR_PASSWORD_LENGTH = 6
-
-/**
- * The composition rules an operator password must satisfy on top of the floor.
- *
- * Kept identical to the portal's `PASSWORD_COMPLEXITY` in spirit — uppercase,
- * lowercase, digit and symbol — because an operator credential reaches every
- * tenant in the fleet and deserves the same baseline as a school
- * administrator's. The literal is duplicated rather than imported for the same
- * reason `MIN_OPERATOR_PASSWORD_LENGTH` is: this module runs on Node under
- * `next start` and cannot reach the portal's `@/` alias, and importing across
- * that boundary would mean adding a dependency from the console to the
- * portal.
- */
-export const OPERATOR_PASSWORD_COMPLEXITY = {
-  requireUppercase: true,
-  requireLowercase: true,
-  requireDigit: true,
-  requireSymbol: true,
-} as const
-
-/**
- * Whether a candidate password meets the floor.
- *
- * A predicate rather than a check buried inside `hashOperatorPassword`, because it
- * is the part worth asserting on its own: the refusal has to be provable without
- * first paying for a hash, and a caller that wants to validate before hashing has to
- * be able to ask.
- */
-export function isAcceptableOperatorPassword(password: string): boolean {
-  if (password.length < MIN_OPERATOR_PASSWORD_LENGTH) return false
-
-  const hasUpper = /[A-Z]/.test(password)
-  const hasLower = /[a-z]/.test(password)
-  const hasDigit = /\d/.test(password)
-  const hasSymbol = /[^A-Za-z0-9]/.test(password)
-
-  if (OPERATOR_PASSWORD_COMPLEXITY.requireUppercase && !hasUpper) return false
-  if (OPERATOR_PASSWORD_COMPLEXITY.requireLowercase && !hasLower) return false
-  if (OPERATOR_PASSWORD_COMPLEXITY.requireDigit && !hasDigit) return false
-  if (OPERATOR_PASSWORD_COMPLEXITY.requireSymbol && !hasSymbol) return false
-
-  return true
+// Re-export client-safe utilities
+export {
+  MIN_OPERATOR_PASSWORD_LENGTH,
+  OPERATOR_PASSWORD_COMPLEXITY,
+  isAcceptableOperatorPassword,
 }
 
 /**

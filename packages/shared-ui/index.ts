@@ -36,6 +36,7 @@ export { Popover, PopoverContent, PopoverTrigger } from './src/components/popove
 export { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from './src/components/accordion'
 export { DatePicker } from './src/components/date-picker'
 export { DataTabled } from './src/components/data-table'
+export { NotFound, notFoundActionClasses, type NotFoundProps } from './src/components/not-found'
 export {
   TimetableGrid,
   WEEKDAYS,

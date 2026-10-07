@@ -37,7 +37,7 @@ export function TenantActions({
     setPending(true)
     setError(null)
     try {
-      const response = await fetch(`/api/tenants/${encodeURIComponent(tenantId)}`, {
+      const response = await fetch(`/admin/api/tenants/${encodeURIComponent(tenantId)}`, {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(body),

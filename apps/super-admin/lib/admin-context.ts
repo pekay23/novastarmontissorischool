@@ -1,4 +1,5 @@
-import { cookies } from 'next/headers'
+import 'server-only'
+import { cookies, headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import {
   ADMIN_SESSION_COOKIE,
@@ -130,7 +131,19 @@ export async function requireOperatorPage(): Promise<AdminContext> {
     return await requireOperator()
   } catch (error) {
     if (error instanceof UnauthorizedError) {
-      redirect('/login')
+      const h = await headers()
+      const referer = h.get('referer') ?? ''
+      const callbackUrl = referer?.startsWith('/admin/') ? referer : '/admin/tenants'
+
+      // Derive origin from the request's Host/Origin header, not from env
+      // This prevents redirecting to localhost when accessed via 192.168.8.202
+      const host = h.get('host') ?? 'localhost:3200'
+      const proto = h.get('x-forwarded-proto') ?? 'http'
+      const origin = `${proto}://${host}`
+
+      const url = new URL('/admin/login', origin)
+      url.searchParams.set('callbackUrl', callbackUrl)
+      redirect(url.toString())
     }
     throw error
   }

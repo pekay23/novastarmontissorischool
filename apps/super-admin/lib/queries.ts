@@ -838,9 +838,10 @@ export type MutableTenantField = 'name' | 'domain'
  * type system telling the truth about the column. So the shape is spelled out —
  * `name` takes a string, `domain` takes a string or `null`.
  */
-export interface MutableTenantFields {
+export type MutableTenantFields = {
   name?: string
   domain?: string | null
+  settings?: Prisma.InputJsonValue
 }
 
 /**
@@ -1067,7 +1068,446 @@ function readPath(document: Record<string, unknown>, path: readonly string[]): u
   let cursor: unknown = document
   for (const segment of path) {
     if (typeof cursor !== 'object' || cursor === null || Array.isArray(cursor)) return undefined
-    cursor = (cursor as Record<string, unknown>)[segment]
+    cursor = (document as Record<string, unknown>)[segment]
   }
   return cursor
+}
+
+// ---------------------------------------------------------------------------
+// User mutations within a tenant
+// ---------------------------------------------------------------------------
+
+export interface UpdateUserInTenantData {
+  name?: string | null
+  roleName?: string
+  schoolId?: string | null
+  isActive?: boolean
+}
+
+export async function updateUserInTenant(
+  tenantId: string,
+  userId: string,
+  data: UpdateUserInTenantData,
+  context: TenantMutationContext,
+): Promise<{ user: TenantUserSummary; previous: Record<string, unknown> } | null> {
+  return prisma.$transaction(async (tx) => {
+    const before = await tx.user.findFirst({
+      where: { id: userId, tenantId },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        schoolId: true,
+        status: true,
+        isActive: true,
+        mustChangePassword: true,
+        role: { select: { name: true } },
+      },
+    })
+    if (!before) return null
+
+    const updateData: Record<string, unknown> = {}
+    const previous: Record<string, unknown> = {}
+
+    if (data.name !== undefined) {
+      updateData.name = data.name
+      previous.name = before.name
+    }
+    if (data.schoolId !== undefined) {
+      updateData.schoolId = data.schoolId
+      previous.schoolId = before.schoolId
+    }
+    if (data.isActive !== undefined) {
+      updateData.isActive = data.isActive
+      previous.isActive = before.isActive
+    }
+    if (data.roleName !== undefined) {
+      const role = await tx.role.findFirst({
+        where: { tenantId, name: data.roleName },
+        select: { id: true },
+      })
+      if (!role) throw new Error(`Role "${data.roleName}" not found in tenant ${tenantId}`)
+      updateData.roleId = role.id
+      previous.roleName = before.role?.name ?? null
+    }
+
+    const updated = await tx.user.update({
+      where: { id: userId, tenantId },
+      data: updateData,
+      select: {
+        id: true,
+        tenantId: true,
+        schoolId: true,
+        email: true,
+        name: true,
+        mustChangePassword: true,
+        role: { select: { name: true } },
+        status: true,
+        isActive: true,
+        lastLoginAt: true,
+        createdAt: true,
+      },
+    })
+
+    await appendAudit(tx, {
+      tenantId,
+      schoolId: PLATFORM_AUDIT_SCOPE,
+      userId: updated.id,
+      operatorId: context.operatorId,
+      action: 'TENANT_USER_UPDATE',
+      entity: 'user',
+      entityId: updated.id,
+      description: `User ${updated.email} updated by ${context.operatorEmail}`,
+      changes: previous,
+      ipAddress: context.ipAddress,
+      userAgent: context.userAgent,
+    })
+
+    return {
+      user: {
+        id: updated.id,
+        tenantId: updated.tenantId,
+        schoolId: updated.schoolId,
+        email: updated.email,
+        name: updated.name,
+        mustChangePassword: updated.mustChangePassword,
+        roleName: updated.role?.name ?? null,
+        status: updated.status,
+        isActive: updated.isActive,
+        lastLoginAt: iso(updated.lastLoginAt),
+        createdAt: updated.createdAt.toISOString(),
+      },
+      previous,
+    }
+  })
+}
+
+export async function deactivateUserInTenant(
+  tenantId: string,
+  userId: string,
+  context: TenantMutationContext,
+): Promise<{ user: TenantUserSummary; previous: Record<string, unknown> } | null> {
+  return prisma.$transaction(async (tx) => {
+    const before = await tx.user.findFirst({
+      where: { id: userId, tenantId },
+      select: { id: true, email: true, isActive: true, status: true, mustChangePassword: true },
+    })
+    if (!before) return null
+
+    const updated = await tx.user.update({
+      where: { id: userId, tenantId },
+      data: { isActive: false, status: 'SUSPENDED' },
+      select: {
+        id: true,
+        tenantId: true,
+        schoolId: true,
+        email: true,
+        name: true,
+        mustChangePassword: true,
+        role: { select: { name: true } },
+        status: true,
+        isActive: true,
+        lastLoginAt: true,
+        createdAt: true,
+      },
+    })
+
+    await appendAudit(tx, {
+      tenantId,
+      schoolId: PLATFORM_AUDIT_SCOPE,
+      userId: updated.id,
+      operatorId: context.operatorId,
+      action: 'TENANT_USER_DEACTIVATE',
+      entity: 'user',
+      entityId: updated.id,
+      description: `User ${updated.email} deactivated by ${context.operatorEmail}`,
+      changes: { from: { isActive: before.isActive, status: before.status }, to: { isActive: false, status: 'SUSPENDED' } },
+      ipAddress: context.ipAddress,
+      userAgent: context.userAgent,
+    })
+
+    return {
+      user: {
+        id: updated.id,
+        tenantId: updated.tenantId,
+        schoolId: updated.schoolId,
+        email: updated.email,
+        name: updated.name,
+        mustChangePassword: updated.mustChangePassword,
+        roleName: updated.role?.name ?? null,
+        status: updated.status,
+        isActive: updated.isActive,
+        lastLoginAt: iso(updated.lastLoginAt),
+        createdAt: updated.createdAt.toISOString(),
+      },
+      previous: { isActive: before.isActive, status: before.status },
+    }
+  })
+}
+
+export async function reactivateUserInTenant(
+  tenantId: string,
+  userId: string,
+  context: TenantMutationContext,
+): Promise<{ user: TenantUserSummary; previous: Record<string, unknown> } | null> {
+  return prisma.$transaction(async (tx) => {
+    const before = await tx.user.findFirst({
+      where: { id: userId, tenantId },
+      select: { id: true, email: true, isActive: true, status: true, mustChangePassword: true },
+    })
+    if (!before) return null
+
+    const updated = await tx.user.update({
+      where: { id: userId, tenantId },
+      data: { isActive: true, status: 'ACTIVE' },
+      select: {
+        id: true,
+        tenantId: true,
+        schoolId: true,
+        email: true,
+        name: true,
+        mustChangePassword: true,
+        role: { select: { name: true } },
+        status: true,
+        isActive: true,
+        lastLoginAt: true,
+        createdAt: true,
+      },
+    })
+
+    await appendAudit(tx, {
+      tenantId,
+      schoolId: PLATFORM_AUDIT_SCOPE,
+      userId: updated.id,
+      operatorId: context.operatorId,
+      action: 'TENANT_USER_REACTIVATE',
+      entity: 'user',
+      entityId: updated.id,
+      description: `User ${updated.email} reactivated by ${context.operatorEmail}`,
+      changes: { from: { isActive: before.isActive, status: before.status }, to: { isActive: true, status: 'ACTIVE' } },
+      ipAddress: context.ipAddress,
+      userAgent: context.userAgent,
+    })
+
+    return {
+      user: {
+        id: updated.id,
+        tenantId: updated.tenantId,
+        schoolId: updated.schoolId,
+        email: updated.email,
+        name: updated.name,
+        mustChangePassword: updated.mustChangePassword,
+        roleName: updated.role?.name ?? null,
+        status: updated.status,
+        isActive: updated.isActive,
+        lastLoginAt: iso(updated.lastLoginAt),
+        createdAt: updated.createdAt.toISOString(),
+      },
+      previous: { isActive: before.isActive, status: before.status },
+    }
+  })
+}
+
+// ---------------------------------------------------------------------------
+// School mutations within a tenant
+// ---------------------------------------------------------------------------
+
+export async function createSchoolInTenant(
+  tenantId: string,
+  data: {
+    name: string
+    code: string
+    address: string
+    phone: string
+    email: string
+    established: Date
+    motto?: string | null
+    logoUrl?: string | null
+  },
+  context: TenantMutationContext,
+): Promise<SchoolSummary> {
+  const school = await prisma.$transaction(async (tx) => {
+    await assertTenantIsActive(tenantId)
+
+    const created = await tx.school.create({
+      data: {
+        tenantId,
+        name: data.name,
+        code: data.code,
+        address: data.address,
+        phone: data.phone,
+        email: data.email,
+        established: data.established,
+        motto: data.motto ?? null,
+        logoUrl: data.logoUrl ?? null,
+      },
+      select: {
+        id: true,
+        tenantId: true,
+        name: true,
+        code: true,
+        email: true,
+        phone: true,
+        address: true,
+        motto: true,
+        established: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    })
+
+    await appendAudit(tx, {
+      tenantId,
+      schoolId: created.id,
+      userId: null,
+      operatorId: context.operatorId,
+      action: 'TENANT_SCHOOL_CREATE',
+      entity: 'school',
+      entityId: created.id,
+      description: `School "${created.name}" created in tenant ${tenantId} by ${context.operatorEmail}`,
+      changes: { name: created.name, code: created.code },
+      ipAddress: context.ipAddress,
+      userAgent: context.userAgent,
+    })
+
+    return created
+  })
+
+  return {
+    id: school.id,
+    tenantId: school.tenantId,
+    name: school.name,
+    code: school.code,
+    email: school.email,
+    phone: school.phone,
+    address: school.address,
+    motto: school.motto,
+    established: school.established.toISOString(),
+    createdAt: school.createdAt.toISOString(),
+    updatedAt: school.updatedAt.toISOString(),
+  }
+}
+
+export async function updateSchoolInTenant(
+  tenantId: string,
+  schoolId: string,
+  data: {
+    name?: string
+    code?: string
+    address?: string
+    phone?: string
+    email?: string
+    established?: Date
+    motto?: string | null
+    logoUrl?: string | null
+  },
+  context: TenantMutationContext,
+): Promise<{ school: SchoolSummary; previous: Record<string, unknown> } | null> {
+  return prisma.$transaction(async (tx) => {
+    const before = await tx.school.findFirst({
+      where: { id: schoolId, tenantId },
+      select: {
+        id: true,
+        name: true,
+        code: true,
+        email: true,
+        phone: true,
+        address: true,
+        motto: true,
+        established: true,
+      },
+    })
+    if (!before) return null
+
+    const updated = await tx.school.update({
+      where: { id: schoolId },
+      data,
+      select: {
+        id: true,
+        tenantId: true,
+        name: true,
+        code: true,
+        email: true,
+        phone: true,
+        address: true,
+        motto: true,
+        established: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    })
+
+    await appendAudit(tx, {
+      tenantId,
+      schoolId: updated.id,
+      userId: null,
+      operatorId: context.operatorId,
+      action: 'TENANT_SCHOOL_UPDATE',
+      entity: 'school',
+      entityId: updated.id,
+      description: `School "${updated.name}" updated by ${context.operatorEmail}`,
+      changes: { from: before, to: updated },
+      ipAddress: context.ipAddress,
+      userAgent: context.userAgent,
+    })
+
+    return {
+      school: {
+        id: updated.id,
+        tenantId: updated.tenantId,
+        name: updated.name,
+        code: updated.code,
+        email: updated.email,
+        phone: updated.phone,
+        address: updated.address,
+        motto: updated.motto,
+        established: updated.established.toISOString(),
+        createdAt: updated.createdAt.toISOString(),
+        updatedAt: updated.updatedAt.toISOString(),
+      },
+      previous: { ...before, established: before.established.toISOString() },
+    }
+  })
+}
+
+export async function deleteSchoolInTenant(
+  tenantId: string,
+  schoolId: string,
+  context: TenantMutationContext,
+): Promise<{ deleted: boolean } | null> {
+  return prisma.$transaction(async (tx) => {
+    const before = await tx.school.findFirst({
+      where: { id: schoolId, tenantId },
+      select: { id: true, name: true },
+    })
+    if (!before) return null
+
+    const [studentCount, staffCount] = await Promise.all([
+      tx.student.count({ where: { tenantId, schoolId } }),
+      tx.staff.count({ where: { tenantId, schoolId } }),
+    ])
+    if (studentCount > 0 || staffCount > 0) {
+      throw new Error(
+        `Cannot delete school "${before.name}": ${studentCount} student(s) and ${staffCount} staff member(s) are assigned. Remove them first.`,
+      )
+    }
+
+    await tx.school.delete({ where: { id: schoolId, tenantId } })
+
+    await appendAudit(tx, {
+      tenantId,
+      schoolId: PLATFORM_AUDIT_SCOPE,
+      userId: null,
+      operatorId: context.operatorId,
+      action: 'TENANT_SCHOOL_DELETE',
+      entity: 'school',
+      entityId: schoolId,
+      description: `School "${before.name}" deleted from tenant ${tenantId} by ${context.operatorEmail}`,
+      changes: { name: before.name },
+      ipAddress: context.ipAddress,
+      userAgent: context.userAgent,
+    })
+
+    return { deleted: true }
+  })
 }

@@ -267,13 +267,40 @@ export async function getTestimonials(): Promise<
 }
 
 // CTA content
-export async function getCTAContent(): Promise<{ title: string; subtitle: string; cta: string } | null> {
+/**
+ * Page-aware CTA content. Each public-facing page gets a subtitle and call-to-action
+ * that reflects its age range and context, rather than a single generic string
+ * that all pages share.
+ *
+ * The `page` parameter selects which variant to return. This must match the
+ * page that calls it — there is no cross-page fallback, so a page that forgets
+ * to pass its variant gets the home-page CTA, which is at least on-brand.
+ */
+export async function getCTAContent(page: 'home' | 'preschool' | 'primary' = 'home'): Promise<{ title: string; subtitle: string; cta: string } | null> {
   return safeFetch(
-    async () => ({
-      title: 'Ready to Join Our Community?',
-      subtitle: 'Give your child the foundation for a lifetime of learning through authentic Montessori education',
-      cta: 'Apply Now',
-    }),
+    async () => {
+      const variants: Record<'home' | 'preschool' | 'primary', { title: string; subtitle: string; cta: string }> = {
+        home: {
+          title: 'Ready to start at Novastar?',
+          subtitle:
+            'From Crèche to Junior High, our mixed-age classrooms and GES-aligned curriculum give every child a prepared environment to learn independently. Book a visit or apply for 2026/27.',
+          cta: 'Apply for admission',
+        },
+        preschool: {
+          title: 'Ready to join our preschool community?',
+          subtitle:
+            'Give your child the foundation for a lifetime of learning through authentic Montessori education during the absorbent mind years, ages 6 months to 5.',
+          cta: 'Apply for preschool',
+        },
+        primary: {
+          title: 'Ready to join our primary school community?',
+          subtitle:
+            'Give your child the foundation for a lifetime of learning through authentic Montessori education during the reasoning mind years, ages 6 to 11.',
+          cta: 'Apply for primary',
+        },
+      }
+      return variants[page]
+    },
     null
   )
 }

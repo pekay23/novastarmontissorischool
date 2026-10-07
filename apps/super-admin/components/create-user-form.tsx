@@ -63,7 +63,7 @@ export function CreateUserForm({
     setPending(true)
     setError(null)
     try {
-      const response = await fetch(`/api/tenants/${encodeURIComponent(tenantId)}/users`, {
+      const response = await fetch(`/admin/api/tenants/${encodeURIComponent(tenantId)}/users`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({

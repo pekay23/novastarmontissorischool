@@ -117,7 +117,7 @@ export default async function HomePage() {
       getHeroContent(),
       getFeatures(),
       getTestimonials(),
-      getCTAContent(),
+       getCTAContent('home'),
       getAcademicPrograms(),
       getAdmissionsStatus(),
     ])
@@ -128,11 +128,11 @@ export default async function HomePage() {
   const heroSubtitle =
     hero?.subtitle ||
     'Authentic Montessori education from Crèche to Junior High in Kumasi, Ghana, integrated with Ghana Education Service standards.'
-  const ctaTitle = cta?.title || 'Ready to join our community?'
+  const ctaTitle = cta?.title || 'Ready to start at Novastar?'
   const ctaSubtitle =
     cta?.subtitle ||
-    'Give your child the foundation for a lifetime of learning through authentic Montessori education'
-  const ctaButton = cta?.cta || 'Start your application'
+    'From Crèche to Junior High, our mixed-age classrooms and GES-aligned curriculum give every child a prepared environment to learn independently. Book a visit or apply for 2026/27.'
+  const ctaButton = cta?.cta || 'Apply for admission'
 
   const whatsapp = whatsappHref(
     SCHOOL_INFO.whatsapp,
@@ -402,8 +402,8 @@ export default async function HomePage() {
         */}
         <div className="mt-12 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 lg:gap-6">
           {figures.map((figure) => (
-            <Card key={figure.label} className={cn(CARD_PAD, 'flex flex-col justify-center')}>
-              <Stat {...figure} />
+            <Card key={figure.label} className={cn(CARD_PAD, 'flex flex-col items-center justify-center text-center')}>
+              <Stat {...figure} className="items-center text-center" />
             </Card>
           ))}
         </div>
@@ -460,8 +460,22 @@ export default async function HomePage() {
                 <p>{SCHOOL_INFO.description}</p>
                 <p>
                   The work cycle is uninterrupted. A child chooses a material,
-                  works at the shelf beside it, and returns it in condition. There
-                  are no bells, and no child waiting to be told what to do next.
+                  takes it to a mat or table, works there, and returns it in
+                  condition. There are no bells, and no child waiting to be told
+                  what to do next.
+                </p>
+              <p>
+                  Founded in 2016 in Ayeduase, Kumasi, Novastar brings together the
+                  Montessori prepared environment with Ghana Education Service
+                  standards. Our mixed-age classrooms — Crèche through Junior High —
+                  let a six-year-old read to a three-year-old, and a twelve-year-old
+                  model problem-solving for a seven-year-old. From the first
+                  Practical Life lesson to the Cosmic curriculum, the same campus and
+                  the same methods carry every child forward.{' '}
+                  <Link href="/academics">Explore our full curriculum</Link>, or
+                  learn about our{' '}
+                  <Link href="/preschool">preschool</Link> and{' '}
+                  <Link href="/primary-school">primary programmes</Link>.
                 </p>
               </div>
 
@@ -540,8 +554,12 @@ export default async function HomePage() {
             <Eyebrow>Campus</Eyebrow>
             <SectionTitle>{SCHOOL_INFO.location}</SectionTitle>
             <p className="max-w-[52ch] text-[0.9375rem] leading-relaxed text-muted-foreground">
-              Classrooms are arranged so that children can move between work, and
-              there is outdoor space for movement and practical work.
+              Our campus is in Ayeduase, Kumasi, on Ayeduase Road near the K-5
+              Junction traffic light. The low, naturally lit buildings sit on a
+              quiet street, with classrooms that open onto outdoor space for
+              movement and practical work. We are open Monday to Friday, 7:00 AM
+              to 4:00 PM.{' '}
+              <Link href="/about">Read our story</Link>.
             </p>
             <dl className="grid gap-3 pt-1 sm:grid-cols-2">
               <Card className={cn(CARD_PAD, 'p-4')}>

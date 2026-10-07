@@ -28,13 +28,13 @@ export function TenantSwitcher({
   function onChange(event: React.ChangeEvent<HTMLSelectElement>) {
     const next = event.target.value
     if (next === '') {
-      document.cookie = 'super_admin_tenant=; Path=/; Max-Age=0; SameSite=Lax'
+      document.cookie = 'super_admin_tenant=; Path=/admin; Max-Age=0; SameSite=Lax'
       router.push('/tenants')
       router.refresh()
       return
     }
     document.cookie =
-      `super_admin_tenant=${encodeURIComponent(next)}; Path=/; Max-Age=86400; SameSite=Lax` +
+      `super_admin_tenant=${encodeURIComponent(next)}; Path=/admin; Max-Age=86400; SameSite=Lax` +
       (window.location.protocol === 'https:' ? '; Secure' : '')
     router.push(`/tenants/${encodeURIComponent(next)}`)
     router.refresh()

@@ -1,21 +1,16 @@
 import { requireCapabilityPage } from '@/lib/admin-context'
 import { listTenantsAcrossPlatform } from '@/lib/queries'
 import { TenantTable } from '@/components/tenant-table'
+import { TenantFormClient } from '@/components/tenant-form-client'
 
-/**
- * `/tenants` — the fleet roster.
- *
- * This is the one page whose query has no tenant predicate, and that is the whole
- * point of it: an operator manages the fleet, not one school. The projection in
- * `listTenantsAcrossPlatform` is what bounds it to nine named fields.
- */
 export const dynamic = 'force-dynamic'
 
 export const metadata = { title: 'Tenants' }
 
 export default async function TenantsPage() {
-  await requireCapabilityPage('tenant:read')
+  const context = await requireCapabilityPage('tenant:read')
   const tenants = await listTenantsAcrossPlatform()
+  const canProvision = context.operator.capabilities.some((c) => c === 'tenant:provision' || c === 'tenant:school:create')
 
   return (
     <div className="space-y-6">
@@ -26,6 +21,7 @@ export default async function TenantsPage() {
           settings.
         </p>
       </div>
+      {canProvision ? <TenantFormClient /> : null}
       <TenantTable tenants={tenants} />
     </div>
   )

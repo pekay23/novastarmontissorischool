@@ -109,7 +109,7 @@ export const baseMetadata: Metadata = {
 export function generateHomeMetadata(): Metadata {
   return {
     ...baseMetadata,
-    title: 'Authentic Montessori Education — Crèche to Junior High',
+    title: 'Novastar Montessori School',
     description: 'Novastar Montessori School in Kumasi: mixed-age classrooms, 3-hour work cycles, GES-aligned curriculum. Book a classroom visit today.',
     /* The homepage is the one route that legitimately declares this URL. */
     alternates: { canonical: `${SCHOOL_INFO.website}/` },

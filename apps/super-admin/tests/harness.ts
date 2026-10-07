@@ -2,6 +2,14 @@ import { mock } from 'bun:test'
 import { NextRequest } from 'next/server'
 
 /**
+ * Mock `server-only` to prevent runtime errors in test environment.
+ * In production, `server-only` throws if imported from client components.
+ * In tests, we need to allow these imports to work since the test runner
+ * evaluates modules in a context that isn't a Server Component.
+ */
+mock.module('server-only', () => ({}))
+
+/**
  * The shared test harness.
  *
  * Bun's module-mock registry is global and outlives a test file, so a
@@ -75,6 +83,12 @@ mock.module('next/headers', () => ({
   // imports one of them must not fail to load against this mock.
   headers: async () => new Headers(),
   draftMode: async () => ({ isEnabled: false, enable() {}, disable() {} }),
+}))
+
+mock.module('server-only', () => ({
+  // `server-only` is a build-time guard. In tests we need the module to resolve
+  // without throwing, so we replace it with a no-op.
+  default: {},
 }))
 
 // ---------------------------------------------------------------------------
@@ -458,6 +472,10 @@ export function fakeOperator(overrides: Partial<FakeOperator> = {}): FakeOperato
       'tenant:config',
       'tenant:user:read',
       'tenant:user:create',
+      'tenant:user:update',
+      'tenant:school:create',
+      'tenant:school:update',
+      'tenant:school:delete',
     ],
     mustChangePassword: false,
     lastLoginAt: null,

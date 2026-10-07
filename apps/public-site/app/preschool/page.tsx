@@ -1,7 +1,6 @@
 import Link from 'next/link'
-import Image from 'next/image'
 import type { LucideIcon } from 'lucide-react'
-import { ArrowRight, Award, Baby, BookOpen, CalendarDays, CheckCircle2, Compass, FlaskConical, Languages, Mail, MapPin, MessageCircle, Phone, ShieldCheck, Sprout, SquareFunction, Users } from 'lucide-react'
+import { ArrowRight, Award, BookOpen, CalendarDays, CheckCircle2, Compass, FlaskConical, Languages, Mail, MapPin, MessageCircle, Phone, ShieldCheck, Sprout, SquareFunction, Users } from 'lucide-react'
 
 import { cn } from '@novastar/shared-ui'
 import {
@@ -22,7 +21,6 @@ import {
   whatsappHref,
 } from '@/components/marketing-button'
 import { HeroField } from '@/components/hero-field'
-import { Photo } from '@/components/photo'
 import { HeroParallax } from '@/components/hero-parallax'
 import { ProgramCard } from '@/components/program-card'
 import {
@@ -95,7 +93,7 @@ export default async function PreschoolPage() {
       getHeroContent(),
       getFeatures(),
       getTestimonials(),
-      getCTAContent(),
+       getCTAContent('preschool'),
       getAcademicPrograms(),
       getAdmissionsStatus(),
     ])
@@ -110,8 +108,8 @@ export default async function PreschoolPage() {
   const ctaTitle = cta?.title || 'Ready to join our preschool community?'
   const ctaSubtitle =
     cta?.subtitle ||
-    'Give your child the foundation for a lifetime of learning through authentic Montessori education during the absorbent mind years.'
-  const ctaButton = cta?.cta || 'Start your application'
+    'Give your child the foundation for a lifetime of learning through authentic Montessori education during the absorbent mind years, ages 6 months to 5.'
+  const ctaButton = cta?.cta || 'Apply for preschool'
 
   const whatsapp = whatsappHref(
     SCHOOL_INFO.whatsapp,
@@ -231,12 +229,13 @@ export default async function PreschoolPage() {
 
                 <div className="relative flex min-h-[24rem] flex-col justify-end p-7 lg:min-h-[28rem] lg:p-8">
                   <div className="rounded-md bg-surface-container-lowest/80 p-5 shadow-raised backdrop-blur-[2px]">
-                    <Eyebrow className="mb-2">The work cycle</Eyebrow>
+                    <Eyebrow className="mb-2">The work day</Eyebrow>
                     <p className="type-title text-foreground">
-                      Three uninterrupted hours, no bells
+                      Uninterrupted work time, no bells
                     </p>
                     <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                      Long stretches of self-directed work at the shelf beside the material, returned in condition.
+                      Long stretches of self-directed activity, with materials chosen
+                      and returned in condition.
                     </p>
                   </div>
 
@@ -311,13 +310,12 @@ export default async function PreschoolPage() {
         <Card tone="flat" className="overflow-hidden p-0">
           <div className="grid lg:grid-cols-12">
             <div className="flex flex-col justify-between gap-6 border-b border-border bg-surface-container p-8 lg:col-span-5 lg:border-b-0 lg:border-r lg:p-10">
-              <div className="flex h-40 w-40 items-center justify-center rounded-md border border-border bg-surface-container-lowest p-5 shadow-hairline">
+              <div className="relative aspect-[4/3] w-full overflow-hidden rounded-md border border-border bg-surface-container-lowest">
                 <img
-                  src="/logo_preschool.png"
-                  alt=""
-                  width={124}
-                  height={80}
-                  className="h-auto w-full"
+                  src="/images/photo_1_2026-10-05_11-06-55%20for%20preschool.jpg"
+                  alt="Children working with materials in our preschool classroom"
+                  className="h-full w-full object-cover"
+                  loading="lazy"
                 />
               </div>
               <div>
@@ -334,12 +332,26 @@ export default async function PreschoolPage() {
             <div className="flex flex-col gap-6 p-8 lg:col-span-7 lg:p-10">
               <Eyebrow>Our approach</Eyebrow>
               <SectionTitle>
-                We do not simply deliver lessons. We prepare an environment in which a child can teach themselves through dignified inquiry.
+                In the first plane of development, everything is absorbed through
+                the senses.
               </SectionTitle>
               <div className="flex flex-col gap-4 text-[0.9375rem] leading-relaxed text-muted-foreground">
                 <p>{SCHOOL_INFO.description}</p>
                 <p>
-                  The work cycle is uninterrupted. A child chooses a material, works at the shelf beside it, and returns it in condition. There are no bells, and no child waiting to be told what to do next.
+                  The work cycle is uninterrupted. A child chooses a material,
+                  takes it to a mat or table, works there, and returns it in
+                  condition. There are no bells, and no child waiting to be told
+                  what to do next.
+                </p>
+                <p>
+                  From six months to five years, a child's mind forms itself from
+                  the environment through the absorbent mind. Our Crèche and
+                  Kindergarten classrooms are set to the child's scale: low
+                  shelves, child-sized furniture, and materials that invite touch,
+                  sound, and movement. The Practical Life area — where children
+                  pour water, polish fruit, and button their own coats — builds the
+                  concentration and fine motor skills that underpin all later
+                  learning.
                 </p>
               </div>
 
@@ -362,7 +374,7 @@ export default async function PreschoolPage() {
                   Aligned to Ghana Education Service and NaCCA standards
                 </p>
                 <LinkRow href="/academics">
-                  See how the curriculum continues to primary
+                  Explore the full curriculum from Crèche to JHS
                   <ArrowRight className="h-4 w-4" aria-hidden="true" />
                 </LinkRow>
               </div>
@@ -399,7 +411,15 @@ export default async function PreschoolPage() {
             <Eyebrow>Transition to Primary</Eyebrow>
             <SectionTitle>{SCHOOL_INFO.location}</SectionTitle>
             <p className="max-w-[52ch] text-[0.9375rem] leading-relaxed text-muted-foreground">
-              Our preschool programme prepares children for the transition to primary school by developing executive function, social skills, and academic readiness.
+              Moving from Kindergarten to Lower Primary at Novastar is a gradual
+              shift, not a cliff. Children carry their concentration stamina, their
+              grace around classroom materials, and their comfort with mixed-age
+              collaboration into the primary classroom. The GES-aligned curriculum
+              builds directly on the practical life, sensorial, and phonetic reading
+              foundation established here. The Great Lessons told in the primary
+              year connect to the same cosmic curiosity first kindled by the Pink
+              Tower and the Binomial Cube.{' '}
+              <Link href="/academics">View the full curriculum</Link>.
             </p>
             <dl className="grid gap-3 pt-1 sm:grid-cols-2">
               <Card className={cn(CARD_PAD, 'p-4')}>
@@ -558,8 +578,8 @@ function splitHeadline(title: string) {
  * two cards of the same fill.
  */
 const GATEWAY_TARGETS: Record<string, string> = {
-  'Montessori Method': '/preschool',
-  'GES Curriculum': '/preschool',
+  'Montessori Method': '/about',
+  'GES Curriculum': '/academics',
   'Prepared Environment': '/admissions',
 }
 

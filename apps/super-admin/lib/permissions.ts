@@ -55,6 +55,14 @@ export const OPERATOR_CAPABILITIES = [
    * a single-use link.
    */
   'tenant:user:create',
+  /** Edit/update an existing school-level account and reactivate/reactivate. */
+  'tenant:user:update',
+  /** Create a new school within a tenant. */
+  'tenant:school:create',
+  /** Edit an existing school's full profile. */
+  'tenant:school:update',
+  /** Remove a school from a tenant (refused if students or staff exist). */
+  'tenant:school:delete',
 ] as const
 
 export type OperatorCapability = (typeof OPERATOR_CAPABILITIES)[number]
