@@ -1,1 +1,1 @@
-{"$schema":"https://openapi.vercel.sh/vercel.json","installCommand":"bun install","buildCommand":"bun run build --filter=public-site","outputDirectory":"apps/public-site/out"}
+{"$schema":"https://openapi.vercel.sh/vercel.json","installCommand":"bun install","buildCommand":"bun run --cwd packages/database db:generate && bun run build --filter=public-site","outputDirectory":"apps/public-site/out"}
