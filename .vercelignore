@@ -1,0 +1,15 @@
+﻿node_modules
+**/node_modules
+.git
+.github
+.gitignore
+Dockerfile
+docker-compose*.yml
+.env.local
+.env
+*.log
+.storybook
+coverage
+out
+.vercel
+
