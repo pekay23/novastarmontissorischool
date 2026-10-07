@@ -1,53 +1,46 @@
-﻿# Node modules
-node_modules
+﻿# Only include what's needed for build
+!package.json
+!bun.lock
+!turbo.json
+!tsconfig.base.json
+!vercel.json
+!.vercelignore
+!apps/public-site/**
+!packages/**/package.json
+!packages/**/tsconfig.json
+!packages/**/src/**
+!packages/**/dist/**
+!packages/shared-ui/**
+!packages/shared-types/**
+!packages/shared-utils/**
+!packages/database/**
+!tools/migrate/**
+!tools/sync-cli/**
+!tools/tenant-cli/**
+# Exclude everything else
 **/node_modules
-
-# Git
-.git
-.github
-.gitignore
-
-# Config
-.vercelignore
+**/.next
+**/dist
+**/build
+**/coverage
+**/.git
+**/.github
+**/docs
+**/scripts
+**/tests
+**/*.test.*
+**/*.spec.*
+**/.storybook
+**/.vscode
+**/.idea
+*.md
+*.log
+.env
+.env.local
 Dockerfile
 docker-compose*.yml
-.env.local
-.env
-*.log
-
-# Build artifacts
-.next
-out
-dist
-build
-coverage
-
-# IDE
-.vscode
-.idea
-
-# Documentation
-docs/
-*.md
-!README.md
-
-# Scripts
-scripts/
-
-# Tests
-tests/
-*.test.*
-*.spec.*
-
-# Storybook
-.storybook
-
-# Kilo/Kilo-specific
 kilo.json
 AGENTS.md
 CLAUDE.md
 kilo.lock
-
-# Bun
-bun.lockb
 
