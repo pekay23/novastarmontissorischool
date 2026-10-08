@@ -8,7 +8,7 @@
     "tools/*"
   ],
 "scripts": {
-    "postinstall": "prisma generate",
+    "postinstall": "bun run --cwd packages/database db:generate",
     "dev": "turbo run dev",
     "build": "turbo run build",
     "lint": "turbo run lint",

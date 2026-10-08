@@ -50,7 +50,7 @@ export function VerifyEmailPanel({ token }: { token: string | null }) {
     if (!token) return
 
     let cancelled = false
-    fetch('/api/auth/verify-email', {
+    fetch('/portal/api/auth/verify-email', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ token }),
@@ -64,7 +64,7 @@ export function VerifyEmailPanel({ token }: { token: string | null }) {
         }
         if (body?.status === 'set-password-required') {
           setState('set-password')
-          router.replace(`/set-password?token=${encodeURIComponent(token ?? '')}`)
+          router.replace(`/portal/set-password?token=${encodeURIComponent(token ?? '')}`)
           return
         }
         setState('verified')
@@ -87,7 +87,7 @@ export function VerifyEmailPanel({ token }: { token: string | null }) {
     e.preventDefault()
     setSending(true)
     setNotice('')
-    const res = await fetch('/api/auth/verify-email/resend', {
+    const res = await fetch('/portal/api/auth/verify-email/resend', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email }),
@@ -118,7 +118,7 @@ export function VerifyEmailPanel({ token }: { token: string | null }) {
             <p role="status" className="text-sm text-muted-foreground">
               {MESSAGES.verified}
             </p>
-            <Button className="w-full" onClick={() => router.push('/login')}>
+            <Button className="w-full" onClick={() => router.push('/portal/login')}>
               Continue to Sign In
             </Button>
           </div>
@@ -160,7 +160,7 @@ export function VerifyEmailPanel({ token }: { token: string | null }) {
             <Button
               variant="outline"
               className="w-full"
-              onClick={() => router.push('/login')}
+              onClick={() => router.push('/portal/login')}
             >
               Back to Sign In
             </Button>

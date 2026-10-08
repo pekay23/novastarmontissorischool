@@ -97,8 +97,12 @@ export const authOptions: NextAuthOptions = {
     maxAge: 8 * 60 * 60, // 8 hours (reduced from 30 days for security)
   },
   pages: {
-    signIn: '/portal/login',
-    error: '/portal/login',
+    /* Canonical URLs under `trailingSlash: true` in
+       next.config.ts — same contract as the proxy's withAuth
+       `pages.signIn`, where the trailing slash is what makes
+       next-auth's sign-in-page exemption match. */
+    signIn: '/portal/login/',
+    error: '/portal/login/',
   },
   callbacks: {
     /**

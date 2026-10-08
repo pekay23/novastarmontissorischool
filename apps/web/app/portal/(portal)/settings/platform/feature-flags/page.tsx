@@ -1,4 +1,5 @@
 'use client'
+export const dynamic = 'force-dynamic'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useSession } from 'next-auth/react'
@@ -397,3 +398,5 @@ export default function FeatureFlagsPage() {
     </div>
   )
 }
+
+

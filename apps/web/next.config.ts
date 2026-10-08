@@ -92,6 +92,36 @@ function loadRootEnv(): void {
 loadRootEnv()
 
 const nextConfig: NextConfig = {
+  /*
+   * Every URL on this site is directory-shaped: `/academics/`, not
+   * `/academics`. The flag was dropped when the merged app was
+   * scaffolded from the public site (ADR-024), but everything
+   * around it is still built on it:
+   *
+   * - `lib/metadata.ts` declares every canonical and `og:url` with a
+   *   trailing slash ("Trailing slash matches `trailingSlash: true`").
+   * - `components/header.tsx` normalises `usePathname()` for exactly
+   *   this setting.
+   * - The static-export tooling (`nginx.conf`, `Dockerfile.public-site`,
+   *   `tools/serve-export.mjs`) serves `<route>/index.html` trees.
+   *
+   * It is also a hydration contract. `next/link` runs every internal
+   * href through `normalizePathTrailingSlash()` on the client, keyed
+   * off this same value inlined into the bundle. Server and client
+   * must agree: when the flag is absent here while a client bundle
+   * compiled with it is still live, the server renders
+   * `href="/academics"` and the client hydrates `href="/academics/"`,
+   * and React logs a hydration mismatch on every nav link. One source
+   * of truth, here, keeps both sides identical.
+   *
+   * `output: 'export'` is deliberately NOT set: the merged app serves
+   * the dynamic portal and console sections (auth, database, cookies),
+   * which a static export cannot prerender, and `headers()` below is
+   * likewise export-incompatible. Production is one SSR deployment
+   * (vercel.json); only the URL shape is shared with the old static
+   * site.
+   */
+  trailingSlash: true,
   allowedDevOrigins: [
     '192.168.8.202',
     '192.168.8.226',

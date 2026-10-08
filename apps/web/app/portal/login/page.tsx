@@ -121,7 +121,7 @@ function useConfiguredSsoProviders(): ClientSafeProvider[] {
 function LoginContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const callbackUrl = searchParams.get('callbackUrl') || '/dashboard'
+  const callbackUrl = searchParams.get('callbackUrl') || '/portal/dashboard'
   const returnTo = searchParams.get('returnTo') || callbackUrl
 
   const [email, setEmail] = useState('')
@@ -352,7 +352,7 @@ function LoginContent() {
                         Password
                       </label>
                       <Link
-                        href="/forgot-password"
+                        href="/portal/forgot-password"
                         className="text-xs font-medium text-muted-foreground underline underline-offset-4 hover:text-foreground"
                       >
                         Forgot password?

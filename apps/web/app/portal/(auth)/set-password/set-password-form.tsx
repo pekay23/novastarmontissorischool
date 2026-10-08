@@ -40,7 +40,7 @@ export function SetPasswordForm({ token }: { token: string | null }) {
 
     setBusy(true)
     try {
-      const res = await fetch('/api/auth/set-password', {
+      const res = await fetch('/portal/api/auth/set-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token, password }),
@@ -55,16 +55,16 @@ export function SetPasswordForm({ token }: { token: string | null }) {
       if (!email) {
         // The password is stored and the address is verified; only the automatic
         // sign-in could not be attempted. Say so rather than implying failure.
-        router.push('/login')
+        router.push('/portal/login')
         return
       }
 
       const result = await signIn('credentials', { redirect: false, email, password })
       if (result?.error) {
-        router.push('/login')
+        router.push('/portal/login')
         return
       }
-      router.push(result?.url || '/dashboard')
+      router.push(result?.url || '/portal/dashboard')
     } catch {
       setError('We could not reach the server. Check your connection and try again.')
     } finally {

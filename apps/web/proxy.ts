@@ -136,7 +136,17 @@ const portalAuthedProxy = withAuth(
   },
   {
     pages: {
-      signIn: '/portal/login',
+      /*
+       * withAuth exempts the sign-in page by exact pathname
+       * equality (`[signInPage, errorPage].includes(pathname)`
+       * in next-auth's middleware), and `trailingSlash: true`
+       * in next.config.ts makes the canonical URL
+       * `/portal/login/`. The unslashed form fails that
+       * comparison, so an unauthenticated visit to the sign-in
+       * page itself was redirected back into the trailing-slash
+       * redirect and looped forever. The slash is load-bearing.
+       */
+      signIn: '/portal/login/',
     },
   }
 )

@@ -39,7 +39,7 @@ export function ResetPasswordForm({ token }: { token: string | null }) {
 
     setBusy(true)
     try {
-      const res = await fetch('/api/auth/reset-password', {
+      const res = await fetch('/portal/api/auth/reset-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token, password }),
@@ -55,7 +55,7 @@ export function ResetPasswordForm({ token }: { token: string | null }) {
         email: body?.email,
         password,
       })
-      router.push(result?.error ? '/login' : result?.url || '/dashboard')
+      router.push(result?.error ? '/portal/login' : result?.url || '/portal/dashboard')
     } catch {
       setError('We could not reach the server. Check your connection and try again.')
     } finally {
@@ -118,7 +118,7 @@ export function ResetPasswordForm({ token }: { token: string | null }) {
             type="button"
             variant="outline"
             className="w-full"
-            onClick={() => router.push('/forgot-password')}
+            onClick={() => router.push('/portal/forgot-password')}
           >
             Request a New Link
           </Button>

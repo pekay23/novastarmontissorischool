@@ -357,7 +357,7 @@ describe('Middleware - Assessment Endpoint Protection', () => {
 describe('Middleware - Rate Limiter', () => {
   const rateLimitSrc = readLib('rate-limit.ts')
   const authRoute = readFileSync(
-    join(PORTAL, 'app/api/auth/[...nextauth]/route.ts'),
+    join(PORTAL, 'app/portal/api/auth/[...nextauth]/route.ts'),
     'utf-8'
   )
 
@@ -646,19 +646,19 @@ describe('Middleware - Unauthenticated credential write paths are closed', () =>
     expect(loginVerify).toContain('user.isActive')
   })
 
-  it('should rate limit /api/auth before the public-path short-circuit', () => {
+it('should rate limit /portal/api/auth before the public-path short-circuit', () => {
     const limiter = proxySrc.indexOf('checkRateLimit')
-    const publicShortCircuit = proxySrc.indexOf('publicPaths.some(')
+    const publicShortCircuit = proxySrc.indexOf('portalPublicPaths.some(')
     expect(limiter).toBeGreaterThan(-1)
     expect(publicShortCircuit).toBeGreaterThan(-1)
     // THE ordering bug: the short-circuit used to run first, which left
-    // /api/auth/* unauthenticated AND unthrottled.
+    // /portal/api/auth/* unauthenticated AND unthrottled.
     expect(limiter).toBeLessThan(publicShortCircuit)
   })
 
-  it('should give /api/auth its own tighter budget', () => {
+it('should give /portal/api/auth its own tighter budget', () => {
     expect(proxySrc).toContain('AUTH_RATE_LIMIT')
-    expect(proxySrc).toContain("pathname.startsWith('/api/auth')")
+    expect(proxySrc).toContain("pathname.startsWith('/portal/api/auth')")
   })
 
   it('should drop the vestigial ADMIN_STAFF section that could never match', () => {

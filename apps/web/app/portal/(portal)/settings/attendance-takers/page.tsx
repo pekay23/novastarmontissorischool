@@ -1,4 +1,5 @@
 'use client'
+export const dynamic = 'force-dynamic'
 
 import { useState, useEffect, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
@@ -304,3 +305,5 @@ export default function AttendanceTakersPage() {
     </div>
   )
 }
+
+
