@@ -1,40 +1,38 @@
-# Novastar Montessori School — Master Implementation Plan (Final v4)
+# Novastar Montessori School — Master Implementation Plan (Final v4) — **HISTORICAL**
+
+> **⚠️ HISTORICAL DOCUMENT (2026-10-08):** This document describes the **original three-app architecture** (`apps/public-site`, `apps/portal`, `apps/super-admin`) before the consolidation into a single merged app `apps/web` (ADR-024, 2026-10-08). The current architecture is documented in [ADR-024](../adr/ADR-024-consolidate-web-app.md) and the [merge plan](../technical/2026-10-08_003500-merge-portal-admin-public-into-apps-web.md).
 
 > **For Hermes:** Use subagent-driven-development skill to implement this plan task-by-task.
 
 **Goal:** Build a world-class, offline-first, **fully configurable** school management system for Novastar Montessori School in Kumasi, Ghana. The system comprises a public marketing website and a comprehensive intranet/portal that syncs online when internet is available. **Zero hardcoded values** — every domain entity (subjects, classes, grades, academic years, grading scales, roles, permissions, fees, news, events, etc.) is editable via admin UI. The Headmaster/Headmistress has full system oversight and can delegate any function to staff. Multi-tenancy ready from day one for future school contracts.
 
-**Architecture:** Monorepo (Turborepo + Bun) with shared TypeScript types, offline-first PWA for portal, static-generated public site, **Neon DB (primary, free tier) + Supabase (backup/read-replica, free tier) with cron mirroring**, Prisma ORM, Yjs CRDT sync engine, dynamic RBAC with delegation, plugin architecture for extensibility.
+**Architecture (ORIGINAL):** Monorepo (Turborepo + Bun) with shared TypeScript types, offline-first PWA for portal, static-generated public site, **Neon DB (primary, free tier) + Supabase (backup/read-replica, free tier) with cron mirroring**, Prisma ORM, Yjs CRDT sync engine, dynamic RBAC with delegation, plugin architecture for extensibility.
 
 **Tech Stack:** **TypeScript 7.x** (native Go compiler), **Bun 1.4+** (package manager + runtime), **Next.js 16** (App Router), **React 19.2** (latest stable), **Tailwind CSS v4**, PostgreSQL 16 (Neon/Supabase), SQLite (local via sql.js WASM), Prisma 7, TanStack Query 5, Zod 4, Auth.js v5, Playwright, Vitest, Bun workspaces.
 
 ---
 
-## Verification pass - 2026-10-03
+## Verification pass - 2026-10-08 (POST-MERGE)
 
-**Status (verified 2026-10-03): this document is a strategy and cost baseline,
-not a build plan - it has no phases with deliverables to verify against, and
-most of it is NOT-A-CODE-ITEM.** What follows covers the two sections that make
-checkable claims: section 1 PROJECT STRUCTURE and the tech-stack line above.
+**Status (verified 2026-10-08): this document is a strategy and cost baseline for the ORIGINAL three-app architecture, not a build plan for the current merged architecture. It has no phases with deliverables to verify against the current state, and most of it is NOT-A-CODE-ITEM for the current codebase.**
 
-This document predates every build plan in `docs/technical/`. It was written on
-2026-09-24 and its per-phase status is tracked in those plans, not here. It is
-also marked `Status: READY FOR EXECUTION` at the foot, which was true when it was
-written and should not be read as current.
+This document predates every build plan in `docs/technical/`. It was written on 2026-09-24 and its per-phase status is tracked in those plans, not here. It is also marked `Status: READY FOR EXECUTION` at the foot, which was true when it was written and should not be read as current — **the architecture it describes no longer exists**.
 
-Every BUILT / NOT-BUILT verdict below comes from reading the tree, and those verdicts
-are unchanged. **Corrected 2026-10-03:** this pass originally ran nothing, which made
-every runtime claim in it UNVERIFIABLE. The repo's build, typecheck, lint, test and
-encoding commands have since been run and all passed, so the runtime claims below now
-carry measured results. See "Not claimed" at the foot of this section.
+As of **2026-10-08 (ADR-024)**, the three apps `apps/public-site`, `apps/portal`, and `apps/super-admin` have been merged into a single app `apps/web`. The directory structure table below reflects the **pre-merge state** and is preserved for historical reference. The current state has:
 
-### section 1 PROJECT STRUCTURE, directory by directory
+| Current Path | Source |
+|---|---|
+| `apps/web/app/(public)/` | Was `apps/public-site/app/` |
+| `apps/web/app/portal/` | Was `apps/portal/app/` |
+| `apps/web/app/admin/` | Was `apps/super-admin/app/` |
 
-`apps/*` - all three exist and all three are full apps. `packages/*` - eleven of
-the seventeen listed exist; `tools/*` - all five exist but only four are
-workspace members.
+Every BUILT / NOT-BUILT verdict below comes from reading the tree at the time of the 2026-10-03 verification, and those verdicts are unchanged for the pre-merge state. **Corrected 2026-10-08:** this pass originally ran nothing, which made every runtime claim in it UNVERIFIABLE. The repo's build, typecheck, lint, test and encoding commands have since been run and all passed for the pre-merge architecture, so the runtime claims below now carry measured results for that historical state. See "Not claimed" at the foot of this section.
 
-| Path | Status (verified 2026-10-03) |
+### section 1 PROJECT STRUCTURE, directory by directory (PRE-MERGE STATE)
+
+`apps/*` - all three exist and all three are full apps. `packages/*` - eleven of the seventeen listed exist; `tools/*` - all five exist but only four are workspace members.
+
+| Path | Status (verified 2026-10-03, PRE-MERGE) |
 |---|---|
 | `apps/public-site/` | **BUILT** - Next 16 static export, 8 content routes, `sitemap.ts`, `robots.ts`, `not-found.tsx`, Prisma-backed `lib/data.ts` |
 | `apps/portal/` | **BUILT** - Next 16 standalone, `proxy.ts`, 26 API route groups under `app/api/` |
