@@ -7,12 +7,10 @@
     "packages/*",
     "tools/*"
   ],
-  "scripts": {
+"scripts": {
+    "postinstall": "prisma generate",
     "dev": "turbo run dev",
     "build": "turbo run build",
-    "build:public": "turbo run build --filter=public-site",
-    "build:portal": "turbo run build --filter=portal",
-    "build:super-admin": "turbo run build --filter=super-admin",
     "lint": "turbo run lint",
     "lint:fix": "turbo run lint:fix",
     "check:encoding": "node tools/check-text-encoding.mjs",
@@ -21,10 +19,10 @@
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
     "test:packages": "turbo run test --filter=@novastar/tenant-cli --filter=@novastar/sync-cli --filter=@novastar/sync-engine --filter=@novastar/migrate",
-    "test:ui": "bunx turbo run test:ui --filter=portal",
+    "test:ui": "bunx turbo run test:ui --filter=web",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
-"db:push": "turbo run db:push --filter=@novastar/database",
+    "db:push": "turbo run db:push --filter=@novastar/database",
     "db:migrate:dev": "turbo run db:migrate --filter=@novastar/database",
     "db:migrate:status": "turbo run db:migrate:status --filter=@novastar/migrate",
     "db:migrate:verify": "turbo run db:migrate:verify --filter=@novastar/migrate",

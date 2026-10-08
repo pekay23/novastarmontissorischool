@@ -302,9 +302,7 @@ jobs:
 #
 # Disabled until you opt in:
 #   repo variable VERCEL_DEPLOY_ENABLED = true
-#   repo secrets VERCEL_TOKEN, VERCEL_ORG_ID,
-#                VERCEL_PROJECT_ID_PORTAL, VERCEL_PROJECT_ID_PUBLIC,
-#                VERCEL_PROJECT_ID_SUPER_ADMIN
+#   repo secrets VERCEL_TOKEN, VERCEL_ORG_ID, VERCEL_PROJECT_ID_WEB
 # ============================================================================
   deploy:
     name: Deploy to Vercel
@@ -320,9 +318,7 @@ jobs:
     env:
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
       VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-      VERCEL_PROJECT_ID_PORTAL: ${{ secrets.VERCEL_PROJECT_ID_PORTAL }}
-      VERCEL_PROJECT_ID_PUBLIC: ${{ secrets.VERCEL_PROJECT_ID_PUBLIC }}
-      VERCEL_PROJECT_ID_SUPER_ADMIN: ${{ secrets.VERCEL_PROJECT_ID_SUPER_ADMIN }}
+      VERCEL_PROJECT_ID_WEB: ${{ secrets.VERCEL_PROJECT_ID_PUBLIC }}
 
     steps:
       - name: Checkout
@@ -348,39 +344,10 @@ jobs:
       - name: Generate Prisma Client
         run: bun run --cwd packages/database db:generate
 
-      # The portal is a Next.js standalone build; Vercel runs `next build`
-      # itself, so all this step needs to do is make the workspace importable.
-      - name: Deploy portal
-        id: portal
-        working-directory: apps/portal
-        run: |
-          npx --yes vercel@latest pull --yes --environment=production --token="$VERCEL_TOKEN"
-          npx --yes vercel@latest build --prod --token="$VERCEL_TOKEN"
-          npx --yes vercel@latest deploy --prebuilt --prod --yes --token="$VERCEL_TOKEN"
-
-      - name: Deploy public site
-        id: public
-        working-directory: apps/public-site
-        run: |
-          npx --yes vercel@latest pull --yes --environment=production --token="$VERCEL_TOKEN"
-          npx --yes vercel@latest build --prod --token="$VERCEL_TOKEN"
-          npx --yes vercel@latest deploy --prebuilt --prod --yes --token="$VERCEL_TOKEN"
-
-      # The cross-tenant operator console. It was built by `bun run build` in the
-      # build job but had no deploy path at all until 2026-10-03, so it was
-      # unreachable in every deployed environment while still passing CI.
-      #
-      # Same shape as the two above, and the same secrets rule: its DATABASE_URL
-      # and PLATFORM_SESSION_SECRET are Vercel PROJECT settings fetched by
-      # `vercel pull`, not repository secrets, and they do not appear in runner
-      # logs. PLATFORM_SESSION_SECRET is the one that matters here -- without it
-      # no operator session can be signed or verified and every route denies.
-      #
-      # Ordering note: this runs last, so if the project id is missing the two
-      # deployments above have already succeeded and only this step fails.
-      - name: Deploy super admin
-        id: super-admin
-        working-directory: apps/super-admin
+      # Single merged web app deploy
+      - name: Deploy web app
+        id: web
+        working-directory: apps/web
         run: |
           npx --yes vercel@latest pull --yes --environment=production --token="$VERCEL_TOKEN"
           npx --yes vercel@latest build --prod --token="$VERCEL_TOKEN"
@@ -389,6 +356,4 @@ jobs:
       - name: Summary
         run: |
           echo "### Vercel deploy" >> "$GITHUB_STEP_SUMMARY"
-          echo "- portal: ${{ steps.portal.outputs.deployment-url }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "- public-site: ${{ steps.public.outputs.deployment-url }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "- super-admin: ${{ steps.super-admin.outputs.deployment-url }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- web: ${{ steps.web.outputs.deployment-url }}" >> "$GITHUB_STEP_SUMMARY"

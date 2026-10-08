@@ -5,7 +5,7 @@
 !tsconfig.base.json
 !vercel.json
 !.vercelignore
-!apps/public-site/**
+!apps/web/**
 !packages/**/package.json
 !packages/**/tsconfig.json
 !packages/**/src/**
