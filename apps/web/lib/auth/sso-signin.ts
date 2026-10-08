@@ -159,7 +159,7 @@ function refusalRedirect(reason: string, providerId?: string | null): string {
   // renders a refusal message naming it and that text must never come from the URL.
   if (providerId && ssoProviderLabel(providerId)) params.set('provider', providerId)
 
-  return `/login?${params.toString()}`
+  return `/portal/login?${params.toString()}`
 }
 
 /**

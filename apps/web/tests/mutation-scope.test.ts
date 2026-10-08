@@ -409,16 +409,16 @@ for (const { specifier, factory } of FAKES) {
 }
 
 const { PATCH: attendancePATCH, DELETE: attendanceDELETE } = await import(
-  '@/app/api/attendance/[id]/route'
+  '@/app/portal/api/attendance/[id]/route'
 )
-const { PATCH: classPATCH } = await import('@/app/api/classes/[id]/route')
-const { POST: classesPOST } = await import('@/app/api/classes/route')
-const { PATCH: eventPATCH } = await import('@/app/api/events/[id]/route')
-const { POST: eventsPOST } = await import('@/app/api/events/route')
-const { POST: timetablePOST } = await import('@/app/api/timetable/route')
-const { POST: syllabiPOST } = await import('@/app/api/syllabi/route')
-const { POST: takersPOST } = await import('@/app/api/attendance-takers/route')
-const { POST: attendancePOST } = await import('@/app/api/attendance/route')
+const { PATCH: classPATCH } = await import('@/app/portal/api/classes/[id]/route')
+const { POST: classesPOST } = await import('@/app/portal/api/classes/route')
+const { PATCH: eventPATCH } = await import('@/app/portal/api/events/[id]/route')
+const { POST: eventsPOST } = await import('@/app/portal/api/events/route')
+const { POST: timetablePOST } = await import('@/app/portal/api/timetable/route')
+const { POST: syllabiPOST } = await import('@/app/portal/api/syllabi/route')
+const { POST: takersPOST } = await import('@/app/portal/api/attendance-takers/route')
+const { POST: attendancePOST } = await import('@/app/portal/api/attendance/route')
 
 // --- Helpers -----------------------------------------------------------------
 

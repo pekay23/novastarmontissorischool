@@ -301,12 +301,12 @@ const {
 const { EMAIL_VERIFICATION_EXEMPT_ROLES, isEmailVerificationExempt } = await import(
   '@/lib/constants/platform-roles'
 )
-const { POST: verifyEmailPOST } = await import('@/app/api/auth/verify-email/route')
-const { POST: resendPOST } = await import('@/app/api/auth/verify-email/resend/route')
-const { POST: setPasswordPOST } = await import('@/app/api/auth/set-password/route')
-const { POST: forgotPOST } = await import('@/app/api/auth/forgot-password/route')
-const { POST: resetPOST } = await import('@/app/api/auth/reset-password/route')
-const { POST: invitePOST } = await import('@/app/api/auth/invite/route')
+const { POST: verifyEmailPOST } = await import('@/app/portal/api/auth/verify-email/route')
+const { POST: resendPOST } = await import('@/app/portal/api/auth/verify-email/resend/route')
+const { POST: setPasswordPOST } = await import('@/app/portal/api/auth/set-password/route')
+const { POST: forgotPOST } = await import('@/app/portal/api/auth/forgot-password/route')
+const { POST: resetPOST } = await import('@/app/portal/api/auth/reset-password/route')
+const { POST: invitePOST } = await import('@/app/portal/api/auth/invite/route')
 
 function post(path: string, body: unknown, ip = '198.51.100.10'): Request {
   return new Request(`https://portal.example.test${path}`, {

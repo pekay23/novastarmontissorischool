@@ -155,7 +155,7 @@ afterAll(() => {
   silencedError.mockRestore()
 })
 
-const { POST } = await import('@/app/api/assessments/route')
+const { POST } = await import('@/app/portal/api/assessments/route')
 
 function create(body: unknown) {
   return POST(

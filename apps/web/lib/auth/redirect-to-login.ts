@@ -35,9 +35,9 @@ export async function redirectToLogin(): Promise<never> {
   }
 
   // Only attach returnTo for protected portal paths, not /login itself
-  if (returnTo && returnTo !== '/login' && returnTo !== '/' && !returnTo.startsWith('/login')) {
-    redirect(`/login?returnTo=${encodeURIComponent(returnTo)}`)
+  if (returnTo && returnTo !== '/portal/login' && returnTo !== '/' && !returnTo.startsWith('/portal/login')) {
+    redirect(`/portal/login?returnTo=${encodeURIComponent(returnTo)}`)
   }
 
-  redirect('/login')
+  redirect('/portal/login')
 }

@@ -251,7 +251,7 @@ for (const { specifier, factory } of FAKES) {
   mock.module(specifier, factory)
 }
 
-const { GET, POST } = await import('@/app/api/syllabi/route')
+const { GET, POST } = await import('@/app/portal/api/syllabi/route')
 
 // --- Helpers -----------------------------------------------------------------
 

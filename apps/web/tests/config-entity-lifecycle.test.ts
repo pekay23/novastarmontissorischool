@@ -247,7 +247,7 @@ afterAll(() => {
   silencedError.mockRestore()
 })
 
-const { GET, PATCH, DELETE } = await import('@/app/api/config/[entityType]/[id]/route')
+const { GET, PATCH, DELETE } = await import('@/app/portal/api/config/[entityType]/[id]/route')
 
 function request(method: string, body: unknown, path: string) {
   return new NextRequest(`http://localhost${path}`, {

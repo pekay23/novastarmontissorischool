@@ -407,16 +407,16 @@ for (const { specifier, factory } of FAKES) {
 }
 
 const { GET: GET_ATTENDANCE, POST: POST_ATTENDANCE } = await import(
-  '@/app/api/attendance/route'
+  '@/app/portal/api/attendance/route'
 )
 const { GET: GET_ATTENDANCE_BY_ID, PATCH: PATCH_ATTENDANCE } = await import(
-  '@/app/api/attendance/[id]/route'
+  '@/app/portal/api/attendance/[id]/route'
 )
 const { POST: POST_SCORES } = await import(
-  '@/app/api/assessments/[id]/scores/route'
+  '@/app/portal/api/assessments/[id]/scores/route'
 )
 const { GET: GET_ACADEMIC_REPORT } = await import(
-  '@/app/api/reports/academic/[studentId]/route'
+  '@/app/portal/api/reports/academic/[studentId]/route'
 )
 
 // ---------------------------------------------------------------------------

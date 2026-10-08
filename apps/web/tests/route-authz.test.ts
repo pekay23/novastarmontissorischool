@@ -368,19 +368,19 @@ for (const { specifier, factory } of FAKES) {
   mock.module(specifier, factory)
 }
 
-const { GET: studentsGET } = await import('@/app/api/students/route')
-const { GET: studentGET } = await import('@/app/api/students/[id]/route')
-const { GET: teachersGET } = await import('@/app/api/teachers/route')
-const { GET: teacherGET } = await import('@/app/api/teachers/[id]/route')
-const { GET: classGET } = await import('@/app/api/classes/[id]/route')
+const { GET: studentsGET } = await import('@/app/portal/api/students/route')
+const { GET: studentGET } = await import('@/app/portal/api/students/[id]/route')
+const { GET: teachersGET } = await import('@/app/portal/api/teachers/route')
+const { GET: teacherGET } = await import('@/app/portal/api/teachers/[id]/route')
+const { GET: classGET } = await import('@/app/portal/api/classes/[id]/route')
 const { GET: assessmentGET, PATCH: assessmentPATCH } = await import(
-  '@/app/api/assessments/[id]/route'
+  '@/app/portal/api/assessments/[id]/route'
 )
-const { POST: totpPOST } = await import('@/app/api/auth/totp/route')
+const { POST: totpPOST } = await import('@/app/portal/api/auth/totp/route')
 const { POST: registerVerifyPOST } = await import(
-  '@/app/api/auth/passkey/register-verify/route'
+  '@/app/portal/api/auth/passkey/register-verify/route'
 )
-const { GET: sessionGET } = await import('@/app/api/session/route')
+const { GET: sessionGET } = await import('@/app/portal/api/session/route')
 
 // ---------------------------------------------------------------------------
 // Helpers

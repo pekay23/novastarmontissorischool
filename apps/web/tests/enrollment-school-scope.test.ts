@@ -176,7 +176,7 @@ for (const { specifier, factory } of FAKES) {
   mock.module(specifier, factory)
 }
 
-const { DELETE } = await import('@/app/api/enrollments/[id]/route')
+const { DELETE } = await import('@/app/portal/api/enrollments/[id]/route')
 
 // --- Helpers ---------------------------------------------------------------
 

@@ -221,7 +221,7 @@ for (const { specifier, factory } of FAKES) {
 }
 
 const { GET, decideCanTakeAttendance } = await import(
-  '@/app/api/teachers/me/courses/route'
+  '@/app/portal/api/teachers/me/courses/route'
 )
 
 // ---------------------------------------------------------------------------

@@ -255,7 +255,7 @@ for (const { specifier, factory } of FAKES) {
 }
 
 const { UnauthorizedError } = await import('@/lib/tenant')
-const { GET, PATCH } = await import('@/app/api/admissions/status/route')
+const { GET, PATCH } = await import('@/app/portal/api/admissions/status/route')
 
 function getRequest(): NextRequest {
   return new NextRequest('http://localhost/api/admissions/status')

@@ -110,14 +110,14 @@ export const PORTAL_SECTIONS_BY_ROLE: Readonly<Record<string, readonly string[]>
  * Paths outside a role's section list that the role may still reach.
  *
  * The section match compares only the first path segment, so admitting
- * `/settings/admissions` would mean admitting all of `/settings`. These are
+ * `/portal/settings/admissions` would mean admitting all of `/portal/settings`. These are
  * exact prefixes for exactly that reason: each entry is a surface whose own
  * server-side gate is the real authorisation, and this layer exists so the
  * request reaches that gate rather than bouncing off the proxy.
  */
 export const PATH_EXEMPT_PREFIXES_BY_ROLE: Readonly<Record<string, readonly string[]>> = {
-  ADMIN_STAFF: ['/settings/admissions', '/api/admissions'],
-  ADMISSIONS_OFFICER: ['/settings/admissions', '/api/admissions'],
+  ADMIN_STAFF: ['/portal/settings/admissions', '/portal/api/admissions'],
+  ADMISSIONS_OFFICER: ['/portal/settings/admissions', '/portal/api/admissions'],
 }
 
 /**
@@ -164,6 +164,9 @@ export function decidePortalPath(
 ): PortalPathDecision {
   if (role == null) return { outcome: 'unknown-role' }
 
+  // Strip /portal prefix before matching (merged app uses /portal/*)
+  const strippedPathname = pathname.startsWith('/portal') ? pathname.slice(6) : pathname
+
   const sections = PORTAL_SECTIONS_BY_ROLE[role]
   if (!sections) return { outcome: 'unknown-role' }
 
@@ -172,7 +175,7 @@ export function decidePortalPath(
   const exempt = PATH_EXEMPT_PREFIXES_BY_ROLE[role]
   if (exempt?.some((prefix) => pathname.startsWith(prefix))) return { outcome: 'allow' }
 
-  const section = firstSegment(pathname)
+  const section = firstSegment(strippedPathname)
   const held = sections.some((p) => section === p || section.startsWith(p))
   return held ? { outcome: 'allow' } : { outcome: 'denied' }
 }

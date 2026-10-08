@@ -242,8 +242,8 @@ for (const { specifier, factory } of FAKES) {
 
 const { UnauthorizedError } = await import('@/lib/tenant')
 const { FEATURE_FLAGS, manageableFlagKeys } = await import('@/lib/system-config')
-const { PATCH } = await import('@/app/api/system/config/[key]/route')
-const { GET } = await import('@/app/api/system/config/route')
+const { PATCH } = await import('@/app/portal/api/system/config/[key]/route')
+const { GET } = await import('@/app/portal/api/system/config/route')
 
 /** A PATCH request carrying `body` as its raw JSON. */
 function request(body: unknown): NextRequest {

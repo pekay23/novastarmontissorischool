@@ -412,7 +412,7 @@ for (const { specifier, factory } of FAKES) {
 }
 
 const { GET, POST, validateCreateTimetable } = await import(
-  '@/app/api/timetable/route'
+  '@/app/portal/api/timetable/route'
 )
 
 // ---------------------------------------------------------------------------

@@ -279,8 +279,8 @@ afterAll(() => {
   silencedError.mockRestore()
 })
 
-const { POST } = await import('@/app/api/config/[entityType]/route')
-const { PATCH, DELETE } = await import('@/app/api/config/[entityType]/[id]/route')
+const { POST } = await import('@/app/portal/api/config/[entityType]/route')
+const { PATCH, DELETE } = await import('@/app/portal/api/config/[entityType]/[id]/route')
 
 beforeEach(() => {
   for (const { specifier, factory } of FAKES) {

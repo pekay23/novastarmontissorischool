@@ -500,7 +500,7 @@ process.env.NEXTAUTH_SECRET = 'test-secret-for-staff-invite-only-not-real'
 process.env.NEXTAUTH_URL = 'https://portal.example.test'
 
 const { resetRateLimit } = await import('@/lib/rate-limit')
-const { GET, POST } = await import('@/app/api/teachers/invite/route')
+const { GET, POST } = await import('@/app/portal/api/teachers/invite/route')
 
 // --- Helpers -----------------------------------------------------------------
 

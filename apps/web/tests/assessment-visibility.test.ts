@@ -305,8 +305,8 @@ for (const { specifier, factory } of FAKES) {
   mock.module(specifier, factory)
 }
 
-const assessmentsRoute = await import('@/app/api/assessments/route')
-const scoresRoute = await import('@/app/api/assessments/[id]/scores/route')
+const assessmentsRoute = await import('@/app/portal/api/assessments/route')
+const scoresRoute = await import('@/app/portal/api/assessments/[id]/scores/route')
 
 // --- Helpers ---------------------------------------------------------------
 
