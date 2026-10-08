@@ -53,6 +53,7 @@ Every row below points at a file that exists in this directory. Verified
 | ADR-017 | Fork Portal to SchoolPortalSystem (Reusable SaaS) | 0 | Proposed | **Status is stale: the fork exists** at `C:\Projects\schoolportalsystem` with one commit. Decisions 1-3 executed; 4-6 have no implementation. Four Context inventory claims are false, including "sync-engine is 100% stubs". See its verification note. |
 | ADR-022 | Adopt Aerojet Academy Passkey & Security/Auth Patterns | 1 | Proposed | Seven of ten mapping rows are BUILT. Three are wrong as written: the audit table is `AuditLog` not `AuditAction`, the RBAC primitive is `hasPermission()` not `requirePermission()`, and the CSP is allowlist-based while a comment claims it is nonce-based. See its verification note. |
 | ADR-023 | Production DDL must arrive through `migrate deploy`, never `db push` | 0 | Accepted | Production DDL enters via `migrate deploy`; `db push` is dev-only and hard-refused on remotes; CI verify gated on credentials; `apply-schema.ts` neon target guarded; see ADR-023 for full rationale. |
+| ADR-024 | Consolidate public-site, portal and super-admin into `apps/web` | 0 | Accepted | One app, one Vercel project, one domain; `/portal/*` and `/admin/*` are physical route directories; two session systems stay separate; per-section stylesheets carry the three brands; see ADR-024 and the migration plan for the sweep inventory. |
 
 ### One ADR is referenced but does not exist here
 
