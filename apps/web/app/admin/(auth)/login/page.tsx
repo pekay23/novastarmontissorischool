@@ -25,9 +25,8 @@ export default async function LoginPage({
   const existing = await getOperatorOrNull()
   if (existing) {
     const { returnTo } = await searchParams
-    // redirect() auto-prepends the Next.js basePath (/admin), so strip a
-    // leading /admin from returnTo to avoid a double prefix like /admin/admin/tenants.
-    const target = returnTo?.replace(/^\/admin/, '') ?? '/tenants'
+    // No basePath in merged app — redirect target is absolute
+    const target = returnTo ?? '/admin/tenants'
     redirect(target)
   }
 

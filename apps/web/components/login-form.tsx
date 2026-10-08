@@ -28,7 +28,7 @@ export function LoginForm({
 }) {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const resolvedReturnTo = returnTo ?? callbackUrl ?? searchParams.get('returnTo') ?? searchParams.get('callbackUrl') ?? '/tenants'
+  const resolvedReturnTo = returnTo ?? callbackUrl ?? searchParams.get('returnTo') ?? searchParams.get('callbackUrl') ?? '/admin/tenants'
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
 
@@ -68,9 +68,8 @@ export function LoginForm({
 
       const result: { returnTo?: string } = await response.json()
       const redirectUrl = result.returnTo ?? resolvedReturnTo
-      // router.replace auto-prepends the Next.js basePath (/admin), so strip a
-      // leading /admin from server-supplied URLs to avoid a double prefix.
-      router.replace(redirectUrl.replace(/^\/admin/, '') || '/tenants')
+      // No basePath in merged app — server returns full path
+      router.replace(redirectUrl || '/admin/tenants')
       router.refresh()
     } catch {
       setError('Could not reach the server.')

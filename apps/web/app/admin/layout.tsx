@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import './globals.css'
+import '../admin.css'
 
 /**
  * The root layout.

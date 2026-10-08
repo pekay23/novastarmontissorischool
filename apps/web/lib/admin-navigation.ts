@@ -23,25 +23,25 @@ export interface NavItem {
 
 export const PLATFORM_NAV: readonly NavItem[] = [
   {
-    href: '/',
+    href: '/admin/',
     label: 'Overview',
     description: 'Tenant, school and user totals for the whole platform.',
     capability: 'platform:read',
   },
   {
-    href: '/tenants',
+    href: '/admin/tenants',
     label: 'Tenants',
     description: 'Every tenant on the platform, and drill-down into one.',
     capability: 'tenant:read',
   },
   {
-    href: '/health',
+    href: '/admin/health',
     label: 'Health',
     description: 'Migration status, mirror reachability and audit volume.',
     capability: 'platform:read',
   },
   {
-    href: '/audit',
+    href: '/admin/audit',
     label: 'Audit',
     description: 'The cross-tenant audit trail.',
     capability: 'platform:audit',
@@ -51,7 +51,7 @@ export const PLATFORM_NAV: readonly NavItem[] = [
 /** The drill-down tabs shown once an operator is inside one tenant. */
 export const TENANT_NAV: readonly NavItem[] = [
   {
-    href: '/tenants',
+    href: '/admin/tenants',
     label: 'Back to tenants',
     description: 'Leave this tenant.',
     capability: 'tenant:read',
@@ -61,25 +61,25 @@ export const TENANT_NAV: readonly NavItem[] = [
 export function tenantTabs(tenantId: string): readonly NavItem[] {
   return [
     {
-      href: `/tenants/${tenantId}`,
+      href: `/admin/tenants/${tenantId}`,
       label: 'Overview',
       description: 'This tenant in full.',
       capability: 'tenant:read',
     },
     {
-      href: `/tenants/${tenantId}/schools`,
+      href: `/admin/tenants/${tenantId}/schools`,
       label: 'Schools',
       description: 'Schools belonging to this tenant.',
       capability: 'tenant:read',
     },
     {
-      href: `/tenants/${tenantId}/users`,
+      href: `/admin/tenants/${tenantId}/users`,
       label: 'Users',
       description: 'User directory for this tenant.',
       capability: 'tenant:user:read',
     },
     {
-      href: `/tenants/${tenantId}/settings`,
+      href: `/admin/tenants/${tenantId}/settings`,
       label: 'Settings',
       description: 'Mutable tenant fields and the settings document.',
       capability: 'tenant:config',

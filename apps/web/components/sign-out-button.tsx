@@ -20,7 +20,7 @@ export function SignOutButton() {
     setPending(true)
     try {
       await fetch('/admin/api/auth/logout', { method: 'POST' })
-      router.replace('/login')
+      router.replace('/admin/login')
       router.refresh()
     } finally {
       setPending(false)

@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 import Link from 'next/link'
 import { Alert, AlertDescription, AlertTitle, Badge } from '@novastar/shared-ui'
 import { requireOperatorPage } from '@/lib/admin-context'
-import { PLATFORM_NAV, tenantTabs, visibleNav } from '@/lib/navigation'
+import { PLATFORM_NAV, tenantTabs, visibleNav } from '@/lib/admin-navigation'
 import { hasOperatorCapability } from '@/lib/permissions'
 import { listTenantsAcrossPlatform } from '@/lib/queries'
 import { SignOutButton } from '@/components/sign-out-button'
@@ -42,7 +42,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
       <header className="border-b border-border bg-card">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-6 py-4">
           <div className="flex items-baseline gap-3">
-            <Link href="/" className="text-sm font-semibold">
+            <Link href="/admin/" className="text-sm font-semibold">
               Novastar Platform Console
             </Link>
             <Badge variant="outline" className="font-normal">

@@ -11,5 +11,5 @@ import { redirect } from 'next/navigation'
  * overview moved to `/overview`, which is the only way both survive.
  */
 export default function RootPage(): never {
-  redirect('/tenants')
+  redirect('/admin/tenants')
 }
