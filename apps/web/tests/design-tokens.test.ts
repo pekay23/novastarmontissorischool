@@ -35,8 +35,12 @@ const APP_ROOT = join(import.meta.dir, '..')
 const SHARED_UI_ROOT = join(APP_ROOT, '..', '..', 'packages', 'shared-ui')
 const GLOBALS = readFileSync(join(APP_ROOT, 'app', 'globals.css'), 'utf8')
 
+// Only scan the public-site (marketing) source directories.
+// Portal and admin use their own CSS entrypoints (portal.css, admin.css)
+// with different token systems — scanning them would flag legitimate
+// cross-system utilities as "removed".
 const SOURCE_DIRS = [
-  join(APP_ROOT, 'app'),
+  join(APP_ROOT, 'app', '(public)'),
   join(APP_ROOT, 'components'),
   join(APP_ROOT, 'lib'),
 ]

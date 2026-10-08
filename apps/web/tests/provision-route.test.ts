@@ -30,8 +30,8 @@ import { ADMIN_SESSION_COOKIE, createSessionToken } from '@/lib/admin-auth'
 const PLATFORM_SESSION_SECRET = 'a-test-secret-that-is-long-enough-to-pass-32'
 const OPERATOR = fakeOperator()
 
-const { POST: POST_TENANTS } = await import('@/app/api/tenants/route')
-const { POST: POST_RECONCILE } = await import('@/app/api/tenants/[tenantId]/provision/route')
+const { POST: POST_TENANTS } = await import('@/app/admin/api/tenants/route')
+const { POST: POST_RECONCILE } = await import('@/app/admin/api/tenants/[tenantId]/provision/route')
 const { PLATFORM_AUDIT_SCOPE } = await import('@/lib/queries')
 
 /** A signed-in operator session, backed by a live row. */

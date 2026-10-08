@@ -98,7 +98,7 @@ export const BandBadge = ({
   if (band) {
     return (
       <span
-        className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium"
+        className="inline-flex items-center rounded-xl px-2.5 py-0.5 text-xs font-medium"
         style={{ backgroundColor: band.color, color: contrastTextColor(band.color) }}
         title={`${band.minScore}-${band.maxScore}%`}
       >
@@ -130,8 +130,8 @@ export const BandBadge = ({
         <span
           className={
             fault
-              ? 'inline-flex items-center rounded-full border border-destructive/40 bg-destructive/10 px-2.5 py-0.5 text-xs font-medium text-destructive'
-              : 'inline-flex items-center rounded-full border border-muted-foreground/40 px-2.5 py-0.5 text-xs font-medium text-muted-foreground'
+              ? 'inline-flex items-center rounded-xl border border-destructive/40 bg-destructive/10 px-2.5 py-0.5 text-xs font-medium text-destructive'
+              : 'inline-flex items-center rounded-xl border border-muted-foreground/40 px-2.5 py-0.5 text-xs font-medium text-muted-foreground'
           }
         >
           <span className="sr-only">
@@ -156,7 +156,7 @@ export const BandBadge = ({
   if (problem) {
     return (
       <span className="inline-flex flex-wrap items-baseline gap-x-2">
-        <span className="inline-flex items-center rounded-full border border-destructive/40 bg-destructive/10 px-2.5 py-0.5 text-xs font-medium text-destructive">
+        <span className="inline-flex items-center rounded-xl border border-destructive/40 bg-destructive/10 px-2.5 py-0.5 text-xs font-medium text-destructive">
           <span className="sr-only">Band withheld, grading scale error: </span>
           Scale error
         </span>

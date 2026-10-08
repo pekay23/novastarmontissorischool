@@ -34,11 +34,11 @@ import { TENANT_LIST_FIELDS } from '@/types/admin'
 const PLATFORM_SESSION_SECRET = 'a-test-secret-that-is-long-enough-to-pass-32'
 const OPERATOR = fakeOperator()
 
-const { GET: GET_TENANTS, POST: POST_TENANTS } = await import('@/app/api/tenants/route')
-const TENANT_ROUTE = await import('@/app/api/tenants/[tenantId]/route')
-const SETTINGS_ROUTE = await import('@/app/api/tenants/[tenantId]/settings/route')
-const AUDIT_ROUTE = await import('@/app/api/audit/route')
-const HEALTH_ROUTE = await import('@/app/api/health/route')
+const { GET: GET_TENANTS, POST: POST_TENANTS } = await import('@/app/admin/api/tenants/route')
+const TENANT_ROUTE = await import('@/app/admin/api/tenants/[tenantId]/route')
+const SETTINGS_ROUTE = await import('@/app/admin/api/tenants/[tenantId]/settings/route')
+const AUDIT_ROUTE = await import('@/app/admin/api/audit/route')
+const HEALTH_ROUTE = await import('@/app/admin/api/health/route')
 
 /** A signed-in operator session, backed by a live row. */
 function signIn(operator = OPERATOR): void {

@@ -9,19 +9,20 @@ import {
   type PlatformRoleName,
 } from "@novastar/shared-types";
 
-import { announcementAbilities } from "../app/(portal)/announcements/page";
+import { announcementAbilities } from "../app/portal/(portal)/announcements/page";
 
 const PORTAL = join(import.meta.dir, "..");
 
-const PAGE = join(PORTAL, "app", "(portal)", "announcements", "page.tsx");
+const PAGE = join(PORTAL, "app", "portal", "(portal)", "announcements", "page.tsx");
 
 const pageSource = readFileSync(PAGE, "utf-8");
 
-const ROUTE = join(PORTAL, "app", "api", "announcements", "route.ts");
+const ROUTE = join(PORTAL, "app", "portal", "api", "announcements", "route.ts");
 
 const ID_ROUTE = join(
   PORTAL,
   "app",
+  "portal",
   "api",
   "announcements",
   "[id]",

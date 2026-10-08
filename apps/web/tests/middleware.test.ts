@@ -24,7 +24,7 @@ import {
 const PORTAL = join(import.meta.dir, '..')
 
 function readRoute(...parts: string[]): string {
-  return readFileSync(join(PORTAL, 'app/api', ...parts), 'utf-8')
+  return readFileSync(join(PORTAL, 'app/portal/api', ...parts), 'utf-8')
 }
 
 function readLib(name: string): string {

@@ -73,11 +73,11 @@ const {
   toErrorResponse,
 } = await import('@/lib/errors')
 
-const TENANT_ROUTE = await import('@/app/api/tenants/[tenantId]/route')
-const SETTINGS_ROUTE = await import('@/app/api/tenants/[tenantId]/settings/route')
-const USERS_ROUTE = await import('@/app/api/tenants/[tenantId]/users/route')
-const PROVISION_ROUTE = await import('@/app/api/tenants/[tenantId]/provision/route')
-const AUDIT_ROUTE = await import('@/app/api/audit/route')
+const TENANT_ROUTE = await import('@/app/admin/api/tenants/[tenantId]/route')
+const SETTINGS_ROUTE = await import('@/app/admin/api/tenants/[tenantId]/settings/route')
+const USERS_ROUTE = await import('@/app/admin/api/tenants/[tenantId]/users/route')
+const PROVISION_ROUTE = await import('@/app/admin/api/tenants/[tenantId]/provision/route')
+const AUDIT_ROUTE = await import('@/app/admin/api/audit/route')
 
 const TENANT_ID = 'tenant-suspension-alpha'
 const OTHER_TENANT_ID = 'tenant-suspension-beta'

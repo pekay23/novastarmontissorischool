@@ -336,7 +336,7 @@ describe('proxy enforces the decision', () => {
   }
 
   it('answers an unauthenticated-API write with 403, not a redirect', async () => {
-    const res = await callProxy('/api/students', { method: 'POST' })
+    const res = await callProxy('/portal/api/students', { method: 'POST' })
 
     expect(res?.status).toBe(403)
     expect(res?.headers.get('location')).toBeNull()
@@ -345,13 +345,13 @@ describe('proxy enforces the decision', () => {
 
   it('answers a write carrying a cookie but no header with 403', async () => {
     const token = generateCsrfToken()
-    const res = await callProxy('/api/students', { method: 'POST', csrfCookie: token })
+    const res = await callProxy('/portal/api/students', { method: 'POST', csrfCookie: token })
 
     expect(res?.status).toBe(403)
   })
 
   it('issues a readable token cookie on a safe request', async () => {
-    const res = await callProxy('/dashboard')
+    const res = await callProxy('/portal/dashboard')
     const setCookie = res?.headers.get('set-cookie') ?? ''
 
     expect(res?.status).toBe(200)
@@ -366,11 +366,11 @@ describe('proxy enforces the decision', () => {
     // The whole mechanism, end to end: issuance on a GET, then the client's
     // read-and-echo on the POST.
     const issued = /csrf-token=([0-9a-f]{64})/.exec(
-      (await callProxy('/dashboard'))?.headers.get('set-cookie') ?? ''
+      (await callProxy('/portal/dashboard'))?.headers.get('set-cookie') ?? ''
     )?.[1]
     expect(issued).toBeTruthy()
 
-    const res = await callProxy('/api/students', {
+    const res = await callProxy('/portal/api/students', {
       method: 'POST',
       csrfCookie: issued!,
       csrfHeader: issued!,
@@ -381,7 +381,7 @@ describe('proxy enforces the decision', () => {
 
   it('does not reissue a token the request already carries', async () => {
     const token = generateCsrfToken()
-    const res = await callProxy('/dashboard', { csrfCookie: token })
+    const res = await callProxy('/portal/dashboard', { csrfCookie: token })
 
     expect(res?.headers.get('set-cookie')).toBeNull()
   })
@@ -389,14 +389,14 @@ describe('proxy enforces the decision', () => {
   it('still lets sign-in alone, which is exempt and never reaches the proxy body', async () => {
     // `withAuth` short-circuits the auth path before the handler runs at all, so
     // this asserts the exemption twice over: by policy and by construction.
-    expect(await callProxy('/api/auth/session', { method: 'POST' })).toBeUndefined()
+    expect(await callProxy('/portal/api/auth/session', { method: 'POST' })).toBeUndefined()
   })
 
   it('still rate limits a write, and does so before the CSRF verdict', async () => {
     resetRateLimit()
     const statuses: number[] = []
     for (let i = 0; i < 102; i++) {
-      const res = await callProxy('/api/students', { method: 'POST' })
+      const res = await callProxy('/portal/api/students', { method: 'POST' })
       statuses.push(res?.status ?? 0)
     }
 

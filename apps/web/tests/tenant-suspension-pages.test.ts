@@ -74,10 +74,10 @@ const OTHER_TENANT_ID = 'tenant-page-refusal-beta'
 
 const { requireExistingTenant } = await import('@/lib/admin-context')
 const { TenantSuspendedNotice } = await import('@/components/tenant-suspended-notice')
-const DETAIL_PAGE = await import('@/app/(dashboard)/tenants/[tenantId]/page')
-const SCHOOLS_PAGE = await import('@/app/(dashboard)/tenants/[tenantId]/schools/page')
-const USERS_PAGE = await import('@/app/(dashboard)/tenants/[tenantId]/users/page')
-const SETTINGS_PAGE = await import('@/app/(dashboard)/tenants/[tenantId]/settings/page')
+const DETAIL_PAGE = await import('@/app/admin/(dashboard)/tenants/[tenantId]/page')
+const SCHOOLS_PAGE = await import('@/app/admin/(dashboard)/tenants/[tenantId]/schools/page')
+const USERS_PAGE = await import('@/app/admin/(dashboard)/tenants/[tenantId]/users/page')
+const SETTINGS_PAGE = await import('@/app/admin/(dashboard)/tenants/[tenantId]/settings/page')
 
 /** The tenant as the drill-down pages read it, switched off. */
 const SUSPENDED_ROW = {

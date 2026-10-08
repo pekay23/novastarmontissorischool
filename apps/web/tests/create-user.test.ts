@@ -45,7 +45,7 @@ import { ADMIN_SESSION_COOKIE, createSessionToken } from '@/lib/admin-auth'
 const PLATFORM_SESSION_SECRET = 'a-test-secret-that-is-long-enough-to-pass-32'
 const OPERATOR = fakeOperator()
 
-const { POST } = await import('@/app/api/tenants/[tenantId]/users/route')
+const { POST } = await import('@/app/admin/api/tenants/[tenantId]/users/route')
 
 /** A signed-in operator session, backed by a live row. */
 function signIn(operator = OPERATOR): void {

@@ -3,11 +3,11 @@ import { describe, it, expect, beforeEach } from 'bun:test'
 /**
  * The credential endpoints are rate limited.
  *
- * `withAuth` keeps its own `doesNotRequireAuth` list — `/api/auth`, `/api/health`,
+ * `withAuth` keeps its own `doesNotRequireAuth` list — `/portal/api/auth`, `/portal/api/health`,
  * `/_next` and the sign-in page — and answers those paths itself, returning
  * `NextResponse.next()` WITHOUT calling the handler it wraps. A limiter living
- * inside that handler therefore never ran for `/api/auth/*`, so `AUTH_RATE_LIMIT`
- * was dead code and `/api/auth/totp` and the passkey registration pair were
+ * inside that handler therefore never ran for `/portal/api/auth/*`, so `AUTH_RATE_LIMIT`
+ * was dead code and `/portal/api/auth/totp` and the passkey registration pair were
  * reachable at unlimited rate from any address — while the proxy's own header
  * comment claimed the limiter ran ahead of that short-circuit.
  *
@@ -83,17 +83,17 @@ beforeEach(() => {
 })
 
 describe('the credential surface is actually rate limited', () => {
-  it('answers /api/auth/totp with 429 once AUTH_RATE_LIMIT is passed', async () => {
+  it('answers /portal/api/auth/totp with 429 once AUTH_RATE_LIMIT is passed', async () => {
     const ip = '198.51.100.77'
 
     // The budget itself is not throttled — otherwise this test could pass for the
     // wrong reason, by never reaching the limiter at all.
     for (let i = 0; i < AUTH_RATE_LIMIT; i++) {
-      const res = await callProxy('/api/auth/totp', ip)
+      const res = await callProxy('/portal/api/auth/totp', ip)
       expect(res?.status).not.toBe(429)
     }
 
-    const res = await callProxy('/api/auth/totp', ip)
+    const res = await callProxy('/portal/api/auth/totp', ip)
     expect(res?.status).toBe(429)
     expect(res?.headers.get('retry-after')).toBeTruthy()
   })
@@ -103,20 +103,20 @@ describe('the credential surface is actually rate limited', () => {
     // must not already have exhausted a general-API caller at the same address.
     const ip = '198.51.100.78'
     for (let i = 0; i < AUTH_RATE_LIMIT + 1; i++) {
-      await callProxy('/api/auth/totp', ip)
+      await callProxy('/portal/api/auth/totp', ip)
     }
-    const res = await callProxy('/api/students', ip)
+    const res = await callProxy('/portal/api/students', ip)
     expect(res?.status).not.toBe(429)
   })
 
   it('counts per client address, so one throttled caller does not throttle another', async () => {
     const noisy = '198.51.100.79'
     for (let i = 0; i < AUTH_RATE_LIMIT + 1; i++) {
-      await callProxy('/api/auth/totp', noisy)
+      await callProxy('/portal/api/auth/totp', noisy)
     }
-    expect((await callProxy('/api/auth/totp', noisy))?.status).toBe(429)
+    expect((await callProxy('/portal/api/auth/totp', noisy))?.status).toBe(429)
 
-    const quiet = await callProxy('/api/auth/totp', '203.0.113.5')
+    const quiet = await callProxy('/portal/api/auth/totp', '203.0.113.5')
     expect(quiet?.status).not.toBe(429)
   })
 })

@@ -19,7 +19,7 @@ import { join } from 'node:path'
 import { permissionsForRole, scopeFor } from '@novastar/shared-types'
 
 const PORTAL = join(import.meta.dir, '..')
-const API = join(PORTAL, 'app', 'api')
+const API = join(PORTAL, 'app', 'portal', 'api')
 
 interface MutationHandler {
   route: string

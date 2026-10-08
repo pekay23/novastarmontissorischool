@@ -10,13 +10,13 @@ import {
   normaliseTopics,
   removeTopic,
   updateTopic,
-} from '../app/(portal)/syllabus/topic-list'
+} from '../app/portal/(portal)/syllabus/topic-list'
 import {
   emptySyllabusForm,
   syllabusFormProblem,
   type SyllabusFormState,
-} from '../app/(portal)/syllabus/syllabus-form-dialog'
-import { TopicEditor } from '../app/(portal)/syllabus/topic-editor'
+} from '../app/portal/(portal)/syllabus/syllabus-form-dialog'
+import { TopicEditor } from '../app/portal/(portal)/syllabus/topic-editor'
 
 /**
  * The syllabus topic editor's list operations.

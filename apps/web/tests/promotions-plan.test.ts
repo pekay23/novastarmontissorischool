@@ -5,7 +5,7 @@ import {
   resolveDestination,
   type PromotionFacts,
   type PromotionRequestInput,
-} from '../app/(portal)/promotions/promotion-plan'
+} from '../app/portal/(portal)/promotions/promotion-plan'
 
 /**
  * The promotion planner, proved without a database.
