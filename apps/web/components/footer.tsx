@@ -4,6 +4,14 @@ import { getContactInfo } from '@/lib/data'
 import { SCHOOL_INFO } from '@/lib/metadata'
 import { NewsletterForm } from '@/components/newsletter-form'
 
+type SchoolContact = {
+  name: string
+  address: string
+  phone: string
+  email: string
+  hours: string
+}
+
 const FALLBACK: SchoolContact = {
   name: SCHOOL_INFO.name,
   address: SCHOOL_INFO.location,

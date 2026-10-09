@@ -1,9 +1,6 @@
 import type { Metadata } from 'next'
 
-import { cn } from '@novastar/shared-ui'
 import {
-  Card,
-  CARD_PAD,
   SectionHeading,
   SectionShell,
 } from '@/components/marketing'
@@ -173,7 +170,7 @@ export default function PrivacyPolicyPage() {
               <p>Novastar Montessori School</p>
               <p>Email: <a href={`mailto:${SCHOOL_INFO.email}`} className="underline hover:text-primary">{SCHOOL_INFO.email}</a></p>
               <p>Phone: <a href={`tel:${SCHOOL_INFO.phoneHref}`} className="underline hover:text-primary">{SCHOOL_INFO.phone}</a></p>
-              <p>Address: {SCHOOL_INFO.address}</p>
+              <p>Address: {SCHOOL_INFO.location}</p>
             </div>
           </div>
         </div>

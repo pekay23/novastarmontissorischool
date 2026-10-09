@@ -1,9 +1,6 @@
 import type { Metadata } from 'next'
 
-import { cn } from '@novastar/shared-ui'
 import {
-  Card,
-  CARD_PAD,
   SectionHeading,
   SectionShell,
 } from '@/components/marketing'
