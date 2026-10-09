@@ -223,8 +223,8 @@ export default function PoliciesPage() {
       {/* Hero. `HeroBand` owns the band wash, the header clearance and the
           section rhythm, so none of it is re-stated here. */}
       <HeroBand>
-        <h1 className="type-display max-w-[18ch]">Policies for Parents</h1>
-        <p className="mt-6 max-w-[60ch] text-lg leading-relaxed text-muted-foreground">
+        <h1 className="font-serif text-5xl md:text-6xl mx-auto max-w-[18ch] text-center text-primary">Policies for Parents</h1>
+        <p className="mx-auto mt-6 max-w-[60ch] text-lg leading-relaxed text-foreground/85 text-center">
           These are the policies every parent and guardian at Novastar signs and is held to,
           written out as they appear on the signed document. Times, what to send, what to
           tell the school about your child&rsquo;s health, how to pay, and who to speak to.
@@ -243,10 +243,10 @@ export default function PoliciesPage() {
         />
         <div className="mt-10 grid gap-5 md:grid-cols-2">
           {ALERTS.map(({ icon: Icon, title, body }) => (
-            <Card key={title} className={cn(CARD_PAD, 'flex flex-col gap-5')}>
+            <Card key={title} tone="flat" className={cn(CARD_PAD, 'flex flex-col gap-5 bg-surface-container-low border-transparent transition-all duration-700 hover:-translate-y-1 hover:shadow-floating')}>
               <IconTile icon={Icon} />
-              <h3 className="type-title-lg text-primary">{title}</h3>
-              <p className="type-body-lg leading-relaxed text-foreground">{body}</p>
+              <h3 className="font-serif text-xl text-primary">{title}</h3>
+              <p className="text-lg leading-relaxed text-foreground/85">{body}</p>
             </Card>
           ))}
         </div>
@@ -389,16 +389,16 @@ function PolicyGroups({ groups }: { groups: PolicyGroup[] }) {
  */
 function PolicyCard({ policy }: { policy: Policy }) {
   return (
-    <Card as="li" className={cn(CARD_PAD, 'flex flex-col gap-5')}>
+    <Card as="li" tone="flat" className={cn(CARD_PAD, 'flex flex-col gap-5 bg-surface-container-low border-transparent transition-all duration-700 hover:-translate-y-1 hover:shadow-floating')}>
       {/*
         `self-start` because the card is `flex flex-col`: without it the chip's
         auto cross-size stretches to the full card width and reads as a banner
         rather than a label.
       */}
       <Eyebrow className="self-start">Policy {policy.number}</Eyebrow>
-      <h3 className="type-title-lg text-primary">{policy.title}</h3>
+      <h3 className="font-serif text-xl text-primary">{policy.title}</h3>
       {policy.paragraphs.map((paragraph) => (
-        <p key={paragraph.slice(0, 32)} className="type-body-lg leading-relaxed text-foreground">
+        <p key={paragraph.slice(0, 32)} className="text-lg leading-relaxed text-foreground/85">
           {paragraph}
         </p>
       ))}

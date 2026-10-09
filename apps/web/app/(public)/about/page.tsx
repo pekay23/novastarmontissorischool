@@ -1,8 +1,5 @@
-import { cn } from '@novastar/shared-ui'
-
-import { CARD_PAD, Card, CardTitle, HeroBand, SectionHeading, SectionShell } from '@/components/marketing'
-import { MarketingButton } from '@/components/marketing-button'
-import { Photo } from '@/components/photo'
+import { HeroBand, SectionHeading, SectionShell } from '@/components/marketing'
+import { MasonryGallery } from '@/components/masonry-gallery'
 import { SCHOOL_INFO, generateAboutMetadata } from '@/lib/metadata'
 
 /*
@@ -43,7 +40,7 @@ export default function AboutPage() {
           every page. The wash is `--color-tint-warm`, not the maroon-tinted
           `from-primary/10` this band carried before. */}
       <HeroBand>
-        <h1 className="type-display mx-auto max-w-[18ch] text-center">
+        <h1 className="font-serif text-5xl md:text-6xl mx-auto max-w-[18ch] text-center text-primary">
           About Novastar Montessori School
         </h1>
         {/*
@@ -53,7 +50,7 @@ export default function AboutPage() {
           re-finds the start of every line. The block is still centred, so the
           heading above it stays optically aligned.
         */}
-        <p className="mx-auto mt-6 max-w-[60ch] text-lg leading-relaxed text-muted-foreground">
+        <p className="mx-auto mt-6 max-w-[60ch] text-lg leading-relaxed text-foreground/85 text-center">
           {SCHOOL_INFO.description}
         </p>
       </HeroBand>
@@ -100,74 +97,43 @@ export default function AboutPage() {
         section announces them as a single subject instead of leaving two
         headings floating side by side.
       */}
-      <SectionShell tone="canvas">
-        <SectionHeading align="center" title="Our Mission and Vision" />
-        <div className="mx-auto mt-12 flex max-w-[68ch] flex-col gap-5">
-          <Card className={cn(CARD_PAD, 'flex flex-col gap-3')}>
-            <CardTitle as="h3" className="text-primary">
-              Our Mission
-            </CardTitle>
-            {/* Three paragraphs rather than one run of prose, because the owner
-                wrote three sentences and the breaks are hers. */}
-            <div className="flex flex-col gap-3 text-[0.9375rem] leading-relaxed text-muted-foreground">
-              {MISSION.map((sentence) => (
-                <p key={sentence.slice(0, 24)}>{sentence}</p>
+      <section className="relative w-full py-32 md:py-48 overflow-hidden my-16">
+        {/* Background Image with Dark Overlay */}
+        <div className="absolute inset-0 z-0">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/images/photo_2_2026-10-05_11-06-55%20for%20primary%20school.jpg" alt="Novastar Classroom" className="h-full w-full object-cover object-center animate-ken-burns" loading="lazy" />
+          <div className="absolute inset-0 bg-black/60 mix-blend-multiply pointer-events-none"></div>
+          <div className="absolute inset-0 bg-gradient-to-t from-background via-black/40 to-background pointer-events-none"></div>
+        </div>
+
+        <div className="container relative z-10 mx-auto px-4 md:px-6">
+          <div className="mx-auto max-w-4xl text-center flex flex-col items-center justify-center">
+            <div className="text-white/70 text-[11px] font-bold tracking-[0.3em] uppercase mb-8">
+              Our Purpose
+            </div>
+            
+            <div className="flex flex-col gap-4 mb-10 max-w-3xl">
+              {MISSION.map((sentence, i) => (
+                <p key={sentence.slice(0, 24)} className={i === 0 ? "font-serif text-3xl md:text-4xl lg:text-5xl leading-tight text-white" : "font-serif text-2xl md:text-3xl leading-tight text-white/90"}>
+                  {i === 0 && <>&ldquo;</>}{sentence}{i === MISSION.length - 1 && <>&rdquo;</>}
+                </p>
               ))}
             </div>
-          </Card>
 
-          <Card className={cn(CARD_PAD, 'flex flex-col gap-3')}>
-            <CardTitle as="h3" className="text-primary">
-              Our Vision
-            </CardTitle>
-            {/*
-              This card used to read "To be the leading Montessori school in
-              Ghana". "Leading" was a ranking claim nothing in this repository
-              substantiates — no accreditation record, no inspection result, no
-              register — and the rest of the codebase deliberately removed the
-              same class of claim: see the notes on `getFeatures` and
-              `getHomeStats` in `lib/data.ts`, where invented enrolment counts,
-              "years of excellence" and a staff certification were deleted for
-              exactly this reason.
-
-              It now reads the school's own vision instead, and that is the
-              difference worth recording: this is the proprietress's claim about
-              her own school, not ours about hers. "World-class" is her word,
-              carried over unaltered, and it is published as written. The
-              earlier objection was to an unevidenced ranking we had invented on
-              her behalf; it was never an objection to ambition, and softening
-              this sentence into something more modest would be the same
-              substitution in reverse — a stranger's paraphrase replacing what
-              the owner actually says.
-            */}
-            <p className="text-[0.9375rem] leading-relaxed text-muted-foreground">
+            <div className="h-px w-24 bg-white/30 mx-auto mb-10"></div>
+            
+            <p className="text-xl md:text-2xl text-white/90 italic font-light max-w-2xl">
               {VISION}
             </p>
-          </Card>
+          </div>
         </div>
-      </SectionShell>
-
-      {/*
-        Placeholder photography. See `lib/placeholder-images.ts` — this is an
-        openly-licensed photograph of another school's classroom, credited in the
-        caption, and it must be replaced with a photograph of our own rooms before
-        any parent sees it.
-      */}
-      <SectionShell tone="canvas">
-        <Photo
-          id="classroom"
-          ratio="aspect-[3/2]"
-          className="mx-auto max-w-3xl"
-        />
-      </SectionShell>
+      </section>
 
       {/* History */}
       <SectionShell tone="band">
         <SectionHeading align="center" title="Our History" />
-        {/* No `prose` here: @tailwindcss/typography is not a dependency, so those
-            utilities generate nothing and the paragraphs ran together. */}
-        <div className="mx-auto mt-10 max-w-[60ch] space-y-5 text-[0.9375rem] leading-relaxed text-muted-foreground">
-          <p>
+        <div className="mx-auto mt-10 max-w-[60ch] space-y-5 text-lg leading-relaxed text-foreground/85">
+          <p className="first-letter:text-primary first-letter:float-left first-letter:mr-2 first-letter:font-serif first-letter:text-5xl first-letter:leading-[0.8] first-letter:font-medium">
             Founded in {SCHOOL_INFO.established}, Novastar Montessori School began as a small
             creche with a vision to bring authentic Montessori education to Kumasi.
           </p>
@@ -175,46 +141,30 @@ export default function AboutPage() {
             Over the years, we have grown into a full-fledged school offering programs
             from Creche through Junior High School, serving families across the Ashanti Region.
           </p>
-          {/*
-            The third paragraph ended "...achieving excellence including 100% Grade 1
-            in BECE Science (2021)". That is an invented examination statistic:
-            there is no results record in this repository, it is five years stale,
-            and it is unverifiable by a parent who was not in that cohort. One
-            fabricated number discredits every true sentence around it, so the
-            figure is gone and the sentence keeps only what the school's own
-            approach can substantiate — that Montessori runs alongside the GES
-            curriculum.
-          */}
           <p>
             Our approach combines the Montessori Method with the Ghana Education Service
-            curriculum.
+            curriculum, creating a unique environment where inquiry and standard-aligned rigor coexist.
           </p>
         </div>
       </SectionShell>
 
-      {/* Location */}
-      <SectionShell tone="canvas">
-        <SectionHeading align="center" title="Find Us" />
-        <p className="mx-auto mt-6 max-w-[60ch] text-muted-foreground">{SCHOOL_INFO.location}</p>
-        <iframe
-          src={SCHOOL_INFO.mapEmbedUrl}
-          title={`Map showing ${SCHOOL_INFO.name} in Kumasi`}
-          loading="lazy"
-          referrerPolicy="no-referrer-when-downgrade"
-          className="mx-auto mt-8 aspect-video w-full max-w-4xl rounded-lg border border-border"
-        />
-        <div className="mt-6 flex justify-center">
-          {/* A link, not a submit: `output: 'export'` has no server to post to. */}
-          <MarketingButton
-            href={SCHOOL_INFO.mapLinkUrl}
-            variant="outline"
-            size="lg"
-            external
-          >
-            Get Directions via Google Maps
-          </MarketingButton>
+      {/* Gallery Section */}
+      <section className="container py-24">
+        <div className="mb-12 text-center">
+          <p className="type-label uppercase text-accent-warm-dark mb-2">Our Campus</p>
+          <h2 className="font-serif text-3xl md:text-4xl text-primary">A glimpse into our environments</h2>
         </div>
-      </SectionShell>
+        <MasonryGallery
+          images={[
+            { src: '/images/photo_2_2026-10-05_11-06-55%20for%20primary%20school.jpg', alt: 'Classroom', aspect: 'wide' },
+            { src: '/images/photo_3_2026-10-05_11-06-55%20for%20primary%20school.jpg', alt: 'Children working', aspect: 'portrait' },
+            { src: '/images/photo_4_2026-10-05_11-06-55%20for%20primary%20school.jpg', alt: 'Montessori materials', aspect: 'square' },
+            { src: '/images/photo_7_2026-10-05_11-06-55.jpg', alt: 'Learning', aspect: 'square' },
+            { src: '/images/photo_6_2026-10-05_11-06-55.jpg', alt: 'Activity', aspect: 'video' },
+          ]}
+          className="max-w-5xl mx-auto"
+        />
+      </section>
     </div>
   )
 }

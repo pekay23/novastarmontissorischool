@@ -8,8 +8,8 @@ import {
   PaymentService,
   reconcilePayments,
 } from '@novastar/payments'
-import { buildTenant, buildSchool, buildFeeCategory, buildInvoice, buildPayment, buildPaymentMethodConfig } from '@novastar/testing/factories'
-import { toMinorUnits, fromMinorUnits, addMinorUnits, subMinorUnits, mulMinorUnits, divMinorUnits, formatGHS } from '@novastar/testing'
+import { buildTenant, buildSchool, buildFeeCategory, buildInvoice, buildPayment, buildPaymentMethodConfig } from './factories'
+import { toMinorUnits, fromMinorUnits, addMinorUnits, subMinorUnits, mulMinorUnits, divMinorUnits, formatGHS } from './factories/money'
 
 describe('Payments - Provider Classes', () => {
   it('should export MTNMoMoProvider class', () => {

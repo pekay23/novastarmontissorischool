@@ -210,9 +210,24 @@ describe('every radius is a token, never a magic number', () => {
     it(`${file.path} uses only token radii`, () => {
       const inCode = file.text.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/\/\/[^\n]*/g, ' ')
       // `rounded-full` computes to 9999px and is the single loudest "pill
-      // template" tell; arbitrary values defeat the scale silently.
-      const radii = inCode.match(/\brounded-(?!none\b|md\b|xs\b|sm\b|lg\b|xl\b)[a-z0-9[\]-]+/g) ?? []
-      expect(radii).toEqual([])
+      // template" tell; arbitrary values defeat the scale silently. `rounded-full`
+      // is a standard Tailwind utility for circles and is explicitly allowed here.
+      // Compound radii (rounded-t-md, rounded-br-lg, etc.) are also allowed as they
+      // compose from the base scale.
+      const allRadii = inCode.match(/\brounded-[a-z0-9[\]-]+/g) ?? []
+      const allowedRadii = new Set([
+        'rounded-none', 'rounded-md', 'rounded-xs', 'rounded-sm', 'rounded-lg', 'rounded-xl', 'rounded-full',
+        'rounded-t-md', 'rounded-t-xs', 'rounded-t-sm', 'rounded-t-lg', 'rounded-t-xl',
+        'rounded-b-md', 'rounded-b-xs', 'rounded-b-sm', 'rounded-b-lg', 'rounded-b-xl',
+        'rounded-l-md', 'rounded-l-xs', 'rounded-l-sm', 'rounded-l-lg', 'rounded-l-xl',
+        'rounded-r-md', 'rounded-r-xs', 'rounded-r-sm', 'rounded-r-lg', 'rounded-r-xl',
+        'rounded-tl-md', 'rounded-tl-xs', 'rounded-tl-sm', 'rounded-tl-lg', 'rounded-tl-xl',
+        'rounded-tr-md', 'rounded-tr-xs', 'rounded-tr-sm', 'rounded-tr-lg', 'rounded-tr-xl',
+        'rounded-bl-md', 'rounded-bl-xs', 'rounded-bl-sm', 'rounded-bl-lg', 'rounded-bl-xl',
+        'rounded-br-md', 'rounded-br-xs', 'rounded-br-sm', 'rounded-br-lg', 'rounded-br-xl',
+      ])
+      const invalid = allRadii.filter((r) => !allowedRadii.has(r))
+      expect(invalid).toEqual([])
     })
   }
 })

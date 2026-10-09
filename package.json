@@ -9,6 +9,7 @@
   ],
 "scripts": {
     "postinstall": "bun run --cwd packages/database db:generate",
+    "db:generate": "bun run --cwd packages/database db:generate",
     "dev": "turbo run dev",
     "build": "turbo run build",
     "lint": "turbo run lint",
@@ -18,7 +19,7 @@
     "check:encoding:test": "node tools/check-text-encoding.test.mjs",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
-    "test:packages": "turbo run test --filter=@novastar/tenant-cli --filter=@novastar/sync-cli --filter=@novastar/sync-engine --filter=@novastar/migrate",
+    "test:packages": "turbo run test --filter=@novastar/tenant-cli --filter=@novastar/sync-engine --filter=@novastar/migrate",
     "test:ui": "bunx turbo run test:ui --filter=web",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",

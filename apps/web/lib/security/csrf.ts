@@ -51,6 +51,11 @@ export const CSRF_EXEMPT_PATH_PREFIXES: string[] = []
  * NextAuth registers internally; custom public auth routes under the same
  * prefix (`forgot-password`, `reset-password`, `verify-email`, …) are NOT
  * listed here and therefore DO require a matching `X-CSRF-Token` header.
+ *
+ * OAuth callbacks are exempt because the redirect comes from an external
+ * provider and the client cannot have a CSRF token yet. The credentials
+ * callback is NOT exempt — it handles form submissions that must carry a
+ * CSRF token.
  */
 function isNextAuthRoute(pathname: string): boolean {
   if (pathname === '/api/auth/signin') return true
@@ -59,7 +64,9 @@ function isNextAuthRoute(pathname: string): boolean {
   if (pathname === '/api/auth/session') return true
   if (pathname === '/api/auth/providers') return true
   if (pathname === '/api/auth/protected') return true
-  if (pathname.startsWith('/api/auth/callback/')) return true
+  // OAuth provider callbacks only (e.g., /api/auth/callback/google, /api/auth/callback/microsoft-entra-id)
+  // NOT /api/auth/callback/credentials which is a form submission requiring CSRF protection.
+  if (pathname.startsWith('/api/auth/callback/') && !pathname.startsWith('/api/auth/callback/credentials')) return true
   return false
 }
 

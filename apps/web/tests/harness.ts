@@ -1,4 +1,4 @@
-import { mock } from 'bun:test'
+import { mock, beforeEach } from 'bun:test'
 import { NextRequest } from 'next/server'
 
 /**
@@ -710,3 +710,28 @@ export function lastProvisionInput(): DelegatedProvisionInput | undefined {
   const call = provisionTenant.mock.calls.at(-1)
   return call?.[0] as DelegatedProvisionInput | undefined
 }
+
+/**
+ * Re-register the complete prisma mocks before each test.
+ *
+ * Other test files (e.g., admissions-status-route.test.ts) overwrite the
+ * `@/lib/prisma` and `@novastar/database` mocks at module scope with incomplete
+ * versions that only include the models they need. This `beforeEach` restores the
+ * harness's complete mock so that tests like `create-user.test.ts` always see the
+ * full `prisma` surface including `platformOperator`, `auditLog.create`, etc.
+ */
+beforeEach(() => {
+  mock.module('@/lib/prisma', () => ({
+    prisma: ROOT,
+    adminDatabaseSource: () => 'SUPER_ADMIN_DATABASE_URL' as const,
+  }))
+  mock.module('@novastar/database', () => ({
+    prisma: ROOT,
+    PrismaClient: class PrismaClient {},
+    Prisma: {},
+    DB_QUERY_TIMEOUT_MS: 30000,
+    DbTimeoutError: class DbTimeoutError extends Error {},
+    isDbTimeout: (e: unknown) => e instanceof Error && e.name === 'DbTimeoutError',
+    withDbTimeout: async <T,>(promise: Promise<T>, _ms?: number): Promise<T> => promise,
+  }))
+})

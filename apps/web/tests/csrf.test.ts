@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'bun:test'
+import { describe, it, expect } from 'bun:test'
 import {
   CSRF_COOKIE_NAME,
   CSRF_HEADER_NAME,
@@ -87,7 +87,7 @@ describe('evaluateCsrf', () => {
   })
 
   it('exempts NextAuth routes so sign-in still works', () => {
-    for (const pathname of ['/api/auth/signin', '/api/auth/callback/credentials', '/api/auth/session']) {
+    for (const pathname of ['/api/auth/signin', '/api/auth/callback/google', '/api/auth/callback/microsoft-entra-id', '/api/auth/session']) {
       const decision = evaluateCsrf({ method: 'POST', pathname, cookieToken: null, headerToken: null })
       expect(decision.allow).toBe(true)
       expect(decision.allow && decision.reason).toBe('exempt-path')

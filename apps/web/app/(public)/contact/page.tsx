@@ -32,15 +32,8 @@ export default async function ContactPage() {
           `from-primary/10` every inner page carried before; `HeroBand` also owns
           the header clearance, which was re-stated per page. */}
       <HeroBand>
-        <h1 className="type-display mx-auto max-w-[18ch] text-center">Contact Us</h1>
-        {/*
-          Left-aligned inside a centred block. The paragraph was `text-center`
-          before, which WCAG 1.4.8 flags for body copy past roughly 50ch: a
-          centred block has no consistent left edge, so a returning reader
-          re-finds the start of every line. The block is still centred, so the
-          heading above it stays optically aligned.
-        */}
-        <p className="mx-auto mt-6 max-w-[60ch] text-lg leading-relaxed text-muted-foreground">
+        <h1 className="font-serif text-5xl md:text-6xl mx-auto max-w-[18ch] text-center text-primary">Contact Us</h1>
+        <p className="mx-auto mt-6 max-w-[60ch] text-lg leading-relaxed text-foreground/85 text-center">
           We&apos;d love to hear from you. Call, message, or visit our campus in Kumasi.
         </p>
       </HeroBand>
@@ -48,37 +41,27 @@ export default async function ContactPage() {
       <SectionShell tone="canvas">
         <div className="grid grid-cols-1 gap-12 lg:grid-cols-2">
           <div>
-            <SectionTitle className="mb-8 text-primary">How to reach us</SectionTitle>
+            <div className="text-primary/60 text-[11px] font-bold tracking-[0.3em] uppercase mb-4">
+              — How to reach us
+            </div>
+            <SectionTitle className="mb-8 text-primary font-serif text-3xl">Get in touch</SectionTitle>
 
             <ul className="space-y-8">
               <li className="flex items-start gap-4">
-                <MapPin className="w-6 h-6 shrink-0 text-primary" aria-hidden="true" />
+                <MapPin className="w-6 h-6 shrink-0 text-primary/60" aria-hidden="true" />
                 <div>
-                  <h3 className="font-semibold text-primary mb-1">Address</h3>
-                  <p className="max-w-[60ch] text-muted-foreground">{SCHOOL_INFO.location}</p>
+                  <h3 className="font-serif text-xl text-primary mb-1">Address</h3>
+                  <p className="max-w-[60ch] text-lg text-foreground/85">{SCHOOL_INFO.location}</p>
                 </div>
               </li>
 
               <li className="flex items-start gap-4">
-                <Phone className="w-6 h-6 shrink-0 text-primary" aria-hidden="true" />
+                <Phone className="w-6 h-6 shrink-0 text-primary/60" aria-hidden="true" />
                 <div>
-                  <h3 className="font-semibold text-primary mb-1">Phone</h3>
-                  {/*
-                    `min-h-11`, not a bare underlined link. This looked like inline
-                    prose and is not: it is the sole content of its own row under a
-                    heading, on the page whose entire job is giving a parent a way
-                    to make contact. It computed to `display: inline` and 21px tall,
-                    which is under the WCAG 2.2 SC 2.5.8 minimum of 24.
-
-                    `audit.mjs` used to exempt any link computing to `inline` and
-                    so missed both this and the email below. `e2e/design.spec.ts`
-                    exempts only links whose parent is a prose element, which is the
-                    actual test for "in a sentence", and it caught these. The audit
-                    now uses the same rule.
-                  */}
+                  <h3 className="font-serif text-xl text-primary mb-1">Phone</h3>
                   <a
                     href={`tel:${SCHOOL_INFO.phoneHref}`}
-                    className="inline-flex min-h-11 items-center text-muted-foreground underline decoration-border underline-offset-4 transition-colors duration-fast hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                    className="inline-flex min-h-11 items-center text-lg text-foreground/85 hover:text-primary transition-colors duration-fast"
                   >
                     {SCHOOL_INFO.phone}
                   </a>
@@ -86,12 +69,12 @@ export default async function ContactPage() {
               </li>
 
               <li className="flex items-start gap-4">
-                <Mail className="w-6 h-6 shrink-0 text-primary" aria-hidden="true" />
+                <Mail className="w-6 h-6 shrink-0 text-primary/60" aria-hidden="true" />
                 <div>
-                  <h3 className="font-semibold text-primary mb-1">Email</h3>
+                  <h3 className="font-serif text-xl text-primary mb-1">Email</h3>
                   <a
                     href={`mailto:${SCHOOL_INFO.email}`}
-                    className="inline-flex min-h-11 items-center text-muted-foreground underline decoration-border underline-offset-4 transition-colors duration-fast hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                    className="inline-flex min-h-11 items-center text-lg text-foreground/85 hover:text-primary transition-colors duration-fast"
                   >
                     {SCHOOL_INFO.email}
                   </a>
@@ -99,10 +82,10 @@ export default async function ContactPage() {
               </li>
 
               <li className="flex items-start gap-4">
-                <Clock className="w-6 h-6 shrink-0 text-primary" aria-hidden="true" />
+                <Clock className="w-6 h-6 shrink-0 text-primary/60" aria-hidden="true" />
                 <div>
-                  <h3 className="font-semibold text-primary mb-1">Office Hours</h3>
-                  <dl className="text-muted-foreground">
+                  <h3 className="font-serif text-xl text-primary mb-1">Office Hours</h3>
+                  <dl className="text-lg text-foreground/85">
                     {SCHOOL_INFO.hours.map((entry) => (
                       <div key={entry.days} className="flex gap-2">
                         <dt>{entry.days}</dt>
@@ -130,11 +113,11 @@ export default async function ContactPage() {
               a prohibition belongs in its own block where it cannot be skimmed
               past as another phone number.
             */}
-            <Card className={`${CARD_PAD} mt-10`}>
-              <CardTitle as="h3" className="text-primary">
+            <Card tone="flat" className={`${CARD_PAD} mt-10 bg-surface-container-low border-transparent transition-all duration-700 hover:-translate-y-1 hover:shadow-floating`}>
+              <CardTitle as="h3" className="text-primary font-serif text-2xl">
                 Complaints
               </CardTitle>
-              <p className="mt-2.5 text-[0.9375rem] leading-relaxed text-muted-foreground">
+              <p className="mt-4 text-lg leading-relaxed text-foreground/85">
                 Parents and guardians are to channel all their grievances directly
                 to the school administrator or the proprietress. Please do not
                 lodge a complaint with a teacher or any other member of staff.
@@ -199,11 +182,11 @@ export default async function ContactPage() {
             913px at 1920px, against 316px of card content. The stretch
             left roughly 500px of empty interior inside the card's border.
           */}
-          <Card className={`${CARD_PAD} self-start`}>
-            <CardTitle as="h3" className="mb-3 text-primary">
+          <Card tone="flat" className={`${CARD_PAD} self-start bg-surface-container-low border-transparent transition-all duration-700 hover:-translate-y-1 hover:shadow-floating`}>
+            <CardTitle as="h3" className="mb-4 text-primary font-serif text-2xl">
               Talk to the admissions office
             </CardTitle>
-            <p className="mb-6 text-muted-foreground">
+            <p className="mb-6 text-lg leading-relaxed text-foreground/85">
               WhatsApp is the quickest way to reach us during office hours.{' '}
               {open ? (
                 <>

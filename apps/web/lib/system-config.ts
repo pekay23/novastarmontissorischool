@@ -528,7 +528,7 @@ export type FeatureFlagChangeResult =
  * `$transaction` promise, so that is one more round trip past the last query's
  * own deadline, and it is not covered by any client-side bound.
  */
-const FLAG_TRANSACTION_BOUNDS = { maxWait: 2_000, timeout: 30_000 } as const
+const FLAG_TRANSACTION_BOUNDS = { maxWait: 2_000, timeout: 35_000 } as const
 
 /**
  * Apply a whole flag change — gate, precondition and write — atomically.

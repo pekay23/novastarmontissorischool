@@ -1,6 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "installCommand": "bun install",
-  "buildCommand": "bun run --cwd ../../packages/database db:generate && bunx turbo run build --filter=web",
-  "outputDirectory": ".next"
+  "buildCommand": "bun run db:generate && bunx turbo run build --filter=web",
+  "outputDirectory": "apps/web/.next"
 }

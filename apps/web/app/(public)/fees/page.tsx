@@ -44,17 +44,17 @@ export default async function FeesPage() {
           `from-primary/10` every inner page carried before; `HeroBand` also owns
           the header clearance, which was re-stated per page. */}
       <HeroBand>
-        <h1 className="type-display max-w-[18ch]">Fee Structure</h1>
-        <p className="mt-6 max-w-[60ch] text-lg leading-relaxed text-muted-foreground">
+        <h1 className="font-serif text-5xl md:text-6xl mx-auto max-w-[18ch] text-center text-primary">Fee Structure</h1>
+        <p className="mx-auto mt-6 max-w-[60ch] text-lg leading-relaxed text-foreground/85 text-center">
           Transparent, competitive fees offering excellent value for quality education.
         </p>
       </HeroBand>
 
       <SectionShell tone="canvas">
         {schedule.length === 0 ? (
-          <Card className={cn(CARD_PAD, 'mx-auto max-w-2xl text-center')}>
-            <h2 className="type-title text-primary">Fee schedule not published yet</h2>
-            <p className="mt-2.5 text-muted-foreground">
+          <Card tone="flat" className={cn(CARD_PAD, 'mx-auto max-w-2xl text-center bg-surface-container-low border-transparent')}>
+            <h2 className="font-serif text-3xl text-primary">Fee schedule not published yet</h2>
+            <p className="mt-4 text-lg text-foreground/85">
               Current fees, due dates and payment terms are shared directly by the
               school office. Call or WhatsApp and we will send this term's schedule.
             </p>
@@ -111,18 +111,18 @@ export default async function FeesPage() {
         of this file.
       */}
       <SectionShell tone="canvas">
-        <Card className={cn(CARD_PAD, 'mx-auto max-w-3xl')}>
-          <h2 className="type-title text-primary">Payment Policy</h2>
-          <ul className="mt-5 flex flex-col gap-4 text-[0.9375rem] leading-relaxed text-muted-foreground">
+        <Card tone="flat" className={cn(CARD_PAD, 'mx-auto max-w-3xl bg-surface-container-low border-transparent transition-all duration-700 hover:-translate-y-1 hover:shadow-floating')}>
+          <h2 className="font-serif text-2xl text-primary mb-4">Payment Policy</h2>
+          <ul className="mt-5 flex flex-col gap-4 text-lg leading-relaxed text-foreground/85">
             {POLICY_RULES.map((rule) => (
               <li key={rule} className="flex gap-3">
-                <Check className="mt-1 h-5 w-5 shrink-0 text-primary" aria-hidden="true" />
+                <Check className="mt-1 h-5 w-5 shrink-0 text-primary/40" aria-hidden="true" />
                 <span>{rule}</span>
               </li>
             ))}
           </ul>
-          <div className="mt-6 border-t border-border pt-5 text-[0.9375rem] leading-relaxed text-muted-foreground">
-            <p className="text-accent-warm-dark">
+          <div className="mt-8 border-t border-border/50 pt-5 text-lg leading-relaxed text-foreground/85">
+            <p className="text-secondary-dark font-medium">
               Pay fees directly at the bank. Never pay a teacher or any other
               unauthorised member of staff.
             </p>
@@ -178,10 +178,10 @@ export default async function FeesPage() {
 
 function FeeCategoryCard({ group }: { group: FeeScheduleGroup }) {
   return (
-    <Card className={cn(CARD_PAD, 'flex flex-col gap-4')}>
+    <Card tone="flat" className={cn(CARD_PAD, 'flex flex-col gap-6 bg-surface-container-low border-transparent transition-all duration-700 hover:-translate-y-1 hover:shadow-floating')}>
       <div>
-        <h2 className="type-title text-primary">{group.title}</h2>
-        <p className="text-sm text-muted-foreground">{group.subtitle}</p>
+        <h2 className="font-serif text-2xl text-primary">{group.title}</h2>
+        <p className="text-sm text-foreground/70">{group.subtitle}</p>
       </div>
       {/*
         <caption> is not decorative here: a screen reader user landing on one of
@@ -234,10 +234,10 @@ function PaymentMethodCard({
   icon: LucideIcon
 }) {
   return (
-    <Card className={cn(CARD_PAD, 'flex flex-col items-center text-center')}>
-      <Icon className="mb-3 h-8 w-8 text-primary" aria-hidden="true" />
-      <h3 className="type-title text-primary">{title}</h3>
-      <p className="mt-2.5 text-sm leading-relaxed text-muted-foreground">{description}</p>
+    <Card tone="flat" className={cn(CARD_PAD, 'flex flex-col items-center text-center bg-surface-container-low border-transparent transition-all duration-700 hover:-translate-y-1 hover:shadow-floating')}>
+      <Icon className="mb-4 h-8 w-8 text-primary/40" aria-hidden="true" />
+      <h3 className="font-serif text-xl text-primary mb-2">{title}</h3>
+      <p className="text-lg leading-relaxed text-foreground/85">{description}</p>
     </Card>
   )
 }

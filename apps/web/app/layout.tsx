@@ -1,6 +1,6 @@
 import './globals.css'
 
-import { baseMetadata, SCHOOL_INFO } from '@/lib/metadata'
+import { baseMetadata } from '@/lib/metadata'
 import { ToastProvider } from '@novastar/shared-ui'
 import { Plus_Jakarta_Sans, Playfair_Display } from 'next/font/google'
 

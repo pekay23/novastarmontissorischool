@@ -1,12 +1,11 @@
 import type { NextRequest } from 'next/server'
 import { requireCapability, requireTenantScope } from '@/lib/admin-context'
-import { RequestError, toErrorResponse } from '@/lib/errors'
+import { toErrorResponse } from '@/lib/errors'
 import { json, mutationContext } from '@/lib/http'
 import { prisma } from '@/lib/prisma'
 import {
   updateUserInTenant,
   deactivateUserInTenant,
-  reactivateUserInTenant,
 } from '@/lib/queries'
 
 export async function PATCH(
@@ -16,7 +15,7 @@ export async function PATCH(
   try {
     const context = await requireCapability('tenant:user:update')
     const { tenantId, userId } = await params
-    const tenant = await requireTenantScope(tenantId)
+    await requireTenantScope(tenantId)
 
     const body = await request.json().catch(() => null)
     if (!body || typeof body !== 'object' || Array.isArray(body)) {

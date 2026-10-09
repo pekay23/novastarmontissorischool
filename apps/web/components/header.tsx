@@ -4,7 +4,7 @@ import Link from 'next/link'
 import Image from 'next/image'
 import { usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
-import { Clock, Mail, Menu, Phone, X } from 'lucide-react'
+import { Clock, Menu, Phone, X, Search, User, ChevronDown } from 'lucide-react'
 import { cn } from '@novastar/shared-ui'
 import { MarketingButton } from '@/components/marketing-button'
 import type { NavigationLabels } from '@/lib/navigation'
@@ -41,6 +41,11 @@ export default function Header({ navigation, siteName, contact }: HeaderProps) {
    */
   const pathname = usePathname().replace(/\/+$/, '') || '/'
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({})
+
+  const toggleCategory = (label: string) => {
+    setExpandedCategories((prev) => ({ ...prev, [label]: !prev[label] }))
+  }
 
 /*
    * Ten items, in the order the owner specified: Home, Preschool, Primary School,
@@ -62,23 +67,57 @@ export default function Header({ navigation, siteName, contact }: HeaderProps) {
    * row is hidden below `xl` instead of `lg` so that no width overflows it. See
    * the note on the `<header>`.
    */
-  const navItems = [
-    { label: navigation.home, href: '/', key: 'home' },
-    { label: navigation.preschool, href: '/preschool', key: 'preschool' },
-    { label: navigation.primarySchool, href: '/primary-school', key: 'primary-school' },
-    { label: navigation.academics, href: '/academics', key: 'academics' },
-    { label: navigation.admissions, href: '/admissions', key: 'admissions' },
-    { label: navigation.fees, href: '/fees', key: 'fees' },
-    { label: navigation.news, href: '/news', key: 'news' },
-    { label: navigation.events, href: '/events', key: 'events' },
-    { label: navigation.about, href: '/about', key: 'about' },
-    { label: navigation.contact, href: '/contact', key: 'contact' },
+  const megaMenu = [
+    {
+      label: 'Discover',
+      href: '/about',
+      items: [
+        { label: 'Welcome', href: '/', desc: 'Return to our homepage' },
+        { label: navigation.about, href: '/about', desc: 'Our history and mission' },
+        { label: navigation.contact, href: '/contact', desc: 'Get in touch' },
+      ],
+    },
+    {
+      label: 'Academics',
+      href: '/academics',
+      items: [
+        { label: navigation.academics, href: '/academics', desc: 'Our curriculum approach' },
+        { label: navigation.preschool, href: '/preschool', desc: 'Ages 6 months to 5 years' },
+        { label: navigation.primarySchool, href: '/primary-school', desc: 'Ages 6 to 11 years' },
+      ],
+    },
+    {
+      label: 'Admissions',
+      href: '/admissions',
+      items: [
+        { label: navigation.admissions, href: '/admissions', desc: 'How to apply' },
+        { label: navigation.fees, href: '/fees', desc: 'Tuition and fee structure' },
+      ],
+    },
+    {
+      label: 'Community',
+      href: '/news',
+      items: [
+        { label: navigation.news, href: '/news', desc: 'Latest updates' },
+        { label: navigation.events, href: '/events', desc: 'Upcoming activities' },
+      ],
+    },
   ]
 
   /*
    * The menu is a disclosure, so it closes on Escape. Without this a keyboard
    * user who opens it can only dismiss it by tabbing to the trigger again.
    */
+  const [isScrolled, setIsScrolled] = useState(false)
+
+  useEffect(() => {
+    const handleScroll = () => {
+      setIsScrolled(window.scrollY > 10)
+    }
+    window.addEventListener('scroll', handleScroll)
+    return () => window.removeEventListener('scroll', handleScroll)
+  }, [])
+
   useEffect(() => {
     if (!mobileMenuOpen) return
 
@@ -91,7 +130,10 @@ export default function Header({ navigation, siteName, contact }: HeaderProps) {
   }, [mobileMenuOpen])
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-border bg-background/95">
+    <header className={cn(
+      "sticky top-0 z-50 w-full transition-all duration-300",
+      isScrolled ? "bg-background/85 backdrop-blur-md shadow-raised border-b-transparent" : "bg-background/95 border-b border-border"
+    )}>
       {/*
         `xl:flex` on the nav, not `md:flex` and not `lg:flex`.
 
@@ -119,27 +161,35 @@ export default function Header({ navigation, siteName, contact }: HeaderProps) {
         `py-2` gives them 32px, and the phone link gets `min-h-11` because it is
         the one a parent is most likely to press on a phone.
       */}
-      <div className="hidden border-b border-border bg-surface-container-low md:block">
-        <div className="container flex items-center justify-between gap-6 py-0.5 text-sm">
-          <p className="flex min-h-11 items-center gap-2 text-muted-foreground">
-            <Clock className="h-4 w-4 text-accent-warm-dark" aria-hidden="true" />
+      <div className="hidden border-b border-border bg-primary-dark md:block text-tint-warm">
+        <div className="container flex items-center justify-between gap-6 py-1.5 text-sm">
+          <p className="flex min-h-8 items-center gap-2 text-tint-warm/80">
+            <Clock className="h-4 w-4 text-accent-warm" aria-hidden="true" />
             Weekdays {contact.weekdayHours}
           </p>
           <div className="flex items-center gap-5">
             <a
-              href={`mailto:${contact.email}`}
-              className="inline-flex min-h-11 items-center gap-2 rounded-sm px-1 text-muted-foreground transition-colors duration-fast hover:text-primary"
-            >
-              <Mail className="h-4 w-4 text-accent-warm-dark" aria-hidden="true" />
-              {contact.email}
-            </a>
-            <a
               href={`tel:${contact.phoneHref}`}
-              className="inline-flex min-h-11 items-center gap-2 rounded-sm px-1 font-semibold text-primary transition-colors duration-fast hover:text-primary-hover"
+              className="inline-flex min-h-8 items-center gap-2 rounded-sm px-1 font-semibold transition-colors duration-fast hover:text-white"
             >
-              <Phone className="h-4 w-4" aria-hidden="true" />
+              <Phone className="h-4 w-4 text-accent-warm" aria-hidden="true" />
               {contact.phone}
             </a>
+            <span className="w-px h-4 bg-tint-warm/20"></span>
+            <Link
+              href="/portal/login"
+              className="inline-flex min-h-8 items-center gap-2 rounded-sm px-1 font-semibold text-accent-warm transition-colors duration-fast hover:text-accent-warm-light"
+            >
+              <User className="h-4 w-4" aria-hidden="true" />
+              Parent Portal
+            </Link>
+            <button
+              className="inline-flex min-h-8 items-center gap-2 rounded-sm px-1 transition-colors duration-fast hover:text-white"
+              aria-label="Search"
+            >
+              <Search className="h-4 w-4 text-accent-warm" aria-hidden="true" />
+              Search
+            </button>
           </div>
         </div>
       </div>
@@ -173,21 +223,48 @@ export default function Header({ navigation, siteName, contact }: HeaderProps) {
             every section one click away; the empty states on the latter two are
             a content gap to fill, not a reason to hide the section.
           */}
-          <nav aria-label="Main" className="hidden items-center gap-0.5 xl:flex">
-            {navItems.map((item) => (
-              <Link
-                key={item.key}
-                href={item.href}
-                aria-current={pathname === item.href ? 'page' : undefined}
-                className={cn(
-                  'inline-flex min-h-11 items-center rounded-sm px-3 text-sm font-medium transition-colors duration-fast',
-                  pathname === item.href
-                    ? 'bg-tint-warm text-primary'
-                    : 'text-foreground hover:bg-surface-container hover:text-primary'
-                )}
-              >
-                {item.label}
-              </Link>
+          <nav aria-label="Main" className="hidden items-center gap-1 xl:flex h-full">
+            {megaMenu.map((category) => (
+              <div key={category.label} className="group relative flex items-center h-16">
+                <Link
+                  href={category.href}
+                  className={cn(
+                    'inline-flex min-h-11 items-center gap-1 rounded-sm px-3 text-sm font-medium transition-colors duration-fast',
+                    pathname.startsWith(category.href) || (category.href === '/about' && pathname === '/')
+                      ? 'text-primary'
+                      : 'text-foreground hover:bg-surface-container hover:text-primary'
+                  )}
+                >
+                  {category.label}
+                  <ChevronDown className="h-4 w-4 opacity-50 transition-transform duration-200 group-hover:rotate-180" aria-hidden="true" />
+                </Link>
+
+                {/* Dropdown Menu */}
+                <div className="absolute top-[60px] left-1/2 -translate-x-1/2 w-72 pt-4 opacity-0 invisible translate-y-2 group-hover:opacity-100 group-hover:visible group-hover:translate-y-0 transition-all duration-200 z-50">
+                  <div className="bg-background rounded-xl shadow-floating border border-border/60 overflow-hidden p-2 flex flex-col gap-1 backdrop-blur-xl">
+                    {category.items.map((item) => (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        className={cn(
+                          'block rounded-lg p-3 transition-colors duration-fast hover:bg-surface-container/80',
+                          pathname === item.href ? 'bg-tint-warm text-primary' : 'text-foreground'
+                        )}
+                      >
+                        <div className={cn(
+                          'text-sm font-medium',
+                          pathname === item.href ? 'text-primary' : 'text-foreground'
+                        )}>
+                          {item.label}
+                        </div>
+                        <div className="text-xs text-muted-foreground mt-1">
+                          {item.desc}
+                        </div>
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              </div>
             ))}
           </nav>
 
@@ -226,26 +303,58 @@ export default function Header({ navigation, siteName, contact }: HeaderProps) {
         </div>
 
         {mobileMenuOpen && (
-          <div id="mobile-menu" className="pb-4 xl:hidden">
-            <nav aria-label="Mobile" className="flex flex-col gap-1">
-              {navItems.map((item) => (
+          <div id="mobile-menu" className="pb-6 xl:hidden overflow-y-auto max-h-[calc(100vh-4rem)]">
+            <nav aria-label="Mobile" className="flex flex-col gap-4 mt-2">
+              {megaMenu.map((category) => {
+                const isExpanded = expandedCategories[category.label] ?? false
+                return (
+                  <div key={category.label} className="flex flex-col gap-1 border-b border-border/50 pb-4 last:border-0">
+                    <button
+                      type="button"
+                      onClick={() => toggleCategory(category.label)}
+                      aria-expanded={isExpanded}
+                      aria-controls={`mobile-menu-${category.label}`}
+                      className="flex items-center justify-between px-3 font-serif text-primary text-lg mb-1"
+                    >
+                      {category.label}
+                      <ChevronDown className={`h-5 w-5 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} aria-hidden="true" />
+                    </button>
+                    <div
+                      id={`mobile-menu-${category.label}`}
+                      className={`overflow-hidden transition-all duration-200 ${isExpanded ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'}`}
+                    >
+                      {category.items.map((item) => (
+                        <Link
+                          key={item.href}
+                          href={item.href}
+                          aria-current={pathname === item.href ? 'page' : undefined}
+                          className={cn(
+                            'inline-flex min-h-11 items-center rounded-sm px-3 text-sm font-medium transition-colors duration-fast pl-6',
+                            pathname === item.href
+                              ? 'bg-tint-warm text-primary'
+                              : 'text-foreground hover:bg-surface-container hover:text-primary'
+                          )}
+                          onClick={() => setMobileMenuOpen(false)}
+                        >
+                          {item.label}
+                        </Link>
+                      ))}
+                    </div>
+                  </div>
+                )
+              })}
+              <div className="flex flex-col gap-1 pb-4">
                 <Link
-                  key={item.key}
-                  href={item.href}
-                  aria-current={pathname === item.href ? 'page' : undefined}
-                  className={cn(
-                    'inline-flex min-h-11 items-center rounded-sm px-3 text-sm font-medium transition-colors duration-fast',
-                    pathname === item.href
-                      ? 'bg-tint-warm text-primary'
-                      : 'text-foreground hover:bg-surface-container hover:text-primary'
-                  )}
+                  href="/portal/login"
+                  className="inline-flex min-h-11 items-center gap-2 rounded-sm px-3 text-sm font-medium text-foreground hover:bg-surface-container hover:text-primary transition-colors duration-fast"
                   onClick={() => setMobileMenuOpen(false)}
                 >
-                  {item.label}
+                  <User className="h-4 w-4" />
+                  Parent Portal Login
                 </Link>
-              ))}
+              </div>
             </nav>
-            <div className="mt-3">
+            <div className="mt-2 px-3">
               <MarketingButton href="/contact" size="md" className="w-full">
                 Book a campus visit
               </MarketingButton>

@@ -7,12 +7,13 @@ import {
   CardTitle,
   SectionHeading,
   SectionShell,
-  SectionTitle,
   Stat,
 } from '@/components/marketing'
 import { ArrowLink, MarketingButton } from '@/components/marketing-button'
 import { Photo } from '@/components/photo'
 import { PreparedEnvironments, type EnvironmentPanel } from '@/components/prepared-environments'
+import { ProgressionPath } from '@/components/progression-path'
+import { CurriculumAccordion, CurriculumFocusList } from '@/components/curriculum-accordion'
 import { getAcademicPrograms, getAdmissionsStatus } from '@/lib/data'
 import { ageRange, phaseBadge, PhaseIcon, programSlug } from '@/lib/programs'
 import { generateAcademicsMetadata } from '@/lib/metadata'
@@ -354,23 +355,99 @@ export default async function AcademicsPage() {
         </div>
       </section>
 
-      {/* Prepared environments */}
+      {/* Progression Path */}
+      <section className="container pt-20 pb-10">
+        <div className="text-center mb-10">
+          <p className="type-label uppercase text-accent-warm-dark mb-2">The Novastar Journey</p>
+          <h2 className="font-serif text-3xl md:text-4xl text-primary">A continuous path to BECE</h2>
+        </div>
+        <ProgressionPath
+          steps={[
+            { label: 'Crèche', caption: '6mo – 2yrs', active: true },
+            { label: 'Nursery', caption: '2 – 4yrs', active: true },
+            { label: 'Kindergarten', caption: '4 – 6yrs', active: true },
+            { label: 'Primary', caption: '6 – 12yrs', active: true },
+            { label: 'Junior High', caption: '12 – 15yrs', active: true },
+          ]}
+          className="mx-auto flex justify-center"
+          containerClassName="flex items-center min-w-max gap-3 px-0 md:px-1"
+        />
+      </section>
+
+      {/* Prepared environments — Visual Curriculum Accordions */}
       <SectionShell id="environments" tone="band">
         <SectionHeading
           eyebrow="Curriculum environments"
           title="Five prepared environments"
-          lede="Each room is built with materials that isolate one kind of work, so a child can begin at any point and still find a task that holds their attention."
+          lede="Each room is built with materials that isolate one kind of work, so a child can begin at any point and still find a task that holds their attention. Click to explore the focus areas within each environment."
         />
-        <div className="mt-12">
-          <PreparedEnvironments panels={ENVIRONMENTS} />
+        <div className="container mt-8">
+          <CurriculumAccordion
+            items={ENVIRONMENTS.map((env) => ({
+              id: env.id,
+              title: env.tab,
+              summary: env.heading,
+              icon: env.id === 'practical-life' ? 'LayoutDashboard' :
+                     env.id === 'sensorial' ? 'Brain' :
+                     env.id === 'mathematics' ? 'Calculator' :
+                     env.id === 'language' ? 'BookOpen' :
+                     env.id === 'cosmic' ? 'Globe' :
+                     'LayoutDashboard',
+              content: (
+                <div className="space-y-4">
+                  <p className="type-body-lg text-muted-foreground leading-relaxed">
+                    {env.body}
+                  </p>
+                  <div className="pt-2 border-t border-border/50">
+                    <p className="type-label text-primary mb-3">Focus areas</p>
+                    <CurriculumFocusList
+                      items={env.focus.map((f) => ({
+                        title: f.title,
+                        body: f.body,
+                        icon: f.title.includes('Self-care') ? 'Baby' :
+                              f.title.includes('Care of environment') ? 'Globe' :
+                              f.title.includes('Grace') ? 'Users' :
+                              f.title.includes('Language') ? 'BookOpen' :
+                              f.title.includes('Geometric') ? 'Puzzle' :
+                              f.title.includes('Colour') ? 'Brain' :
+                              f.title.includes('Sorting') ? 'Puzzle' :
+                              f.title.includes('Apparatus') ? 'LayoutDashboard' :
+                              f.title.includes('Golden') ? 'Calculator' :
+                              f.title.includes('Number rods') ? 'Calculator' :
+                              f.title.includes('Stamp') ? 'Calculator' :
+                              f.title.includes('Algebraic') ? 'Brain' :
+                              f.title.includes('Sandpaper') ? 'BookOpen' :
+                              f.title.includes('Movable') ? 'BookOpen' :
+                              f.title.includes('Language basket') ? 'BookOpen' :
+                              f.title.includes('Twi') ? 'Languages' :
+                              f.title.includes('Great cosmic') ? 'Sparkles' :
+                              f.title.includes('Botany') ? 'FlaskConical' :
+                              f.title.includes('Practical science') ? 'FlaskConical' :
+                              f.title.includes('Geography') ? 'Globe' :
+                              'LayoutDashboard',
+                      }))}
+                    />
+                  </div>
+                  <p className="type-eyebrow text-muted-foreground italic mt-2">
+                    {env.schedule}
+                  </p>
+                </div>
+              ),
+            }))}
+            type="multiple"
+            tone="flat"
+            divided
+          />
         </div>
-        {/* Placeholder photography — see `lib/placeholder-images.ts`. */}
+      </SectionShell>
+
+      <section className="w-full">
         <Photo
           id="environment"
-          ratio="aspect-[3/2]"
-          className="mx-auto mt-12 max-w-4xl"
+          ratio="aspect-[21/9] md:aspect-[3/1]"
+          className="w-full rounded-none"
         />
-      </SectionShell>
+      </section>
 
       {/*
         The programme list the rest of the site links into. The footer deep-links
@@ -512,70 +589,32 @@ export default async function AcademicsPage() {
         </div>
       </SectionShell>
 
-      {/* GES alignment */}
-      <SectionShell tone="band">
-        <div className="mx-auto flex max-w-3xl flex-col items-center gap-8 text-center">
-          <SectionTitle>GES and NaCCA aligned</SectionTitle>
-          <p className="max-w-[58ch] text-lg leading-relaxed text-muted-foreground">
-            The Montessori sequence runs alongside the national curriculum, so
-            children work through its requirements inside a self-directed
-            classroom rather than alongside a separate taught syllabus.
-          </p>
-          <dl className="grid w-full grid-cols-2 gap-4 md:grid-cols-4">
-            {[
-              /*
-                Every other programme-dependent block on this page is guarded on
-                `programs.length > 0`. This one was not, so a build with no
-                database published "Programmes 0" directly under "GES and NaCCA
-                aligned" — a factual claim that the school runs no programmes at
-                all. The count is omitted instead.
-              */
-              ...(programs.length > 0
-                ? [{ term: 'Programmes', value: String(programs.length) }]
-                : []),
-              { term: 'Terms per year', value: '3' },
-              { term: 'Languages', value: 'English and Twi' },
-              { term: 'Approach', value: 'Mixed-age' },
-            ].map((stat) => (
-              /*
-                dt must precede dd, or assistive tech announces the value
-                before the label ("3 Terms per year" -> "3, Terms").
-              */
-              <Card key={stat.term} className={cn(CARD_PAD, 'p-5 text-center')}>
-                <dt className="text-sm text-muted-foreground">{stat.term}</dt>
-                <dd className="mt-1.5 type-headline text-primary">{stat.value}</dd>
-              </Card>
-            ))}
-          </dl>
-        </div>
-      </SectionShell>
-
       {/* Closing call to action */}
-      <div className="bg-primary">
-        <div className="container flex flex-col items-center justify-between gap-10 py-16 lg:flex-row lg:gap-14 lg:py-20">
+      <div className="bg-secondary-dark text-white">
+        <div className="container flex flex-col items-center justify-between gap-10 py-16 lg:flex-row lg:gap-14 lg:py-24">
           <div className="max-w-2xl text-center lg:text-left">
             {open ? (
-              <span className="mb-4 inline-block rounded-xs border border-primary-foreground/25 px-3 py-1 type-eyebrow uppercase text-primary-foreground">
-                Admissions open · 2026/2027
+              <span className="mb-4 inline-block px-3 py-1 text-[11px] font-bold tracking-[0.25em] uppercase text-white/70">
+                — Admissions open · 2026/2027
               </span>
             ) : (
-              <span className="mb-4 inline-block rounded-xs border border-primary-foreground/25 px-3 py-1 type-eyebrow uppercase text-primary-foreground">
-                Admissions closed — enquire for future intake
+              <span className="mb-4 inline-block px-3 py-1 text-[11px] font-bold tracking-[0.25em] uppercase text-white/70">
+                — Admissions closed
               </span>
             )}
-            <h2 className="type-headline text-balance text-primary-foreground">
+            <h2 className="font-serif text-3xl font-medium sm:text-4xl text-balance text-white">
               See the classroom before you decide
             </h2>
-            <p className="mt-3 max-w-[52ch] text-base leading-relaxed text-primary-foreground/85">
+            <p className="mt-4 max-w-[52ch] text-lg leading-relaxed text-white/80">
               Enquiry groups are kept small so each child gets adult attention
               during the work cycle. Schedule a visit and observe a work cycle.
             </p>
           </div>
           <div className="flex shrink-0 flex-col items-center gap-3 sm:flex-row">
-            <MarketingButton href="/contact" variant="onDark" size="lg">
-              Schedule a classroom visit
+            <MarketingButton href="/contact" className="bg-white text-secondary-dark hover:bg-white/90 text-[11px] font-bold tracking-[0.25em] uppercase h-12 px-8">
+              Schedule a visit
             </MarketingButton>
-            <MarketingButton href="/fees" variant="onDarkOutline" size="lg">
+            <MarketingButton href="/fees" variant="outline" className="bg-transparent border-white/20 text-white hover:bg-white hover:text-secondary-dark text-[11px] font-bold tracking-[0.25em] uppercase h-12 px-8">
               Tuition and fees
             </MarketingButton>
           </div>

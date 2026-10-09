@@ -62,6 +62,7 @@ interface AuditLogParams {
 
 function computeHash(
   previousHash: string | null,
+  tenantId: string,
   action: string,
   entityId: string | undefined,
   changes: Prisma.InputJsonValue,
@@ -69,6 +70,7 @@ function computeHash(
 ): string {
   const data = [
     previousHash || '',
+    tenantId,
     action,
     entityId || '',
     JSON.stringify(changes || {}),
@@ -120,6 +122,7 @@ export async function logAuditEvent(params: AuditLogParams, tx?: Prisma.Transact
     const previousHash = lastEntry?.hash ?? null
     const hash = computeHash(
       previousHash,
+      tenantId,
       params.action,
       params.entityId,
       params.changes ?? params.details ?? {},

@@ -22,7 +22,6 @@
     "@novastar/domain": "workspace:*",
     "@novastar/ghana-education": "workspace:*",
     "@novastar/notifications": "workspace:*",
-    "@novastar/payments": "workspace:*",
     "@novastar/shared-types": "workspace:*",
     "@novastar/shared-ui": "workspace:*",
     "@novastar/shared-utils": "workspace:*",

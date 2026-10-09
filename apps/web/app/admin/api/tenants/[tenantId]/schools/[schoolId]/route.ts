@@ -1,6 +1,6 @@
 import type { NextRequest } from 'next/server'
 import { requireCapability, requireTenantScope } from '@/lib/admin-context'
-import { RequestError, toErrorResponse } from '@/lib/errors'
+import { toErrorResponse } from '@/lib/errors'
 import { json, mutationContext } from '@/lib/http'
 import { prisma } from '@/lib/prisma'
 import { updateSchoolInTenant, deleteSchoolInTenant } from '@/lib/queries'

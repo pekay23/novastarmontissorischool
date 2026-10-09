@@ -747,25 +747,21 @@ export interface AuditWrite {
 /**
  * Appends one tamper-evident audit entry on an existing transaction.
  *
- * The hash chain is a single chain across every tenant, not one chain per tenant.
- * A per-tenant chain would fork the moment two tenants wrote concurrently and
- * neither could prove the other had not edited its own tail — which is the
- * property the chain exists to provide. So the head read is cross-tenant by
- * necessity, and it is marked.
+ * The hash chain is per-tenant. Each tenant has its own independent chain,
+ * so a compromise in one tenant's chain does not affect others. The head read
+ * is scoped to the tenant the write is for.
  */
 async function appendAudit(db: Db, entry: AuditWrite): Promise<void> {
-  // CROSS-TENANT: the audit hash chain is global, so its head is not a tenant's
-  // row. See the note above.
+  // PER-TENANT: the audit hash chain is per-tenant, so its head is the last
+  // entry for this tenant only.
   const head = await db.auditLog.findFirst({
+    where: { tenantId: entry.tenantId },
     orderBy: { createdAt: 'desc' },
     select: { hash: true },
   })
   const previousHash = head?.hash ?? null
   const createdAt = new Date()
 
-  // Scoped on the entry's own tenant, which the caller supplies from the tenant
-  // the route was addressing. This is the one statement in the write path that
-  // could file an operator's action under the wrong tenant.
   await db.auditLog.create({
     data: {
       tenantId: entry.tenantId,
@@ -780,7 +776,7 @@ async function appendAudit(db: Db, entry: AuditWrite): Promise<void> {
       ipAddress: entry.ipAddress ?? null,
       userAgent: entry.userAgent ?? null,
       previousHash,
-      hash: computeAuditHash(previousHash, entry.action, entry.entityId ?? null, entry.changes ?? {}, createdAt),
+      hash: computeAuditHash(previousHash, entry.tenantId, entry.action, entry.entityId ?? null, entry.changes ?? {}, createdAt),
       createdAt,
     },
   })
@@ -801,6 +797,7 @@ export async function writeAuditEntry(entry: AuditWrite): Promise<void> {
 
 function computeAuditHash(
   previousHash: string | null,
+  tenantId: string,
   action: string,
   entityId: string | null,
   changes: Record<string, unknown>,
@@ -810,6 +807,7 @@ function computeAuditHash(
   // auditor verifying an entry with either app's code gets the same answer.
   const data = [
     previousHash ?? '',
+    tenantId,
     action,
     entityId ?? '',
     JSON.stringify(changes ?? {}),

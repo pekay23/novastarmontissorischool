@@ -1,19 +1,10 @@
 import Link from 'next/link'
 import { Clock, Mail, MapPin, Phone } from 'lucide-react'
-
-import { getAcademicPrograms, getContactInfo } from '@/lib/data'
+import { getContactInfo } from '@/lib/data'
 import { SCHOOL_INFO } from '@/lib/metadata'
-import { programSlug } from '@/lib/programs'
+import { NewsletterForm } from '@/components/newsletter-form'
 
-/*
- * Rendered from the server layout with no props, so it loads its own data.
- * `getContactInfo` returns null when the branding row is missing (no DB at build
- * time), hence the fallback — the footer must never blank out the contact details
- * people rely on. The fallback mirrors SCHOOL_INFO so a parent never sees two
- * different phone numbers on one page.
- */
-
-const FALLBACK = {
+const FALLBACK: SchoolContact = {
   name: SCHOOL_INFO.name,
   address: SCHOOL_INFO.location,
   phone: SCHOOL_INFO.phone,
@@ -21,107 +12,73 @@ const FALLBACK = {
   hours: SCHOOL_INFO.hours.map((entry) => `${entry.days}: ${entry.time}`).join(' · '),
 }
 
-/*
- * "Academic Programs" and "Contact Us" are intentionally absent from Quick Links:
- * the Programs column below anchors every program to `/academics#<slug>` (or falls
- * back to the page itself), and the Visit Us column's "Book a campus visit" CTA
- * already links to `/contact`. Keeping them here too would show the same
- * destination twice per viewport-width column.
- */
 const QUICK_LINKS = [
   { href: '/about', label: 'About Us' },
+  { href: '/preschool', label: 'Preschool' },
+  { href: '/primary-school', label: 'Primary School' },
+  { href: '/academics', label: 'Academics' },
   { href: '/admissions', label: 'Admissions' },
+  { href: '/news', label: 'News & Events' },
+]
+
+const PARENT_LINKS = [
   { href: '/fees', label: 'Fee Structure' },
-  { href: '/policies', label: 'Policies for Parents' },
-  { href: '/news', label: 'News' },
-  { href: '/events', label: 'Events' },
+  { href: '/policies', label: 'Policies & Handbooks' },
+  { href: '/calendar', label: 'Academic Calendar' },
+  { href: '/contact', label: 'Contact Us' },
 ]
 
 export async function Footer() {
-  const [contact, programs] = await Promise.all([
-    getContactInfo(),
-    getAcademicPrograms(),
-  ])
-
-  const school = contact ?? FALLBACK
+  const contact = await getContactInfo()
+  const school: { name: string; address: string; phone: string; email: string; hours: string } = contact ?? FALLBACK
   const currentYear = new Date().getFullYear()
 
   return (
-    <footer className="border-t border-border bg-surface-container">
-      <div className="container py-14">
-        <div className="grid grid-cols-1 gap-10 sm:grid-cols-2 lg:grid-cols-4">
-          <div>
-            {/*
-              The footer's four headings. `type-title` with an explicit `text-primary`
-              rather than relying on the base heading rule, because the base rule
-              resolves to `--color-primary-dark` and the previous version put
-              `font-heading text-xl` headings on a maroon field where they read
-              at 1.4:1.
-            */}
-            <h2 className="type-title mb-4 text-foreground">{school.name}</h2>
-            {school.address && (
-              <p className="mb-4 flex items-start gap-2 text-sm text-muted-foreground">
-                <MapPin className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-                <span>{school.address}</span>
-              </p>
-            )}
-            <ul className="space-y-1 text-sm">
+    <footer className="bg-primary-dark text-tint-warm pt-16 pb-8 border-t-[8px] border-accent-warm">
+      <div className="container">
+        {/* Top Section: Main columns */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-12 lg:gap-8 mb-16">
+          
+          {/* Column 1: Branding & Contact */}
+          <div className="flex flex-col gap-6">
+            <h2 className="font-serif text-2xl font-semibold text-tint-warm tracking-wide">{school.name}</h2>
+            <div className="space-y-4 text-sm text-tint-warm/90">
+              {school.address && (
+                <p className="flex items-start gap-3">
+                  <MapPin className="mt-1 h-4 w-4 shrink-0 text-accent-warm" aria-hidden="true" />
+                  <span className="leading-relaxed max-w-[200px]">{school.address}</span>
+                </p>
+              )}
               {school.phone && (
-                <li>
-                  <a
-                    href={`tel:${school.phone.replace(/[^\d+]/g, '')}`}
-                    className="inline-flex min-h-11 items-center gap-2 text-muted-foreground transition-colors duration-fast hover:text-primary"
-                  >
-                    <Phone className="h-4 w-4 shrink-0" aria-hidden="true" />
+                <p>
+                  <a href={`tel:${school.phone.replace(/[^\d+]/g, '')}`} className="flex items-center gap-3 transition-colors hover:text-white">
+                    <Phone className="h-4 w-4 shrink-0 text-accent-warm" aria-hidden="true" />
                     {school.phone}
                   </a>
-                </li>
+                </p>
               )}
               {school.email && (
-                <li>
-                  <a
-                    href={`mailto:${school.email}`}
-                    className="inline-flex min-h-11 items-center gap-2 break-all text-muted-foreground transition-colors duration-fast hover:text-primary"
-                  >
-                    <Mail className="h-4 w-4 shrink-0" aria-hidden="true" />
+                <p>
+                  <a href={`mailto:${school.email}`} className="flex items-center gap-3 transition-colors hover:text-white break-all">
+                    <Mail className="h-4 w-4 shrink-0 text-accent-warm" aria-hidden="true" />
                     {school.email}
                   </a>
-                </li>
+                </p>
               )}
-              <li className="flex items-start gap-2 py-2 text-sm text-muted-foreground">
-                <Clock className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-                <span>{school.hours}</span>
-              </li>
-            </ul>
+              <p className="flex items-start gap-3 pt-2 border-t border-tint-warm/20 mt-4">
+                <Clock className="mt-1 h-4 w-4 shrink-0 text-accent-warm" aria-hidden="true" />
+                <span className="leading-relaxed max-w-[200px]">{school.hours}</span>
+              </p>
+            </div>
           </div>
 
-          <nav aria-label="Footer">
-            <h2 className="type-title mb-4 text-foreground">Quick Links</h2>
-            {/*
-              `space-y-0`, replacing `space-y-1`. Measured in Chromium at a 1440px
-              viewport: a quick link's text box is 18px, `min-h-11` makes the row
-              44px, and `space-y-1` added 4px between rows. That put consecutive
-              lines 48px apart with 30px of clear air between the text boxes —
-              1.67x the height of the text, which is what read as a list of
-              unrelated items rather than one group. Dropping the gap leaves 26px
-              of air (1.44x) at a 44px row pitch, and takes 24px off the column
-              (332px -> 308px over the 7 rows).
-
-              44px is a floor rather than a preference. WCAG 2.5.8 requires every
-              target to be 44x44, so a 44px row can only be tightened further by
-              letting the hit area bleed into the row below, and two overlapping
-              targets are how the wrong link gets pressed. Row gap is therefore
-              the only value free to move, and it now sits at zero. Verified at
-              360 / 768 / 1280 / 1440 / 1920px: pitch 44px and every target 44px
-              tall at all five, with zero overlapping boxes.
-            */}
-            <ul className="space-y-0 text-sm">
+          {/* Column 2: Quick Links */}
+          <nav aria-label="Quick Links" className="flex flex-col gap-6">
+            <h3 className="text-[13px] font-bold tracking-[0.2em] uppercase text-accent-warm">Explore</h3>
+            <ul className="space-y-3 text-[15px]">
               {QUICK_LINKS.map((link) => (
                 <li key={link.href}>
-                  <Link
-                    href={link.href}
-                    className="inline-flex min-h-11 items-center text-muted-foreground transition-colors duration-fast hover:text-primary"
-                  >
+                  <Link href={link.href} className="text-tint-warm/90 transition-colors duration-200 hover:text-white hover:underline underline-offset-4 decoration-accent-warm/50">
                     {link.label}
                   </Link>
                 </li>
@@ -129,88 +86,83 @@ export async function Footer() {
             </ul>
           </nav>
 
-          {/*
-            Anchors into the single /academics page rather than per-program routes,
-            which do not exist. Both sides derive the slug from the program name via
-            `programSlug`, so the links stay in step with the data.
-          */}
-          <nav aria-label="Programs">
-            <h2 className="type-title mb-4 text-foreground">Programs</h2>
-            {/*
-              Same 44px row pitch as Quick Links. These two columns are identical in
-              shape and sit side by side, so a shared rhythm is the only thing that
-              keeps them reading as a pair rather than as two lists at different
-              densities.
-            */}
-            <ul className="space-y-0 text-sm">
-              {programs.length > 0 ? (
-                programs.map((program) => (
-                  <li key={program.id}>
-                    <Link
-                      href={`/academics#${programSlug(program.name)}`}
-                      className="inline-flex min-h-11 items-center text-muted-foreground transition-colors duration-fast hover:text-primary"
-                    >
-                      {program.name}
-                    </Link>
-                  </li>
-                ))
-              ) : (
-                <li>
-                  <Link
-                    href="/academics"
-                    className="inline-flex min-h-11 items-center text-muted-foreground transition-colors duration-fast hover:text-primary"
-                  >
-                    Academic Programs
+          {/* Column 3: Parent Resources */}
+          <nav aria-label="Parent Resources" className="flex flex-col gap-6">
+            <h3 className="text-[13px] font-bold tracking-[0.2em] uppercase text-accent-warm">Parents</h3>
+            <ul className="space-y-3 text-[15px]">
+              {PARENT_LINKS.map((link) => (
+                <li key={link.href}>
+                  <Link href={link.href} className="text-tint-warm/90 transition-colors duration-200 hover:text-white hover:underline underline-offset-4 decoration-accent-warm/50">
+                    {link.label}
                   </Link>
                 </li>
-              )}
+              ))}
             </ul>
           </nav>
 
-          <div>
-            <h2 className="type-title mb-4 text-foreground">Visit Us</h2>
-            <p className="mb-4 max-w-[34ch] text-sm text-muted-foreground">
-              Visits run during school hours. There is no cost and no obligation.
-            </p>
-            {/*
-              Was a `bg-primary` button on a `bg-primary-dark` surface: #5a1121 on
-              #772836 measured 1.40:1, which is an invisible rectangle. It is now
-              the same outline treatment as the rest of the site.
-            */}
-            <Link
-              href="/contact"
-              className="inline-flex min-h-11 items-center rounded-sm border border-border bg-surface-container-lowest px-4 text-sm font-semibold text-primary shadow-hairline transition-colors duration-fast hover:border-primary/35 hover:bg-surface hover:text-primary-hover"
-            >
-              Book a campus visit
-            </Link>
+          {/* Column 4: Connect & Newsletter */}
+          <div className="flex flex-col gap-6">
+            <h3 className="text-[13px] font-bold tracking-[0.2em] uppercase text-accent-warm">Stay Connected</h3>
+            
+            {/* Newsletter Sign Up */}
+            <div className="flex flex-col gap-3 mb-2">
+              <p className="text-sm text-tint-warm/90 leading-relaxed">
+                Subscribe to our parent newsletter for updates.
+              </p>
+              <NewsletterForm />
+            </div>
+
+            <div className="flex flex-col gap-3 pt-2">
+              <p className="text-[11px] font-bold tracking-[0.15em] uppercase text-tint-warm/70">
+                Accreditations
+              </p>
+              <div className="flex flex-wrap items-center justify-center gap-3">
+                <div className="bg-white/10 px-3 py-1.5 rounded-sm border border-white/10 text-xs font-semibold whitespace-nowrap">
+                  GES Aligned
+                </div>
+                <div className="bg-white/10 px-3 py-1.5 rounded-sm border border-white/10 text-xs font-semibold whitespace-nowrap">
+                  NaCCA Standard
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-4 mt-4 justify-center">
+              <a href="#" className="h-10 w-10 rounded-full bg-tint-warm/10 flex items-center justify-center text-tint-warm/90 transition-all hover:bg-accent-warm hover:text-primary-dark hover:scale-110" aria-label="Facebook">
+                <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                  <path fillRule="evenodd" d="M22 12c0-5.523-4.477-10-10-10S2 6.477 2 12c0 4.991 3.657 9.128 8.438 9.878v-6.987h-2.54V12h2.54V9.797c0-2.506 1.492-3.89 3.777-3.89 1.094 0 2.238.195 2.238.195v2.46h-1.26c-1.243 0-1.63.771-1.63 1.562V12h2.773l-.443 2.89h-2.33v6.988C18.343 21.128 22 16.991 22 12z" clipRule="evenodd" />
+                </svg>
+              </a>
+              <a href="#" className="h-10 w-10 rounded-full bg-tint-warm/10 flex items-center justify-center text-tint-warm/90 transition-all hover:bg-accent-warm hover:text-primary-dark hover:scale-110" aria-label="Twitter">
+                <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M8.29 20.251c7.547 0 11.675-6.253 11.675-11.675 0-.178 0-.355-.012-.53A8.348 8.348 0 0022 5.92a8.19 8.19 0 01-2.357.646 4.118 4.118 0 001.804-2.27 8.224 8.224 0 01-2.605.996 4.107 4.107 0 00-6.993 3.743 11.65 11.65 0 01-8.457-4.287 4.106 4.106 0 001.27 5.477A4.072 4.072 0 012.8 9.713v.052a4.105 4.105 0 003.292 4.022 4.095 4.095 0 01-1.853.07 4.108 4.108 0 003.834 2.85A8.233 8.233 0 012 18.407a11.616 11.616 0 006.29 1.84" />
+                </svg>
+              </a>
+              <a href="#" className="h-10 w-10 rounded-full bg-tint-warm/10 flex items-center justify-center text-tint-warm/90 transition-all hover:bg-accent-warm hover:text-primary-dark hover:scale-110" aria-label="Instagram">
+                <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                  <path fillRule="evenodd" d="M12.315 2c2.43 0 2.784.013 3.808.06 1.064.049 1.791.218 2.427.465a4.902 4.902 0 011.772 1.153 4.902 4.902 0 011.153 1.772c.247.636.416 1.363.465 2.427.048 1.067.06 1.407.06 4.123v.08c0 2.643-.012 2.987-.06 4.043-.049 1.064-.218 1.791-.465 2.427a4.902 4.902 0 01-1.153 1.772 4.902 4.902 0 01-1.772 1.153c-.636.247-1.363.416-2.427.465-1.067.048-1.407.06-4.123.06h-.08c-2.643 0-2.987-.012-4.043-.06-1.064-.049-1.791-.218-2.427-.465a4.902 4.902 0 01-1.772-1.153 4.902 4.902 0 01-1.153-1.772c-.247-.636-.416-1.363-.465-2.427-.047-1.024-.06-1.379-.06-3.808v-.63c0-2.43.013-2.784.06-3.808.049-1.064.218-1.791.465-2.427a4.902 4.902 0 011.153-1.772A4.902 4.902 0 015.45 2.525c.636-.247 1.363-.416 2.427-.465C8.901 2.013 9.256 2 11.685 2h.63zm-.081 1.802h-.468c-2.456 0-2.784.011-3.807.058-.975.045-1.504.207-1.857.344-.467.182-.8.398-1.15.748-.35.35-.566.683-.748 1.15-.137.353-.3.882-.344 1.857-.047 1.023-.058 1.351-.058 3.807v.468c0 2.456.011 2.784.058 3.807.045.975.207 1.504.344 1.857.182.466.399.8.748 1.15.35.35.683.566 1.15.748.353.137.882.3 1.857.344 1.054.048 1.37.058 4.041.058h.08c2.597 0 2.917-.01 3.96-.058.976-.045 1.505-.207 1.858-.344.466-.182.8-.398 1.15-.748.35-.35.566-.683.748-1.15.137-.353.3-.882.344-1.857.048-1.055.058-1.37.058-4.041v-.08c0-2.597-.01-2.917-.058-3.96-.045-.976-.207-1.505-.344-1.858a3.097 3.097 0 00-.748-1.15 3.098 3.098 0 00-1.15-.748c-.353-.137-.882-.3-1.857-.344-1.023-.047-1.351-.058-3.807-.058zM12 6.865a5.135 5.135 0 110 10.27 5.135 5.135 0 010-10.27zm0 1.802a3.333 3.333 0 100 6.666 3.333 3.333 0 000-6.666zm5.338-3.205a1.2 1.2 0 110 2.4 1.2 1.2 0 010-2.4z" clipRule="evenodd" />
+                </svg>
+              </a>
+              <a href="#" className="h-10 w-10 rounded-full bg-tint-warm/10 flex items-center justify-center text-tint-warm/90 transition-all hover:bg-accent-warm hover:text-primary-dark hover:scale-110" aria-label="YouTube">
+                <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                  <path fillRule="evenodd" d="M19.812 5.418c.861.23 1.538.907 1.768 1.768C21.998 8.746 22 12 22 12s0 3.255-.418 4.814a2.504 2.504 0 0 1-1.768 1.768c-1.56.419-7.814.419-7.814.419s-6.255 0-7.814-.419a2.505 2.505 0 0 1-1.768-1.768C2 15.255 2 12 2 12s0-3.255.417-4.814a2.507 2.507 0 0 1 1.768-1.768C5.744 5 11.998 5 11.998 5s6.255 0 7.814.418ZM15.194 12 10 15V9l5.194 3Z" clipRule="evenodd" />
+                </svg>
+              </a>
+            </div>
           </div>
+
         </div>
 
-        {/*
-          Centred, not left-aligned. This band sits below the four-column grid and
-          is the only block in the footer that belongs to no column, so it has no
-          column edge to line up with. The container is full width (`.container`
-          carries `max-width: none`), so the wrapper measures 1376px at a 1440px
-          viewport and 1824px at 1920px, while the line itself is a fixed 365.3px.
-          Left-aligned that put 505.3px of empty space to the right at 1440px and
-          729.3px at 1920px, under a rule spanning the whole footer — a void that
-          grows with the viewport, which is what read as accidental rather than
-          composed.
-
-          Left alignment was the alternative and was checked first, because every
-          other `border-t` band on the site is left-aligned (`photo.tsx` credits,
-          the `academics` payment-method rows, `prepared-environments` schedules).
-          It cannot be made to read as deliberate from this position: a left-aligned
-          line inside a full-width block renders identically whatever the wrapper's
-          width, measure or the `p`'s own box is, so there is no structural change
-          to make. Centring completes the band on the axis its rule already spans,
-          and it stays exactly centred at every width (measured offset 0.0px at
-          360 / 768 / 1280 / 1440 / 1920).
-        */}
-        <div className="mt-10 border-t border-border pt-6 text-center text-sm text-muted-foreground">
+        {/* Sub-footer: Legal & Accessibility */}
+        <div className="pt-8 border-t border-tint-warm/20 flex flex-col md:flex-row justify-between items-center gap-4 text-[13px] text-tint-warm/60">
           <p>
             &copy; {currentYear} {school.name}. All rights reserved.
           </p>
+          <div className="flex flex-wrap gap-x-6 gap-y-2 justify-center">
+            <Link href="/privacy" className="hover:text-white transition-colors">Privacy Policy</Link>
+            <Link href="/terms" className="hover:text-white transition-colors">Terms of Use</Link>
+            <Link href="/accessibility" className="hover:text-white transition-colors">Accessibility Statement</Link>
+            <Link href="/nondiscrimination" className="hover:text-white transition-colors">Non-Discrimination Policy</Link>
+          </div>
         </div>
       </div>
     </footer>

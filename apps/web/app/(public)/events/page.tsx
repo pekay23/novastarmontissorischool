@@ -27,17 +27,17 @@ export default async function EventsPage() {
           `from-primary/10` every inner page carried before; `HeroBand` also owns
           the header clearance, which was re-stated per page. */}
       <HeroBand>
-        <h1 className="type-display max-w-[18ch]">Events Calendar</h1>
-        <p className="mt-6 max-w-[60ch] text-lg leading-relaxed text-muted-foreground">
+        <h1 className="font-serif text-5xl md:text-6xl mx-auto max-w-[18ch] text-center text-primary">Events Calendar</h1>
+        <p className="mx-auto mt-6 max-w-[60ch] text-lg leading-relaxed text-foreground/85 text-center">
           Stay updated with upcoming events and important dates at Novastar Montessori School.
         </p>
       </HeroBand>
 
       <SectionShell tone="canvas">
         {events.length === 0 ? (
-          <Card className={cn(CARD_PAD, 'mx-auto max-w-2xl text-center')}>
-            <h2 className="type-title text-primary">No events scheduled yet</h2>
-            <p className="mt-2.5 text-muted-foreground">
+          <Card tone="flat" className={cn(CARD_PAD, 'mx-auto max-w-2xl text-center bg-surface-container-low border-transparent')}>
+            <h2 className="font-serif text-3xl text-primary">No events scheduled yet</h2>
+            <p className="mt-4 text-lg text-foreground/85">
               Term dates and events are published here once confirmed. Call the school
               office if you need dates before then.
             </p>
@@ -66,9 +66,9 @@ function EventCard({ event }: { event: Event }) {
   const isSameDay = start.toDateString() === end.toDateString()
 
   return (
-    <Card className={cn(CARD_PAD, 'flex flex-col gap-3')}>
-      <CardTitle className="text-primary">{event.title}</CardTitle>
-      <p className="text-sm text-muted-foreground">
+    <Card tone="flat" className={cn(CARD_PAD, 'flex flex-col gap-4 bg-surface-container-low border-transparent transition-all duration-700 hover:-translate-y-1 hover:shadow-floating')}>
+      <CardTitle className="font-serif text-xl text-primary">{event.title}</CardTitle>
+      <p className="text-sm text-foreground/70">
         {/* <time> so the machine-readable value matches what is displayed. */}
         <time dateTime={event.startDate.toISOString()}>
           {isSameDay
@@ -76,12 +76,12 @@ function EventCard({ event }: { event: Event }) {
             : `${format(start, 'MMM d')} – ${format(end, 'MMM d, yyyy')}`}
         </time>
       </p>
-      <p className="text-[0.9375rem] leading-relaxed text-muted-foreground">
+      <p className="text-lg leading-relaxed text-foreground/85">
         {event.descriptionEn}
       </p>
       {event.location && (
-        <p className="flex items-center gap-2 text-sm text-muted-foreground">
-          <MapPin className="h-4 w-4 shrink-0" aria-hidden="true" />
+        <p className="flex items-center gap-2 text-sm text-foreground/70">
+          <MapPin className="h-4 w-4 shrink-0 text-primary/40" aria-hidden="true" />
           {event.location}
         </p>
       )}

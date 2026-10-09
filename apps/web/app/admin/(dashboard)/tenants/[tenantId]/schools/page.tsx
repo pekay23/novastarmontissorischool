@@ -2,7 +2,6 @@ import { requireCapabilityPage, requireExistingTenant } from '@/lib/admin-contex
 import { hasOperatorCapability } from '@/lib/permissions'
 import { listSchoolsForTenant } from '@/lib/queries'
 import { SchoolList } from '@/components/school-list'
-import { SchoolForm } from '@/components/school-form'
 import { TenantSuspendedNotice } from '@/components/tenant-suspended-notice'
 
 export const dynamic = 'force-dynamic'

@@ -10,6 +10,14 @@ import { defineConfig, globalIgnores } from 'eslint/config'
 import nextCoreWebVitals from 'eslint-config-next/core-web-vitals'
 import nextTypescript from 'eslint-config-next/typescript'
 
+// Filter out the next/no-html-link-for-pages rule from core-web-vitals
+// because this project uses App Router only (no pages/ directory).
+// The rule runs a filesystem check at config load time, so we must
+// remove it before spreading the config.
+const coreWebVitals = nextCoreWebVitals.filter(
+  (config) => !(config.rules && 'next/no-html-link-for-pages' in config.rules)
+)
+
 export default defineConfig([
   // ── Global ignores ─────────────────────────────────────────────────────────
   // ESLint flat config does NOT honour .gitignore, .eslintignore, or
@@ -86,7 +94,7 @@ export default defineConfig([
   // ── Next + Core Web Vitals + TypeScript ────────────────────────────────────
   // Both flat-config modules already include `files:` blocks, so the spread
   // here activates them on the project source roots via their own globs.
-  ...nextCoreWebVitals,
+  ...coreWebVitals,
   ...nextTypescript,
 
   // ── Project-specific overrides ─────────────────────────────────────────────
@@ -107,6 +115,9 @@ export default defineConfig([
       'react/no-unescaped-entities': 'off',
       '@typescript-eslint/no-empty-object-type': 'off',
       '@typescript-eslint/no-non-null-asserted-optional-chain': 'off',
+      // This project uses the App Router (no pages/ directory), so the
+      // next/no-html-link-for-pages rule would warn on every run.
+      'next/no-html-link-for-pages': 'off',
 
       // The `next/typescript` config uses `recommended` which turns on
       // `no-unused-vars` (the non-TS one). Disable it because we use the
@@ -124,7 +135,7 @@ export default defineConfig([
   {
     files: ['packages/**/*.{ts,tsx}', 'tools/**/*.{ts,tsx}', 'scripts/**/*.{ts,tsx}', '*.ts'],
     rules: {
-      'next/no-html-link-for-pages': 'off',
+      // next/no-html-link-for-pages already disabled globally above
     },
   },
 ])

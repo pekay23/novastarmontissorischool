@@ -4,10 +4,8 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { signOut, useSession } from 'next-auth/react'
 import {
-  LayoutDashboard, Users, GraduationCap, BookOpen,
-  Calendar, Clock, FileText, Settings, LogOut, Menu,
-  Bell, Search, Shield, School, LibraryBig, Package,
-  CalendarDays, NotebookText, TrendingUp,
+  LogOut, Menu,
+  Bell, Search,
   ChevronLeft, ChevronRight, ChevronDown,
   type LucideIcon,
 } from 'lucide-react'
@@ -40,8 +38,7 @@ export function PortalShell({
   children,
 }: PortalShellProps) {
   const pathname = usePathname()
-  const router = useRouter()
-  const { data: session, status } = useSession()
+  const { data: _session, status } = useSession()
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
 

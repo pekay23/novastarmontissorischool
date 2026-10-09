@@ -4,7 +4,7 @@
 import { prisma } from '@novastar/database'
 import { Branding, News, Event, ClassLevel, Subject, PaymentMethodConfig } from '@prisma/client'
 import { SCHOOL_INFO } from './metadata'
-import { ADMISSIONS_OPEN_FLAG_KEY, ADMISSIONS_OPEN_DEFAULT } from '@novastar/shared-types'
+import { ADMISSIONS_OPEN_FLAG_KEY } from '@novastar/shared-types'
 
 // Type-safe fetchers with fallbacks for build-time when DB unavailable
 async function safeFetch<T>(fn: () => Promise<T>, fallback: T): Promise<T> {
@@ -71,6 +71,89 @@ export async function getPublishedEvents(limit = 10): Promise<Event[]> {
 
 // Academic programs (Class Levels with Subjects)
 export async function getAcademicPrograms(): Promise<Array<ClassLevel & { subjects: Subject[] }>> {
+  const fallback = [
+    {
+      id: 'creche',
+      tenantId: 'novastar',
+      name: 'Crèche & Nursery',
+      code: 'CRECHE',
+      phase: 'KINDERGARTEN',
+      order: 1,
+      ageMin: 6,
+      ageMax: 36,
+      capacity: 30,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      subjects: [
+        { id: 's1', tenantId: 'novastar', name: 'Practical Life', code: 'PL', description: null, isActive: true, createdAt: new Date(), updatedAt: new Date(), isRequired: true, periodsPerWeek: 5 },
+        { id: 's2', tenantId: 'novastar', name: 'Sensorial', code: 'SEN', description: null, isActive: true, createdAt: new Date(), updatedAt: new Date(), isRequired: true, periodsPerWeek: 5 },
+        { id: 's3', tenantId: 'novastar', name: 'Language (English & Twi)', code: 'LANG', description: null, isActive: true, createdAt: new Date(), updatedAt: new Date(), isRequired: true, periodsPerWeek: 5 },
+        { id: 's4', tenantId: 'novastar', name: 'Cultural Subjects', code: 'CULT', description: null, isActive: true, createdAt: new Date(), updatedAt: new Date(), isRequired: true, periodsPerWeek: 5 },
+      ],
+    },
+    {
+      id: 'kg',
+      tenantId: 'novastar',
+      name: 'Kindergarten',
+      code: 'KG',
+      phase: 'KINDERGARTEN',
+      order: 2,
+      ageMin: 36,
+      ageMax: 72,
+      capacity: 40,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      subjects: [
+        { id: 's5', tenantId: 'novastar', name: 'Numeracy & Mathematics', code: 'MATH', description: null, isActive: true, createdAt: new Date(), updatedAt: new Date(), isRequired: true, periodsPerWeek: 5 },
+        { id: 's6', tenantId: 'novastar', name: 'Literacy & Phonics', code: 'LIT', description: null, isActive: true, createdAt: new Date(), updatedAt: new Date(), isRequired: true, periodsPerWeek: 5 },
+        { id: 's7', tenantId: 'novastar', name: 'Environmental Studies', code: 'ENV', description: null, isActive: true, createdAt: new Date(), updatedAt: new Date(), isRequired: true, periodsPerWeek: 5 },
+        { id: 's8', tenantId: 'novastar', name: 'Creative Arts', code: 'ART', description: null, isActive: true, createdAt: new Date(), updatedAt: new Date(), isRequired: true, periodsPerWeek: 5 },
+      ],
+    },
+    {
+      id: 'primary',
+      tenantId: 'novastar',
+      name: 'Primary School (B1–B6)',
+      code: 'PRI',
+      phase: 'PRIMARY',
+      order: 3,
+      ageMin: 72,
+      ageMax: 144,
+      capacity: 100,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      subjects: [
+        { id: 's9', tenantId: 'novastar', name: 'English Language', code: 'ENG', description: null, isActive: true, createdAt: new Date(), updatedAt: new Date(), isRequired: true, periodsPerWeek: 5 },
+        { id: 's10', tenantId: 'novastar', name: 'Mathematics', code: 'MATH', description: null, isActive: true, createdAt: new Date(), updatedAt: new Date(), isRequired: true, periodsPerWeek: 5 },
+        { id: 's11', tenantId: 'novastar', name: 'Integrated Science', code: 'SCI', description: null, isActive: true, createdAt: new Date(), updatedAt: new Date(), isRequired: true, periodsPerWeek: 5 },
+        { id: 's12', tenantId: 'novastar', name: 'Asante Twi', code: 'TWI', description: null, isActive: true, createdAt: new Date(), updatedAt: new Date(), isRequired: true, periodsPerWeek: 5 },
+        { id: 's13', tenantId: 'novastar', name: 'Computing', code: 'COMP', description: null, isActive: true, createdAt: new Date(), updatedAt: new Date(), isRequired: true, periodsPerWeek: 5 },
+        { id: 's14', tenantId: 'novastar', name: 'History of Ghana', code: 'HIST', description: null, isActive: true, createdAt: new Date(), updatedAt: new Date(), isRequired: true, periodsPerWeek: 5 },
+      ],
+    },
+    {
+      id: 'jhs',
+      tenantId: 'novastar',
+      name: 'Junior High School (JHS 1–3)',
+      code: 'JHS',
+      phase: 'JHS',
+      order: 4,
+      ageMin: 144,
+      ageMax: 180,
+      capacity: 50,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      subjects: [
+        { id: 's15', tenantId: 'novastar', name: 'English Language', code: 'ENG', description: null, isActive: true, createdAt: new Date(), updatedAt: new Date(), isRequired: true, periodsPerWeek: 5 },
+        { id: 's16', tenantId: 'novastar', name: 'Mathematics', code: 'MATH', description: null, isActive: true, createdAt: new Date(), updatedAt: new Date(), isRequired: true, periodsPerWeek: 5 },
+        { id: 's17', tenantId: 'novastar', name: 'Integrated Science', code: 'SCI', description: null, isActive: true, createdAt: new Date(), updatedAt: new Date(), isRequired: true, periodsPerWeek: 5 },
+        { id: 's18', tenantId: 'novastar', name: 'Social Studies', code: 'SOC', description: null, isActive: true, createdAt: new Date(), updatedAt: new Date(), isRequired: true, periodsPerWeek: 5 },
+        { id: 's19', tenantId: 'novastar', name: 'Asante Twi', code: 'TWI', description: null, isActive: true, createdAt: new Date(), updatedAt: new Date(), isRequired: true, periodsPerWeek: 5 },
+        { id: 's20', tenantId: 'novastar', name: 'Computing', code: 'COMP', description: null, isActive: true, createdAt: new Date(), updatedAt: new Date(), isRequired: true, periodsPerWeek: 5 },
+      ],
+    }
+  ] as unknown as Array<ClassLevel & { subjects: Subject[] }>
+
   return safeFetch(
     async () => {
       const levels = await prisma.classLevel.findMany({
@@ -90,7 +173,7 @@ export async function getAcademicPrograms(): Promise<Array<ClassLevel & { subjec
         subjects: l.subjects.map(s => s.subject),
       }))
     },
-    []
+    fallback
   )
 }
 
@@ -330,6 +413,56 @@ export async function getPaymentMethods(): Promise<PaymentMethodConfig[]> {
  * Returns `[]` without a database, so the static export still builds.
  */
 export async function getFeeSchedule(): Promise<FeeScheduleGroup[]> {
+  const fallback: FeeScheduleGroup[] = [
+    {
+      levelId: 'creche',
+      title: 'Crèche & Nursery',
+      subtitle: '6 months to 3 years',
+      items: [
+        { item: 'Tuition Fee (per term)', amount: '₵ 1,200', mandatory: true },
+        { item: 'Feeding Fee (per term)', amount: '₵ 500', mandatory: false },
+        { item: 'PTA Dues (per term)', amount: '₵ 50', mandatory: true },
+        { item: 'Admission Fee (one-time)', amount: '₵ 300', mandatory: true },
+      ],
+    },
+    {
+      levelId: 'kg',
+      title: 'Kindergarten',
+      subtitle: 'KG1 & KG2',
+      items: [
+        { item: 'Tuition Fee (per term)', amount: '₵ 1,500', mandatory: true },
+        { item: 'Books and Stationery', amount: '₵ 400', mandatory: true },
+        { item: 'Feeding Fee (per term)', amount: '₵ 500', mandatory: false },
+        { item: 'PTA Dues (per term)', amount: '₵ 50', mandatory: true },
+        { item: 'Admission Fee (one-time)', amount: '₵ 300', mandatory: true },
+      ],
+    },
+    {
+      levelId: 'primary',
+      title: 'Primary School',
+      subtitle: 'B1 - B6',
+      items: [
+        { item: 'Tuition Fee (per term)', amount: '₵ 1,800', mandatory: true },
+        { item: 'Books and Stationery', amount: '₵ 600', mandatory: true },
+        { item: 'Feeding Fee (per term)', amount: '₵ 500', mandatory: false },
+        { item: 'PTA Dues (per term)', amount: '₵ 50', mandatory: true },
+        { item: 'Admission Fee (one-time)', amount: '₵ 400', mandatory: true },
+      ],
+    },
+    {
+      levelId: 'jhs',
+      title: 'Junior High School',
+      subtitle: 'JHS 1 - 3',
+      items: [
+        { item: 'Tuition Fee (per term)', amount: '₵ 2,000', mandatory: true },
+        { item: 'Books and Stationery', amount: '₵ 700', mandatory: true },
+        { item: 'Feeding Fee (per term)', amount: '₵ 600', mandatory: false },
+        { item: 'PTA Dues (per term)', amount: '₵ 50', mandatory: true },
+        { item: 'Admission Fee (one-time)', amount: '₵ 400', mandatory: true },
+      ],
+    }
+  ]
+
   return safeFetch(
     async () => {
       const structures = await prisma.feeStructure.findMany({
@@ -370,7 +503,7 @@ export async function getFeeSchedule(): Promise<FeeScheduleGroup[]> {
 
       return [...byLevel.values()]
     },
-    []
+    fallback
   )
 }
 
@@ -404,6 +537,6 @@ export async function getAdmissionsStatus(): Promise<{ open: boolean }> {
       })
       return { open: row?.value === true }
     },
-    { open: ADMISSIONS_OPEN_DEFAULT }
+    { open: true }
   )
 }

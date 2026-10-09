@@ -31,12 +31,12 @@ export default async function AdmissionsPage() {
           `from-primary/10` every inner page carried before; `HeroBand` also owns
           the header clearance, which was re-stated per page. */}
       <HeroBand>
-        <h1 className="type-display max-w-[18ch]">Admissions</h1>
+        <h1 className="font-serif text-5xl md:text-6xl mx-auto max-w-[18ch] text-center text-primary">Admissions</h1>
         {/* Branches with the rest of the page. Left unconditional it read
             "Apply online" in the hero while the panel directly below said
             applications were not being accepted — the same page contradicting
             itself, which is worse for a parent than either message alone. */}
-        <p className="mt-6 max-w-[60ch] text-lg leading-relaxed text-muted-foreground">
+        <p className="mx-auto mt-6 max-w-[60ch] text-lg leading-relaxed text-foreground/85 text-center">
           {open ? (
             <>
               We&apos;d love to welcome your child to our learning community. Apply online
@@ -51,10 +51,10 @@ export default async function AdmissionsPage() {
         </p>
       </HeroBand>
 
-      {/* Placeholder photography — see `lib/placeholder-images.ts`. */}
-      <SectionShell tone="canvas">
-        <Photo id="learning" ratio="aspect-[3/2]" className="mx-auto max-w-3xl" />
-      </SectionShell>
+      {/* Full Bleed Photography */}
+      <section className="w-full">
+        <Photo id="learning" ratio="aspect-[21/9] md:aspect-[3/1]" className="w-full rounded-none" />
+      </section>
 
       {open ? (
         <>
@@ -87,11 +87,11 @@ export default async function AdmissionsPage() {
       ) : (
         <SectionShell tone="band">
           <div className="mx-auto max-w-2xl text-center">
-            <Card className={CARD_PAD}>
+            <Card tone="flat" className={cn(CARD_PAD, 'bg-surface-container-low border-transparent')}>
               <SectionTitle className="mb-4 text-primary">
                 Admissions currently closed
               </SectionTitle>
-              <p className="mb-6 max-w-xl mx-auto text-muted-foreground">
+              <p className="mb-6 max-w-xl mx-auto text-foreground/85">
                 We are not accepting applications at this time. The next intake window will
                 be announced here and on our social channels.
               </p>
@@ -137,12 +137,12 @@ function ProcessStep({ number, title, desc }: { number: string; title: string; d
       would have rendered as a square with no error anywhere. `--radius-sm` is
       the icon-tile radius, and this is an icon tile.
     */
-    <Card as="li" className={cn(CARD_PAD, 'flex h-full flex-col items-center text-center')}>
-      <span className="mb-3 flex h-10 w-10 items-center justify-center rounded-sm bg-primary font-bold text-primary-foreground">
+    <Card as="li" tone="flat" className={cn(CARD_PAD, 'flex h-full flex-col items-center text-center bg-surface-container-low border-transparent transition-all duration-700 hover:-translate-y-1 hover:shadow-floating')}>
+      <span className="mb-3 flex h-10 w-10 items-center justify-center rounded-sm bg-primary/10 font-bold text-primary">
         {number}
       </span>
-      <h3 className="type-title text-primary">{title}</h3>
-      <p className="mt-2 text-sm text-muted-foreground">{desc}</p>
+      <h3 className="font-serif text-xl text-primary">{title}</h3>
+      <p className="mt-2 text-sm text-foreground/70">{desc}</p>
     </Card>
   )
 }

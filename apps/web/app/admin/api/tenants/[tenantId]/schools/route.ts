@@ -1,6 +1,6 @@
 import type { NextRequest } from 'next/server'
 import { requireCapability, requireTenantScope } from '@/lib/admin-context'
-import { RequestError, toErrorResponse } from '@/lib/errors'
+import { toErrorResponse } from '@/lib/errors'
 import { json, mutationContext } from '@/lib/http'
 import { prisma } from '@/lib/prisma'
 import { createSchoolInTenant } from '@/lib/queries'
@@ -12,7 +12,7 @@ export async function POST(
   try {
     const context = await requireCapability('tenant:school:create')
     const { tenantId } = await params
-    const tenant = await requireTenantScope(tenantId)
+    await requireTenantScope(tenantId)
 
     const body = await request.json().catch(() => null)
     if (!body || typeof body !== 'object' || Array.isArray(body)) {

@@ -1,0 +1,117 @@
+# syntax=docker/dockerfile:1.7
+
+# ============================================================================
+# Novastar Montessori - merged web image (ADR-024)
+#
+# Single Next.js app serving:
+#   - public site at / (static export via output: 'export')
+#   - portal at /portal/* (standalone server)
+#   - admin console at /admin/* (standalone server)
+#
+# The merged app apps/web uses a single next.config.ts with:
+#   - root pages (public) → static export
+#   - app/portal/* → standalone server (output: 'standalone')
+#   - app/admin/*  → standalone server (output: 'standalone')
+#
+# This image builds both the static public site and the portal/admin server.
+# ============================================================================
+
+ARG NODE_VERSION=22
+ARG BUN_VERSION=1.4.0
+
+# ----------------------------------------------------------------------------
+FROM node:${NODE_VERSION}-alpine AS base
+
+ENV NEXT_TELEMETRY_DISABLED=1 \
+    NPM_CONFIG_UPDATE_NOTIFIER=false \
+    CI=true
+
+WORKDIR /app
+
+# ----------------------------------------------------------------------------
+# deps: install toolchain + workspace dependencies from manifests only
+# ----------------------------------------------------------------------------
+FROM base AS deps
+
+ARG BUN_VERSION
+
+RUN apk add --no-cache libc6-compat python3 make g++ \
+    && npm install --global bun@${BUN_VERSION}
+
+COPY package.json bun.lock turbo.json tsconfig.base.json biome.json ./
+
+# --- workspace manifests (keep in sync with package.json "workspaces") ---
+COPY apps/web/package.json          ./apps/web/
+COPY packages/auth/package.json       ./packages/auth/
+COPY packages/database/package.json   ./packages/database/
+COPY packages/domain/package.json     ./packages/domain/
+COPY packages/ghana-education/package.json ./packages/ghana-education/
+COPY packages/notifications/package.json ./packages/notifications/
+COPY packages/payments/package.json   ./packages/payments/
+COPY packages/shared-types/package.json ./packages/shared-types/
+COPY packages/shared-ui/package.json  ./packages/shared-ui/
+COPY packages/shared-utils/package.json ./packages/shared-utils/
+COPY packages/sync-engine/package.json ./packages/sync-engine/
+COPY packages/testing/package.json    ./packages/testing/
+COPY tools/db-mirror/package.json     ./tools/db-mirror/
+COPY tools/migrate/package.json       ./tools/migrate/
+COPY tools/seed/package.json          ./tools/seed/
+COPY tools/sync-cli/package.json      ./tools/sync-cli/
+COPY tools/tenant-cli/package.json    ./tools/tenant-cli/
+# --- end workspace manifests ---
+
+RUN bun install --frozen-lockfile
+
+# ----------------------------------------------------------------------------
+# builder: source, prisma client, next build
+# ----------------------------------------------------------------------------
+FROM deps AS builder
+
+ARG NEXT_PUBLIC_ORIGIN
+ARG NEXT_PUBLIC_DOMAIN
+
+ENV NEXT_PUBLIC_ORIGIN=$NEXT_PUBLIC_ORIGIN \
+    NEXT_PUBLIC_DOMAIN=$NEXT_PUBLIC_DOMAIN \
+    DATABASE_URL=$DATABASE_URL \
+    NEXTAUTH_SECRET=$NEXTAUTH_SECRET \
+    NEXTAUTH_URL=$NEXTAUTH_URL
+
+COPY . .
+
+RUN bun run --cwd packages/database db:generate
+
+# Build the merged web app (public + portal + admin)
+RUN bun run build --filter=web
+
+# ----------------------------------------------------------------------------
+# runner: standalone output for portal/admin + static export for public
+# ----------------------------------------------------------------------------
+FROM base AS runner
+
+ENV NODE_ENV=production \
+    PORT=3000 \
+    HOSTNAME=0.0.0.0
+
+RUN addgroup --gid 1001 --system nodejs \
+    && adduser --uid 1001 --system nextjs
+
+WORKDIR /app
+
+# Copy standalone server for portal/admin
+COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/standalone ./
+
+# Copy static assets for public site (exported to /out)
+COPY --from=builder --chown=nextjs:nodejs /app/apps/web/out ./out
+
+# Next does NOT include static assets in standalone; both must be copied
+COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/static ./apps/web/.next/static
+COPY --from=builder --chown=nextjs:nodejs /app/apps/web/public ./apps/web/public
+
+USER nextjs
+
+EXPOSE 3000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+  CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||3000)+'/login',{redirect:'manual'}).then(r=>process.exit(r.status<500?0:1)).catch(()=>process.exit(1))"
+
+CMD ["node", "apps/web/server.js"]

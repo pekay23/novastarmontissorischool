@@ -7,25 +7,6 @@ import { authOptions } from '@/lib/auth'
 import { reachableNavigation } from '@/lib/portal-sections'
 import { PortalShell } from './PortalShell'
 
-const navigation = [
-  { name: 'Dashboard', href: '/portal/dashboard', icon: null },
-  { name: 'Students', href: '/portal/students', icon: null },
-  { name: 'Teachers', href: '/portal/teachers', icon: null },
-  { name: 'Enrollment', href: '/portal/enrollment', icon: null },
-  { name: 'Attendance', href: '/portal/attendance', icon: null },
-  { name: 'Grades', href: '/portal/grades', icon: null },
-  { name: 'Timetable', href: '/portal/timetable', icon: null },
-  { name: 'Syllabus', href: '/portal/syllabus', icon: null },
-  { name: 'Promotions', href: '/portal/promotions', icon: null },
-  { name: 'Reports', href: '/portal/reports', icon: null },
-  { name: 'Calendar', href: '/portal/calendar', icon: null },
-  { name: 'Announcements', href: '/portal/announcements', icon: null },
-  { name: 'Fees & Payments', href: '/portal/fees', icon: null },
-  { name: 'Library', href: '/portal/library', icon: null },
-  { name: 'Inventory', href: '/portal/inventory', icon: null },
-  { name: 'Settings', href: '/portal/settings', icon: null },
-] as const
-
 // Icons for the navigation — imported here to avoid client component issues
 import {
   LayoutDashboard, Users, GraduationCap, BookOpen,
@@ -60,7 +41,7 @@ export default async function PortalLayout({
 }) {
   const session = await getServerSession(authOptions)
 
-  if (!session?.user) {
+if (!session?.user) {
     // The proxy will redirect to /portal/login, but render a minimal shell
     // to avoid a flash. The PortalShell will show loading state.
     return (
@@ -69,8 +50,9 @@ export default async function PortalLayout({
         visibleNav={[]}
         userRole="staff"
         schoolName="School Portal"
-        children={children}
-      />
+      >
+        {children}
+      </PortalShell>
     )
   }
 
@@ -90,7 +72,8 @@ export default async function PortalLayout({
       schoolName={schoolName}
       userName={userName}
       userEmail={userEmail}
-      children={children}
-    />
+    >
+      {children}
+    </PortalShell>
   )
 }

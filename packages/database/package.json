@@ -20,7 +20,8 @@
     "@prisma/adapter-pg": "^7.10.0",
     "@prisma/client": "^7.10.0",
     "dotenv": "^16.4.5",
-    "pg": "8.18.0"
+    "pg": "8.18.0",
+    "server-only": "^0.0.1"
   },
   "devDependencies": {
     "@types/bun": "^1.4.2",

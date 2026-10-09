@@ -30,7 +30,7 @@ export function SchoolList({
   const [editId, setEditId] = useState<string | null>(null)
   const [editInitial, setEditInitial] = useState<Partial<SchoolSummary> | null>(null)
 
-  const current = editId ? schools.find((s) => s.id === editId) ?? null : null
+  const _current = editId ? schools.find((s) => s.id === editId) ?? null : null
 
   if (schools.length === 0 && !showForm) {
     return (
