@@ -112,7 +112,7 @@ export function HorizontalScroll({
         tabIndex={0}
         onKeyDown={handleKeyDown}
         className={cn(
-          'overflow-x-auto pb-4',
+          'overflow-x-auto overflow-x-clip pb-4',
           'scroll-smooth',
           'touch-pan-x',
           '-ms-overflow-style-none',
@@ -203,34 +203,33 @@ export function ScrollableCardGrid({
   padding = 'px-4',
 }: ScrollableCardGridProps) {
   return (
-    <div className={cn('overflow-x-hidden', className)}>
-      <HorizontalScroll
-        containerClassName={cn(
-          'flex',
-          gap,
-          padding,
-          'snap-x snap-mandatory',
-          'pt-4 pb-8',
-        )}
-        showButtons={true}
-        showShadows={true}
-      >
-        <div className="flex" role="list">
-          {React.Children.map(children, (child): React.ReactNode => {
-            if (!React.isValidElement<Record<string, unknown>>(child)) return child
-            const childProps = child.props as Record<string, unknown>
-            const childClassName = typeof childProps.className === 'string' ? childProps.className : ''
-            return React.cloneElement(child, {
-              className: cn(
-                'snap-center shrink-0',
-                minCardWidth,
-                childClassName,
-              ),
-              role: 'listitem',
-            })
-          })}
-        </div>
-      </HorizontalScroll>
-    </div>
+    <HorizontalScroll
+      className={className}
+      containerClassName={cn(
+        'flex',
+        gap,
+        padding,
+        'snap-x snap-mandatory',
+        'pt-4 pb-8',
+      )}
+      showButtons={true}
+      showShadows={true}
+    >
+      <div className="flex" role="list">
+        {React.Children.map(children, (child): React.ReactNode => {
+          if (!React.isValidElement<Record<string, unknown>>(child)) return child
+          const childProps = child.props as Record<string, unknown>
+          const childClassName = typeof childProps.className === 'string' ? childProps.className : ''
+          return React.cloneElement(child, {
+            className: cn(
+              'snap-center shrink-0',
+              minCardWidth,
+              childClassName,
+            ),
+            role: 'listitem',
+          })
+        })}
+      </div>
+    </HorizontalScroll>
   )
 }

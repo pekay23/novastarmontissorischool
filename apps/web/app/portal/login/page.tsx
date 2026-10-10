@@ -7,6 +7,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Button, Card, CardContent, CardHeader, CardTitle, CardDescription, Input } from '@novastar/shared-ui'
 import { ssoProviderLabel, ssoRefusalMessage } from '@/lib/auth/sso'
+import { signInLandingPath } from '@/lib/auth/signin-landing'
 
 interface SecretFieldProps {
   id: string
@@ -181,7 +182,7 @@ function LoginContent() {
           setError('Invalid credentials. Check your email and password.')
         }
       } else {
-        router.push(result?.url || callbackUrl)
+        router.push(signInLandingPath(result?.url ?? undefined, callbackUrl))
       }
     } catch (_err) {
       setError('Login failed. Please try again.')
@@ -196,7 +197,7 @@ function LoginContent() {
 
     try {
       // Step 1: Get authentication options
-      const res = await fetch('/api/auth/passkey/login-options', {
+      const res = await fetch('/portal/api/auth/passkey/login-options', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email }),
@@ -243,7 +244,7 @@ function LoginContent() {
       }
 
       // Step 2: Verify and get bridge token
-      const verifyRes = await fetch('/api/auth/passkey/login-verify', {
+      const verifyRes = await fetch('/portal/api/auth/passkey/login-verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ credential: authResponse }),
@@ -265,7 +266,7 @@ function LoginContent() {
       if (result?.error) {
         setError('Passkey login failed. Please try again.')
       } else {
-        router.push(result?.url || callbackUrl)
+        router.push(signInLandingPath(result?.url ?? undefined, callbackUrl))
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Passkey login failed.')

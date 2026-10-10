@@ -86,7 +86,7 @@ export default function FeatureFlagsPage() {
   const fetchConfig = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await fetch('/api/system/config')
+      const res = await fetch('/portal/api/system/config')
       if (!res.ok) {
         if (res.status === 403) {
           toast.error({ title: 'Access denied', description: 'You must be Head of School to view platform settings.' })
@@ -167,7 +167,7 @@ export default function FeatureFlagsPage() {
       // overridden, and omitting it keeps the request valid for any server that
       // treats the precondition as optional.
       const precondition = current ? { expectedVersion: current.version } : {}
-      const res = await fetch(`/api/system/config/${key}`, {
+      const res = await fetch(`/portal/api/system/config/${key}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...body, ...precondition }),

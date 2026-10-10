@@ -1,75 +1,103 @@
-// Portal pages require auth + live DB data — never prerender at build
-export const dynamic = 'force-dynamic'
-
-import '../../portal.css'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
+import { prisma } from '@/lib/prisma'
+import { SCHOOL_INFO } from '@/lib/metadata'
 import { reachableNavigation } from '@/lib/portal-sections'
 import { PortalShell } from './PortalShell'
+import type { ReactNode } from 'react'
 
-// Icons for the navigation — imported here to avoid client component issues
-import {
-  LayoutDashboard, Users, GraduationCap, BookOpen,
-  Calendar, Clock, FileText, Settings, School, LibraryBig, Package,
-  CalendarDays, NotebookText, TrendingUp, Shield, Bell,
-  type LucideIcon,
-} from 'lucide-react'
-
-const navigationWithIcons: readonly { name: string; href: string; icon: LucideIcon }[] = [
-  { name: 'Dashboard', href: '/portal/dashboard', icon: LayoutDashboard },
-  { name: 'Students', href: '/portal/students', icon: Users },
-  { name: 'Teachers', href: '/portal/teachers', icon: GraduationCap },
-  { name: 'Enrollment', href: '/portal/enrollment', icon: School },
-  { name: 'Attendance', href: '/portal/attendance', icon: Clock },
-  { name: 'Grades', href: '/portal/grades', icon: BookOpen },
-  { name: 'Timetable', href: '/portal/timetable', icon: CalendarDays },
-  { name: 'Syllabus', href: '/portal/syllabus', icon: NotebookText },
-  { name: 'Promotions', href: '/portal/promotions', icon: TrendingUp },
-  { name: 'Reports', href: '/portal/reports', icon: FileText },
-  { name: 'Calendar', href: '/portal/calendar', icon: Calendar },
-  { name: 'Announcements', href: '/portal/announcements', icon: Bell },
-  { name: 'Fees & Payments', href: '/portal/fees', icon: Shield },
-  { name: 'Library', href: '/portal/library', icon: LibraryBig },
-  { name: 'Inventory', href: '/portal/inventory', icon: Package },
-  { name: 'Settings', href: '/portal/settings', icon: Settings },
+/**
+ * The portal's authenticated shell.
+ *
+ * The navigation list is plain data — `{ name, href }` and nothing
+ * else. `PortalShell` is a client component, and React serializes
+ * only plain values across the server-to-client boundary: an icon
+ * component (a `forwardRef` object carrying `$$typeof` and `render`)
+ * passed as a prop is rejected at runtime with "Only plain objects
+ * can be passed to Client Components from Server Components". The
+ * icons are therefore resolved inside `PortalShell`, keyed by the
+ * section name, which stays the join key between this list and the
+ * shell that renders it.
+ *
+ * Order mirrors the section order in the database seed and in
+ * `tools/seed/index.ts` (`SECTION_ORDER`): Dashboard, Students,
+ * Attendance, Grades, Fees, Payments, Classes, Library, Calendar,
+ * Announcements, Teachers, Timetable, Reports, Settings, Admissions,
+ * Transport.
+ *
+ * The sidebar shows only the sections the role may open
+ * (`reachableNavigation`), and it mirrors the proxy's own
+ * `decidePortalPath(role, pathname)` gate, so a section the proxy
+ * would bounce is never offered as a link in the first place.
+ */
+const navigation = [
+  { name: 'Dashboard', href: '/portal/dashboard' },
+  { name: 'Students', href: '/portal/students' },
+  { name: 'Attendance', href: '/portal/attendance' },
+  { name: 'Grades', href: '/portal/grades' },
+  { name: 'Fees', href: '/portal/fees' },
+  { name: 'Payments', href: '/portal/payments' },
+  { name: 'Classes', href: '/portal/classes' },
+  { name: 'Library', href: '/portal/library' },
+  { name: 'Calendar', href: '/portal/calendar' },
+  { name: 'Announcements', href: '/portal/announcements' },
+  { name: 'Teachers', href: '/portal/teachers' },
+  { name: 'Timetable', href: '/portal/timetable' },
+  { name: 'Reports', href: '/portal/reports' },
+  { name: 'Settings', href: '/portal/settings' },
+  { name: 'Admissions', href: '/portal/settings/admissions' },
+  { name: 'Transport', href: '/portal/settings/transport' },
 ]
 
-export default async function PortalLayout({
-  children,
-}: {
-  children: React.ReactNode
-}) {
+export default async function PortalLayout({ children }: { children: ReactNode }) {
   const session = await getServerSession(authOptions)
+  const schoolName = SCHOOL_INFO.name
 
-if (!session?.user) {
-    // The proxy will redirect to /portal/login, but render a minimal shell
-    // to avoid a flash. The PortalShell will show loading state.
+  let userRole: string | null = null
+  let userName: string | null = null
+  let userEmail: string | null = null
+  let schoolFromDb = null
+
+  if (session?.user && session.user.tenantId) {
+    userRole = session.user.role ?? null
+    userName = session.user.name ?? null
+    userEmail = session.user.email ?? null
+
+    try {
+      schoolFromDb = await prisma.school.findFirst({
+        where: { tenantId: session.user.tenantId },
+        select: { name: true },
+      })
+    } catch (error) {
+      console.error('Failed to fetch school name:', error)
+    }
+  }
+
+  const resolvedSchoolName = schoolFromDb?.name || schoolName
+  const visibleNav = reachableNavigation(userRole, navigation)
+
+  // No <ToastProvider> here. The portal's provider tree is
+  // app/portal/layout.tsx (the `Providers` mount), which wraps
+  // this layout's subtree.
+  if (!session?.user) {
     return (
       <PortalShell
-        navigation={navigationWithIcons}
+        navigation={navigation}
         visibleNav={[]}
-        userRole="staff"
-        schoolName="School Portal"
+        userRole=""
+        schoolName={resolvedSchoolName}
       >
         {children}
       </PortalShell>
     )
   }
 
-  const userRole = (session.user as { role?: string })?.role || 'staff'
-  const schoolName = (session.user as { schoolName?: string })?.schoolName ||
-    session.user?.name?.split(' ')[0] || 'School Portal'
-  const userName = session.user?.name ?? null
-  const userEmail = session.user?.email ?? null
-
-  const visibleNav = reachableNavigation(userRole, navigationWithIcons)
-
   return (
     <PortalShell
-      navigation={navigationWithIcons}
+      navigation={navigation}
       visibleNav={visibleNav}
-      userRole={userRole}
-      schoolName={schoolName}
+      userRole={userRole || ''}
+      schoolName={resolvedSchoolName}
       userName={userName}
       userEmail={userEmail}
     >

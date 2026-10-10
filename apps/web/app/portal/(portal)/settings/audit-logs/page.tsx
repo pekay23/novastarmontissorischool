@@ -145,7 +145,7 @@ export default async function AuditLogsPage({
           </p>
         </div>
         <Button asChild variant="outline" size="sm">
-          <a href="/settings/audit-logs"><RefreshCw className="h-4 w-4 mr-2" />Refresh</a>
+          <a href="/portal/settings/audit-logs"><RefreshCw className="h-4 w-4 mr-2" />Refresh</a>
         </Button>
       </div>
 
@@ -175,7 +175,7 @@ export default async function AuditLogsPage({
         </Button>
         {params.action && (
           <Button asChild variant="ghost" size="sm">
-            <a href="/settings/audit-logs">
+            <a href="/portal/settings/audit-logs">
               <Filter className="h-4 w-4 mr-2" />Clear
             </a>
           </Button>

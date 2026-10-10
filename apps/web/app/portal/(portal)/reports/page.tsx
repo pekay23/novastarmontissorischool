@@ -169,8 +169,8 @@ export default function ReportsPage() {
     setLoading(true)
     try {
       const [templatesRes, studentsRes] = await Promise.all([
-        fetch('/api/report-templates'),
-        fetch('/api/students'),
+        fetch('/portal/api/report-templates'),
+        fetch('/portal/api/students'),
       ])
 
       if (templatesRes.ok) {
@@ -211,7 +211,7 @@ export default function ReportsPage() {
 
     setLoading(true)
     try {
-      const res = await fetch(`/api/reports/academic/${selectedStudent}`)
+      const res = await fetch(`/portal/api/reports/academic/${selectedStudent}`)
       if (res.ok) {
         const data: ReportData = await res.json()
         setReportData(data)

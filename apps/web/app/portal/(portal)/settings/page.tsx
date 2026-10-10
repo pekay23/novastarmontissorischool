@@ -113,7 +113,7 @@ export default function SettingsPage() {
           </CardHeader>
           <CardContent>
             <Button asChild size="sm" variant="outline">
-              <a href="/settings/entities">Manage Entity Definitions</a>
+              <a href="/portal/settings/entities">Manage Entity Definitions</a>
             </Button>
           </CardContent>
         </Card>
@@ -156,7 +156,7 @@ export default function SettingsPage() {
                 <CardContent>
                   <nav className="flex flex-col gap-2">
                     <Button asChild variant="ghost" className="justify-start">
-                      <Link href="/settings/admissions">Admissions Status</Link>
+                      <Link href="/portal/settings/admissions">Admissions Status</Link>
                     </Button>
                   </nav>
                 </CardContent>
@@ -172,13 +172,13 @@ export default function SettingsPage() {
                 <CardContent>
                   <nav className="flex flex-col gap-2">
                     <Button asChild variant="ghost" className="justify-start">
-                      <Link href="/settings/platform/feature-flags">Feature Flags</Link>
+                      <Link href="/portal/settings/platform/feature-flags">Feature Flags</Link>
                     </Button>
                     <Button asChild variant="ghost" className="justify-start">
-                      <Link href="/settings/platform/health">System Health</Link>
+                      <Link href="/portal/settings/platform/health">System Health</Link>
                     </Button>
                     <Button asChild variant="ghost" className="justify-start">
-                      <Link href="/settings/platform/errors">Error Logs</Link>
+                      <Link href="/portal/settings/platform/errors">Error Logs</Link>
                     </Button>
                   </nav>
                 </CardContent>

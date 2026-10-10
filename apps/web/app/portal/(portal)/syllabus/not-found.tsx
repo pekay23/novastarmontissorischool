@@ -8,7 +8,7 @@ export default function SyllabusNotFound() {
       label="404 · Syllabus"
       description="The syllabus page you tried to access does not exist."
       action={
-        <Link href="/dashboard" className={notFoundActionClasses}>
+        <Link href="/portal/dashboard" className={notFoundActionClasses}>
           Back to Dashboard
         </Link>
       }

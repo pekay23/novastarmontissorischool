@@ -1,0 +1,113 @@
+@import "tailwindcss";
+@config "../tailwind.config.mts";
+@source "../../../packages/shared-ui/src";
+
+/*
+ * `Skeleton` in @novastar/shared-ui sweeps its highlight with
+ * `animate-shimmer`. Tailwind only emits an `animate-<name>` utility when a
+ * matching `--animate-<name>` token is registered here, so without this block
+ * the class name reaches the DOM and Tailwind drops the rule silently,
+ * leaving a static off-screen gradient instead of a pulse.
+ *
+ * Declared per app because `@theme` is scoped to the stylesheet that declares
+ * it; a token in one app's globals.css is invisible to the other two.
+ */
+@theme {
+  --animate-shimmer: shimmer 2s linear infinite;
+}
+
+/*
+ * Starts at -100% to match the overlay's own `-translate-x-full` offset, so the
+ * loop has no visible jump where 100% wraps back to 0%.
+ */
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+/*
+ * Dark mode is class-driven: `<html class="dark">` is set by the ThemeProvider
+ * from @novastar/shared-ui.
+ */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  /*
+   * Design tokens are raw HSL triplets consumed via `hsl(var(--token))` from
+   * tailwind.config.ts. Keep them in sync with @novastar/shared-ui, which reads
+   * the same variable names.
+   */
+  :root {
+    /* Platform chrome. Deliberately not the school's brand palette: this app is
+       operated by the SaaS owner, not by a head teacher, and reusing the tenant
+       brand here would make it ambiguous which login you are typing into. */
+    --primary: 224 71% 20%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 215 25% 40%;
+    --secondary-foreground: 0 0% 100%;
+    --accent: 224 71% 92%;
+    --accent-foreground: 224 71% 20%;
+
+    /* Surfaces */
+    --background: 210 40% 98%;
+    --foreground: 222 47% 12%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 12%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 12%;
+
+    /* Feedback */
+    --destructive: 0 72% 45%;
+    --destructive-foreground: 0 0% 100%;
+
+    /* Structure & forms */
+    --border: 220 31% 91%;
+    --input: 220 31% 91%;
+    --ring: 224 71% 20%;
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 20% 40%;
+
+    --radius: 0.5rem;
+
+    --font-sans: ui-sans-serif, system-ui, sans-serif;
+    --font-heading: ui-serif, Georgia, serif;
+    --font-mono: ui-monospace, Menlo, Monaco, monospace;
+  }
+
+  .dark {
+    --background: 224 71% 6%;
+    --foreground: 0 0% 93%;
+    --card: 224 71% 9%;
+    --card-foreground: 0 0% 93%;
+    --popover: 224 71% 9%;
+    --popover-foreground: 0 0% 93%;
+    --primary: 215 90% 70%;
+    --primary-foreground: 224 71% 10%;
+    --accent: 224 40% 22%;
+    --accent-foreground: 0 0% 93%;
+    --border: 224 40% 20%;
+    --input: 224 40% 20%;
+    --muted: 222 47% 14%;
+    --muted-foreground: 215 20% 70%;
+    --ring: 215 90% 70%;
+  }
+
+  /*
+   * Tailwind v4 preflight defaults border-color to currentColor (v3 used
+   * gray-200), so bare `border` utilities would otherwise render in the text
+   * colour.
+   */
+  *,
+  ::before,
+  ::after {
+    border-color: hsl(var(--border));
+  }
+
+  body {
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+    font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}

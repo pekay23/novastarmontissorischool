@@ -36,7 +36,7 @@ export default function StudentsPage() {
     try {
       const params = new URLSearchParams()
       if (search) params.set('search', search)
-      const res = await fetch(`/api/students?${params}`)
+      const res = await fetch(`/portal/api/students?${params}`)
       if (res.ok) {
         const data = await res.json()
         setStudents(data.data || [])
@@ -79,7 +79,7 @@ export default function StudentsPage() {
     if (!ok) return
 
     try {
-      const res = await fetch(`/api/students/${student.id}`, { method: 'DELETE' })
+      const res = await fetch(`/portal/api/students/${student.id}`, { method: 'DELETE' })
       if (res.ok) {
         toast.success({ title: 'Success', description: 'Student deleted' })
         fetchStudents()

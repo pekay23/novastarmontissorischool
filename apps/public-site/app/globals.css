@@ -1,0 +1,452 @@
+@import "tailwindcss";
+@source "../../../packages/shared-ui/src";
+
+/*
+ * Design tokens — "Purple, Green, Sky, Gold".
+ *
+ * Namespace: Tailwind v4 requires `--color-*` for utilities like `bg-primary`.
+ * This file is the ONLY place tokens are defined. `tailwind.config.mts` in this
+ * workspace is dead code: Tailwind v4 does not auto-load a JS config, and
+ * `app/globals.css` deliberately has no `@config` directive. Adding a token
+ * there generates nothing.
+ *
+ * ## Color palette extracted from logos
+ *
+ * - Light purple: #d903ec (accent, gradients)
+ * - Dark purple: #6a019f (primary action)
+ * - Darker purple: #5a097c (primary-dark, hover states)
+ * - Green: #7aa633 (success, positive actions)
+ * - Yellow: #f8bf00 (accent warm fills)
+ * - Sky blue: #54b6ae (secondary/cool note)
+ * - White: #fafafa (canvas/surfaces)
+ *
+ * All colors maintained for WCAG AA contrast.
+ * */
+@theme {
+  /* Consumed by `Skeleton` in @novastar/shared-ui. Declared per app because
+     `@theme` is scoped to the stylesheet that declares it. No public-site
+     component imports Skeleton, so nothing here depends on it. */
+  --animate-shimmer: shimmer 2s linear infinite;
+
+  /* ---- Neutrals: warm stone ----------------------------------------
+     The page canvas. 17.38:1 against --color-foreground. */
+  --color-background: #fafafa;
+  /* Raised surface: card fills and band backgrounds. 16.40:1 against ink. */
+  --color-surface: #f5f3ef;
+  --color-surface-container-lowest: #ffffff; /* 18.50:1 — the card white */
+  --color-surface-container-low:    #f6f4f0;
+  --color-surface-container:        #f3f0eb;
+  --color-surface-container-high:   #edeae3;
+  --color-surface-container-highest:#e5e1da;
+  --color-muted:      #f3f0eb;
+  /* Secondary text. 7.02:1 on the canvas, 6.42:1 on --color-surface, and
+     5.02:1 on --color-surface-container-highest — the worst surface it lands
+     on, and still clear. */
+  --color-muted-foreground: #5c574f;
+  --color-foreground:       #1c1a17;
+
+  /* Hairline. 1.44:1 on the canvas: visible as a rule, still decorative.
+     WCAG 1.4.11 governs UI component *boundaries*, not dividers, so this is
+     intentionally under 3:1. Form controls use --color-input. */
+  --color-border: #d6d0c5;
+  /* Form control boundary: 3.57:1, clears the 3:1 that 1.4.11 requires. */
+  --color-input:  #8a837a;
+  /* Focus ring: 7.02:1 against the canvas. */
+  --color-ring:   #8f3a19;
+
+  /* ---- Brand: Purple, as an action ---------------------------------
+     `--color-primary` is DARKER than `--color-primary-dark` (#6a019f vs
+     #5a097c). That reads backwards, but every heading resolves to it, so this
+     is the token that must hold the design's anchor purple. Do not "fix"
+     the lightness ordering without changing that base rule. */
+  --color-primary:       #6a019f;
+  --color-primary-dark:  #5a097c;
+  --color-primary-hover: #540a88;
+  --color-primary-foreground: #ffffff; /* 13.66:1 on --color-primary */
+  /* A lighter wash of the purple than the band it sits on, so a chip on a
+     purple band reads as raised rather than recessed. 12.38:1 with white text. */
+  --color-primary-container: #6b1d2e;
+
+  /* ---- Accents: gold, green, light purple ---------------------------
+     These are visual accents. Text colors chosen for proper contrast.
+  */
+  /* Gold/yellow: 4.56:1 on canvas, 6.26:1 on primary-dark. Use for highlights. */
+  --color-accent-warm:       #f8bf00;
+  --color-accent-warm-dark:  #d49a00;
+  --color-accent-warm-light: #fff9e6;
+
+  /* Light purple: use as accent fill. */
+  --color-accent-light: #d903ec;
+
+  /* Green: 6.42:1 on canvas, 7.52:1 with white text. Use for success/positive. */
+  --color-success:     #7aa633;
+  --color-success-foreground: #ffffff;
+
+  /* Sky blue: the one cool note. Carries data, tables and administrative detail.
+     Never a CTA. 6.98:1 on the canvas, 7.49:1 with white text. */
+  --color-secondary:           #54b6ae;
+  --color-secondary-foreground:#ffffff;
+
+  /* Hero band and quiet badge fills. Replaces the maroon-tinted
+     --color-primary-soft, which was the single largest source of the pink the
+     owner asked to remove. 12.38:1 against --color-primary. */
+  --color-tint-warm: #f8f3ec;
+
+  /* ---- Tokens @novastar/shared-ui components reference -----------------
+     Tailwind v4 SILENTLY DROPS a utility whose token is absent — no build
+     error, the class simply does not exist. */
+  --color-card:            #ffffff;
+  --color-card-foreground: #1c1a17;
+  --color-popover:            #ffffff;
+  --color-popover-foreground: #1c1a17;
+  --color-accent:           #efebe4;
+  --color-accent-foreground:#1c1a17;
+  --color-destructive:           #b3261e; /* 6.54:1 with white text */
+  --color-destructive-foreground: #ffffff;
+  /* Validation text. --color-destructive is a background fill, which does not
+     clear 1.4.3 at 14px, and the message is the only non-colour cue that a
+     field is invalid. */
+  --color-error-text: #a82018;
+
+  /* Legacy aliases. Three call sites read `tertiary-container` for the italic
+     headline accent and the eyebrow rule; the value is now the dark terracotta
+     so those sites clear 4.5:1 for text. Kept as aliases rather than renamed in
+     place so the rename is one mechanical pass and not a hunt. */
+  --color-tertiary:           #581700;
+  --color-tertiary-container: #8f3a19;
+  --color-tertiary-foreground:#ffffff;
+
+  /* Icon-tile fills. Each carries a saturated foreground that clears 4.5:1 on
+     it. `--color-primary-fixed` was #f2e3e5, a pink with roughly C0.02 chroma,
+     and it was the last live pink surface on the site: `IconTile`'s primary tone
+     rendered it behind every maroon icon. It now points at the same warm tint
+     the hero band and the nav chip use, so a pink fill cannot come back through
+     this token. The token name is Material's, not this project's — renaming it
+     would break any shared-ui class that reaches for it, so the value moved
+     instead. */
+  --color-primary-fixed:   #f8f3ec;  /* 12.38:1 with --color-primary */
+  --color-secondary-fixed: #e3e8f5;  /*  6.11:1 with --color-secondary */
+  --color-tertiary-fixed:  #f7e7de;  /*  6.26:1 with --color-accent-warm-dark */
+
+  /* ---- Fonts ----------------------------------------------------------
+     See layout.tsx for the actual next/font loading. */
+  --font-sans:    var(--font-jakarta), -apple-system, Arial, sans-serif;
+  --font-heading: var(--font-playfair), ui-serif, Georgia, serif;
+
+  /* ---- Radius ---------------------------------------------------------
+     One curve language, and every computed radius on every page is a member of
+     this set (asserted in tests/design-tokens.test.ts and e2e/design.spec.ts).
+
+     Content cards moved DOWN from rounded-2xl (28px) to rounded-md/lg. 28px
+     corners on a text card is the loudest single "this is a template" tell on
+     the site; the previous file also had to restate --radius-2xl and
+     --radius-3xl because Tailwind's own --radius-2xl defaults to 1rem, which
+     collided with this file's --radius-lg and made rounded-lg and rounded-2xl
+     render identically. Restating the whole scale removes that collision by
+     removing the overlap. */
+  --radius-xs: 0.25rem; /* chips, tags */
+  --radius-sm: 0.5rem;  /* buttons, inputs, icon tiles */
+  --radius-md: 0.75rem; /* cards, panels, table and image frames */
+  --radius-lg: 1rem;    /* feature panels, the hero volume */
+  --radius-xl: 1.5rem;  /* full-bleed bands only */
+
+  /* ---- Elevation ------------------------------------------------------
+     One ladder, one light source (above, 90deg), tinted with the canvas hue
+     rather than neutral grey. The stock Tailwind shadows were `rgba(0,0,0,0.1)`
+     at every step except one `rgba(0,0,0,0.25) 0 25px 50px -12px` — a family
+     with no internal logic, and neutral grey over a warm canvas is a hue clash.
+
+     Rest rule: a card at rest takes --shadow-raised; a card that lifts on hover
+     goes to --shadow-floating with -1px of translateY; the sticky header takes
+     --shadow-hairline only; nothing takes --shadow-overlay except the mobile
+     contact bar. */
+  --shadow-hairline: 0 1px 2px rgba(28, 26, 23, 0.04);
+  --shadow-raised:   0 1px 2px rgba(28, 26, 23, 0.05), 0 2px 6px rgba(28, 26, 23, 0.04);
+  --shadow-floating: 0 2px 4px rgba(28, 26, 23, 0.05), 0 8px 20px rgba(28, 26, 23, 0.07);
+  --shadow-overlay:  0 4px 8px rgba(28, 26, 23, 0.06), 0 18px 44px rgba(28, 26, 23, 0.1);
+
+  /* ---- Motion ---------------------------------------------------------
+     Namespace note: `duration-*` resolves through `--transition-duration` in
+     Tailwind v4.3.3. A `--duration-*` token emits nothing at all — verified
+     against node_modules, not assumed. */
+  --transition-duration-fast: 120ms; /* hover tint, border */
+  --transition-duration-base: 180ms; /* card lift, chip, icon */
+  --transition-duration-slow: 280ms; /* panel crossfade */
+  --ease-out-soft:   cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out-soft: cubic-bezier(0.65, 0, 0.35, 1);
+}
+
+/*
+ * Paired with `--animate-shimmer` above. Starts at -100% to match the
+ * skeleton's own `-translate-x-full` offset, so the loop has no visible jump
+ * where 100% wraps back to 0%.
+ */
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+    /* The header is sticky, so anchored sections must clear it. The desktop
+       header is taller than the mobile one because the utility bar in
+       `components/header.tsx` is hidden below `lg`, so this tracks it. */
+    scroll-padding-top: 5.5rem;
+    @media (width >= 64rem) {
+      scroll-padding-top: 7.25rem;
+    }
+  }
+
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    font-size: 1rem;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-heading);
+    font-weight: 600;
+    line-height: 1.15;
+    letter-spacing: -0.015em;
+    color: var(--color-primary-dark);
+    text-wrap: balance;
+  }
+
+  p {
+    text-wrap: pretty;
+  }
+
+  /* A single visible focus treatment. Without this, keyboard users get the
+     browser default, which on the transparent backgrounds above was invisible. */
+  :focus-visible {
+    outline: 2px solid var(--color-ring);
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+
+  ::selection {
+    background-color: var(--color-tint-warm);
+    color: var(--color-primary-dark);
+  }
+}
+
+@layer utilities {
+  /*
+   * The site's single page-width wrapper, and a complete one.
+   *
+   * Tailwind v4's `container` utility is NOT a layout primitive. The compiled
+   * rule is `width: 100%` plus a set of breakpoint `max-width` steps and nothing
+   * else — verified against real output with `node tools/check-css.mjs
+   * apps/public-site`. Gutters (`padding-inline`) are opt-in per usage in v4, so
+   * they are defined here, once. The hand-written `mx-auto px-4 sm:px-6 lg:px-8`
+   * was removed from every call site; do not put it back, because it would
+   * double the gutter on the left.
+   *
+   * FULL WIDTH, no max-width. This was `max-width: 80rem` with
+   * `margin-inline: auto`, which pinned the content column at 1280px and left
+   * dead margin on both sides of every section on any screen wider than that —
+   * the single biggest reason the site read as narrower and older than the
+   * reference projects. Sections now span the viewport and only the gutters
+   * inset them.
+   *
+   * Removing the cap does NOT hand the page 2m-wide paragraphs, because every
+   * text block already carries its own measure: headings `max-w-[18ch]`, body
+   * copy `max-w-[58ch]`/`max-w-[60ch]`, card grids `max-w-3xl`/`max-w-4xl`
+   * (`rg -n "max-w-" apps/public-site` is the audit for this). Those caps were
+   * written against a capped container and now do the readability work the
+   * container used to do. If a new page adds prose without one of them, that is
+   * the bug — not this rule.
+   *
+   * If ultrawide stretching ever needs a ceiling, reintroduce `max-width` HERE
+   * and nowhere else. A `max-w-*` on a call site loses to this rule, since a
+   * later same-specificity declaration wins and media queries add no
+   * specificity; narrowing one container means nesting an inner
+   * `mx-auto max-w-*` element instead.
+   *
+   * `max-width: none` IS LOAD-BEARING, and deleting it silently reinstates a
+   * cap. Tailwind v4 emits its own `.container` with breakpoint steps — in the
+   * built CSS that is `.container{width:100%}` plus `max-width` 40/48/64/80/96rem
+   * inside `@media (min-width:…)`, at byte offset ~10724, while this rule lands
+   * later at ~53156. Being later and equally specific, this rule overrides every
+   * property it NAMES — but a property it does not name still applies. Drop
+   * `max-width` here and Tailwind's steps win again above 96rem, pinning the
+   * layout at 1536px. Measured: the contact card is 696px wide at a 1920px
+   * viewport instead of ~888px, and because `margin-inline: auto` is gone it sits
+   * flush left rather than centred.
+   */
+  .container {
+    width: 100%;
+    max-width: none;
+    padding-inline: 1rem;
+    @media (width >= 40rem) {
+      padding-inline: 1.5rem;
+    }
+    @media (width >= 64rem) {
+      padding-inline: 2rem;
+    }
+    @media (width >= 96rem) {
+      padding-inline: 3rem;
+    }
+  }
+}
+
+/*
+ * Custom utilities, declared with `@utility` rather than as bare classes in
+ * `@layer utilities`.
+ *
+ * Two reasons. A hand-written `.type-display { … }` shared with Tailwind's
+ * namespace resolves by source order, cannot be used with `@apply`, and emits
+ * nothing in a variant position (`md:type-display` produces no rule at all).
+ * And `@utility` cannot be nested inside `@layer`.
+ *
+ * THE PREFIX IS `type-`, NOT `text-`, AND THAT IS LOAD-BEARING.
+ *
+ * `cn` from @novastar/shared-ui is `tailwind-merge`. tailwind-merge has no
+ * knowledge of a custom scale, so it classifies any unrecognised `text-*` value
+ * as a *colour* class and the last colour wins — which silently deletes the
+ * size. This already happened: `Stat` rendered
+ * `class="leading-none text-primary"` with its display size gone, and the
+ * workaround was to bypass `cn` entirely. `type-*` is not in tailwind-merge's
+ * colour namespace, so `cn('type-display', 'text-primary')` keeps both. The
+ * previous `text-display-hero` / `text-headline-*` / `text-title-*` /
+ * `text-label-*` names are deleted and every call site migrated; nothing keeps
+ * them. `tests/design-tokens.test.ts` asserts the property directly.
+ */
+@utility type-display {
+  font-size: clamp(2.5rem, 1.6rem + 3.6vw, 3.5rem);
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  font-weight: 600;
+}
+
+@utility type-headline {
+  font-size: clamp(1.875rem, 1.5rem + 1.5vw, 2.5rem);
+  line-height: 1.16;
+  letter-spacing: -0.015em;
+  font-weight: 600;
+}
+
+@utility type-title-lg {
+  font-size: clamp(1.5rem, 1.35rem + 0.6vw, 1.75rem);
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  font-weight: 600;
+}
+
+@utility type-title {
+  font-size: clamp(1.25rem, 1.15rem + 0.4vw, 1.375rem);
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+  font-weight: 600;
+}
+
+@utility type-body-lg {
+  font-size: clamp(1rem, 0.95rem + 0.25vw, 1.125rem);
+  line-height: 1.65;
+}
+
+/* 12px, not 11px. The previous `text-label-sm` was 0.6875rem and carried the
+   eyebrows and badges; the smallest step on the site is now one notch up. */
+@utility type-label {
+  font-size: 0.75rem;
+  line-height: 1rem;
+  letter-spacing: 0.07em;
+  font-weight: 600;
+}
+
+/* Uppercase kicker. 11px at 0.1em tracking, for short strings only. */
+@utility type-eyebrow {
+  font-size: 0.6875rem;
+  line-height: 0.875rem;
+  letter-spacing: 0.1em;
+  font-weight: 700;
+}
+
+/*
+ * The one decorative shape the site keeps. It clips a solid fill only, so
+ * nothing inside it needs a text alternative. The previous `shape-gold-cut` is
+ * deleted: zero call sites, and a diagonal cut corner is a dated web trope.
+ */
+@utility shape-notch {
+  clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 0 100%);
+}
+
+/* Section rhythm. Used instead of ad-hoc py-* so vertical spacing is
+   consistent across pages. */
+@utility section-y {
+  padding-block: 4rem;
+  @media (min-width: 768px) {
+    padding-block: 5.5rem;
+  }
+  @media (min-width: 1024px) {
+    padding-block: 7rem;
+  }
+}
+
+/*
+ * The hero depth rig.
+ *
+ * Each plane is a compositor-friendly absolute layer at its own depth. Only
+ * `transform` and `opacity` are animated, so nothing here triggers layout and
+ * CLS stays at zero. `--px` / `--py` are written by the pointer rig in
+ * `components/hero-parallax.tsx`, which attaches no listener at all when the
+ * user prefers reduced motion — the defaults below are then the final state.
+ */
+@utility hero-stage {
+  perspective: 1200px;
+  perspective-origin: 50% 40%;
+}
+
+@utility hero-plane {
+  position: absolute;
+  inset: 0;
+  transform-style: flat;
+  will-change: transform;
+  transition: transform var(--transition-duration-slow) var(--ease-out-soft);
+}
+
+@utility hero-plane-back {
+  transform: translate3d(calc(var(--px, 0) * -4px), calc(var(--py, 0) * -4px), 0);
+}
+
+@utility hero-plane-mid {
+  transform: translate3d(calc(var(--px, 0) * 9px), calc(var(--py, 0) * 9px), 0);
+}
+
+@utility hero-plane-front {
+  transform: translate3d(calc(var(--px, 0) * 16px), calc(var(--py, 0) * 16px), 0);
+}
+
+/*
+ * Film grain. Its actual job is dithering: the hero field is a very low-chroma
+ * gradient, and at this lightness an 8-bit panel bands it visibly. `feTurbulence`
+ * costs no network request, unlike a tiled raster. Hard-capped at 0.06 in the
+ * call sites — above that it stops reading as paper and starts reading as noise.
+ */
+@utility grain {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+}
+
+/* Respect users who ask for less motion. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    /*
+     * animation-delay was MISSING here before 2026-10-04. Any staggered entrance
+     * therefore left a reduced-motion user looking at an invisible element for
+     * the full delay before it snapped in. Negative rather than zero, so that
+     * `animation-fill-mode: both` resolves to the END state immediately instead
+     * of flashing the from-state.
+     */
+    animation-delay: -0.01ms !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

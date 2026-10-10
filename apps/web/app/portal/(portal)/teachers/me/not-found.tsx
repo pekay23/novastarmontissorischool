@@ -8,7 +8,7 @@ export default function TeacherWorkspaceNotFound() {
       label="404 · My Workspace"
       description="The teacher workspace you tried to access does not exist."
       action={
-        <Link href="/teachers" className={notFoundActionClasses}>
+        <Link href="/portal/teachers" className={notFoundActionClasses}>
           Back to Teachers
         </Link>
       }

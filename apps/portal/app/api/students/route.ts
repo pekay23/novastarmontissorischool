@@ -1,0 +1,125 @@
+import { NextRequest, NextResponse } from 'next/server'
+import type { Prisma } from '@prisma/client'
+import { prisma } from '@/lib/prisma'
+import { getTenantContext } from '@/lib/tenant'
+import { hasPermission } from '@novastar/auth'
+import {
+  resolveVisibility,
+  studentVisibilityWhere,
+  visibilityDeniesAll,
+} from '@/lib/visibility'
+import { z } from 'zod'
+import { logError } from '@/lib/logger'
+
+const StudentSchema = z.object({
+  studentId: z.string().min(1),
+  firstName: z.string().min(1),
+  lastName: z.string(),
+  otherNames: z.string().optional(),
+  gender: z.enum(['MALE', 'FEMALE', 'OTHER']),
+  dateOfBirth: z.string(),
+  admissionNumber: z.string().optional(),
+  admissionDate: z.string().optional(),
+  classId: z.string().optional(),
+  parentId: z.string().optional(),
+})
+
+export async function GET(req: NextRequest) {
+  try {
+    const ctx = await getTenantContext()
+    const { schoolId, tenantId, userId } = ctx
+    if (!schoolId) return NextResponse.json({ error: 'No school assigned' }, { status: 400 })
+
+    // RBAC: may this caller read students at all?
+    if (!(await hasPermission(userId, 'student:read', tenantId, schoolId))) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
+    // Row scope: which students may they read? A parent holds `student:read`
+    // but is entitled to their own children only, so the gate above is not
+    // sufficient on its own.
+    const visibility = await resolveVisibility(ctx, 'student:read')
+    if (visibilityDeniesAll(visibility)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
+    const { searchParams } = new URL(req.url)
+    const classId = searchParams.get('classId')
+
+    const where: Prisma.StudentWhereInput = {
+      schoolId,
+      tenantId,
+      ...studentVisibilityWhere(visibility),
+    }
+    if (classId) where.classId = classId
+
+    const students = await prisma.student.findMany({
+      where,
+      include: {
+        class: { select: { name: true, id: true } },
+        parent: { select: { firstName: true, lastName: true, phone: true } },
+      },
+      orderBy: { lastName: 'asc' },
+    })
+    return NextResponse.json({ data: students })
+  } catch (error) {
+    if (error instanceof Error && error.name === 'UnauthorizedError') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+    if (error instanceof Error && error.name === 'ForbiddenError') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+    logError('Students GET', error)
+    return NextResponse.json({ error: 'Failed to fetch students' }, { status: 500 })
+  }
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    const { schoolId, tenantId, userId } = await getTenantContext()
+    if (!schoolId) return NextResponse.json({ error: 'No school assigned' }, { status: 400 })
+
+    // RBAC
+    if (!(await hasPermission(userId, 'student:create', tenantId, schoolId))) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
+    const body = await req.json()
+    const parseResult = StudentSchema.safeParse(body)
+    if (!parseResult.success) {
+      return NextResponse.json({ error: 'Invalid input', details: parseResult.error.issues }, { status: 400 })
+    }
+    const data = parseResult.data
+
+    const student = await prisma.student.create({
+      data: {
+        tenantId,
+        schoolId,
+        studentId: data.studentId,
+        firstName: data.firstName,
+        lastName: data.lastName,
+        otherNames: data.otherNames || null,
+        gender: data.gender,
+        dateOfBirth: new Date(data.dateOfBirth),
+        admissionNumber: data.admissionNumber || `ADM-${Date.now()}`,
+        admissionDate: data.admissionDate ? new Date(data.admissionDate) : new Date(),
+        classId: data.classId || null,
+        parentId: data.parentId || null,
+      },
+      include: {
+        class: { select: { name: true } },
+      },
+    })
+    return NextResponse.json(student, { status: 201 })
+  } catch (error) {
+    if (error instanceof Error && error.name === 'UnauthorizedError') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+    if (error instanceof Error && error.name === 'ForbiddenError') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+    logError('Students POST', error)
+    return NextResponse.json({ error: 'Failed to create student' }, { status: 500 })
+  }
+}
+

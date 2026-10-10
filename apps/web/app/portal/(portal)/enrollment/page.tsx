@@ -96,10 +96,10 @@ export default function EnrollmentPage() {
       if (search) params.set('search', search)
 
       const [enrRes, stuRes, clsRes, trmRes] = await Promise.all([
-        fetch(`/api/enrollments?${params}`),
-        fetch('/api/students'),
-        fetch('/api/classes'),
-        fetch('/api/terms?current=true'),
+        fetch(`/portal/api/enrollments?${params}`),
+        fetch('/portal/api/students'),
+        fetch('/portal/api/classes'),
+        fetch('/portal/api/terms?current=true'),
       ])
 
       if (enrRes.ok) {
@@ -158,7 +158,7 @@ export default function EnrollmentPage() {
     }
 
     try {
-      const res = await fetch('/api/enrollments', {
+      const res = await fetch('/portal/api/enrollments', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(form),
@@ -188,7 +188,7 @@ export default function EnrollmentPage() {
     if (!ok) return
 
     try {
-      const res = await fetch(`/api/enrollments/${enrollment.id}`, { method: 'DELETE' })
+      const res = await fetch(`/portal/api/enrollments/${enrollment.id}`, { method: 'DELETE' })
       if (res.ok) {
         const data = await res.json()
         toast.success({ title: 'Success', description: data.message || 'Enrollment removed' })

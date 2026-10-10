@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { signIn } from 'next-auth/react'
 import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Input } from '@novastar/shared-ui'
 import { MIN_PASSWORD_LENGTH, meetsPasswordComplexity, PASSWORD_COMPLEXITY_LABEL } from '@/lib/password-policy'
+import { signInLandingPath } from '@/lib/auth/signin-landing'
 
 /**
  * The one-time setup link's page.
@@ -64,7 +65,7 @@ export function SetPasswordForm({ token }: { token: string | null }) {
         router.push('/portal/login')
         return
       }
-      router.push(result?.url || '/portal/dashboard')
+      router.push(signInLandingPath(result?.url ?? undefined, '/portal/dashboard'))
     } catch {
       setError('We could not reach the server. Check your connection and try again.')
     } finally {

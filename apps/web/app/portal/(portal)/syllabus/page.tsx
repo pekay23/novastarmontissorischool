@@ -77,8 +77,8 @@ export default function SyllabusPage() {
     setLoading(true)
     try {
       const [listRes, lookupRes] = await Promise.all([
-        fetch('/api/syllabi'),
-        fetch('/api/syllabi?lookups=true'),
+        fetch('/portal/api/syllabi'),
+        fetch('/portal/api/syllabi?lookups=true'),
       ])
 
       if (listRes.ok) {
@@ -146,7 +146,7 @@ export default function SyllabusPage() {
     if (!ok) return
 
     try {
-      const res = await fetch(`/api/config/syllabus/${syllabus.id}`, { method: 'DELETE' })
+      const res = await fetch(`/portal/api/config/syllabus/${syllabus.id}`, { method: 'DELETE' })
       if (!res.ok) {
         const payload = await res.json().catch(() => null)
         toast.error({

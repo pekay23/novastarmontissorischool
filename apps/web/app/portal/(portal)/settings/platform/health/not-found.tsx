@@ -9,7 +9,7 @@ export default function HealthNotFound() {
       description="The system health page you tried to access does not exist."
       action={
         <Link
-          href="/settings/platform/health"
+          href="/portal/settings/platform/health"
           className={notFoundActionClasses}
         >
           Back to System Health

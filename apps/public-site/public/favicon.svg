@@ -1,0 +1,11 @@
+<!--
+  The mark alone, for the 32px browser tab. Same palette as logo.svg and the same
+  reason: the tile used to be royal amethyst #5F1989, which app/globals.css
+  demotes to an accent. White-on-maroon here reads 13.66:1.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <rect width="32" height="32" rx="6" fill="#5A1121"/>
+  <circle cx="20" cy="12" r="6" fill="none" stroke="#B94C25" stroke-width="2"/>
+  <path d="M14 24 L20 10 L26 24 Z" fill="none" stroke="#772D42" stroke-width="1.5" stroke-linejoin="round"/>
+  <text x="16" y="22" dominant-baseline="middle" text-anchor="middle" font-family="Georgia, serif" font-size="14" font-weight="600" fill="#FFFFFF">N</text>
+</svg>

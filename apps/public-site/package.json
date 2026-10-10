@@ -1,0 +1,43 @@
+{
+  "name": "public-site",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "NEXT_TURBOPACK=0 HOST=0.0.0.0 next dev --port 3000",
+    "build": "next build",
+    "start": "next start --port 3000",
+    "lint": "eslint . --ext .ts,.tsx",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test tests",
+    "test:ui": "bun test --ui tests",
+    "test:e2e": "playwright test -c playwright.config.ts",
+    "postinstall": "ln -sfn ../../packages/* node_modules/@novastar/ 2>/dev/null || echo done"
+  },
+  "dependencies": {
+    "@prisma/client": "^7.10.0",
+    "@novastar/database": "workspace:*",
+    "@novastar/shared-types": "workspace:*",
+    "@novastar/shared-ui": "workspace:*",
+    "@novastar/shared-utils": "workspace:*",
+    "date-fns": "^4.4.0",
+    "lucide-react": "1.8.0",
+    "next": "16.3.3",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.3",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.5",
+    "@typescript-eslint/eslint-plugin": "^8.71.0",
+    "@typescript-eslint/parser": "^8.71.0",
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "^16.3.3",
+    "prettier": "^3.9.6",
+    "prettier-plugin-tailwindcss": "^0.8.1",
+    "tailwindcss": "^4.3.3",
+    "typescript": "npm:@typescript/typescript6@^6.0.2"
+  },
+  "packageManager": "bun@1.4.0"
+}

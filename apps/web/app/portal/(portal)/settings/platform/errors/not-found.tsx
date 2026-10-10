@@ -9,7 +9,7 @@ export default function SystemErrorsNotFound() {
       description="The system errors page you tried to access does not exist."
       action={
         <Link
-          href="/settings/platform/errors"
+          href="/portal/settings/platform/errors"
           className={notFoundActionClasses}
         >
           Back to System Errors

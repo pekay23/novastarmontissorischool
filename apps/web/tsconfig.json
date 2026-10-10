@@ -10,7 +10,8 @@
     "noEmit": true,
     "types": [
       "node",
-      "bun"
+      "bun",
+      "./next-auth"
     ],
     "jsx": "react-jsx",
     "paths": {

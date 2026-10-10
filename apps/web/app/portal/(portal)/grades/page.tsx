@@ -35,7 +35,7 @@ export default function GradesPage() {
     try {
       const params = new URLSearchParams()
       if (search) params.set('search', search)
-      const res = await fetch(`/api/assessments?${params}`)
+      const res = await fetch(`/portal/api/assessments?${params}`)
       if (res.ok) {
         const data = await res.json()
         setAssessments(data.data || [])
@@ -66,7 +66,7 @@ export default function GradesPage() {
     if (!ok) return
 
     try {
-      const res = await fetch(`/api/assessments/${a.id}`, { method: 'DELETE' })
+      const res = await fetch(`/portal/api/assessments/${a.id}`, { method: 'DELETE' })
       if (res.ok) {
         toast.success({ title: 'Success', description: 'Assessment deleted' })
         fetchAssessments()

@@ -255,7 +255,7 @@ export default function ReportCardPage({ params }: { params: Promise<{ studentId
     if (!studentId) return
     const loadTerms = async () => {
       try {
-        const res = await fetch(`/api/enrollments?studentId=${encodeURIComponent(studentId)}`)
+        const res = await fetch(`/portal/api/enrollments?studentId=${encodeURIComponent(studentId)}`)
         if (!res.ok) return
         const data = await res.json()
         const enrollments: ReportEnrollment[] = data.data || []
@@ -283,7 +283,7 @@ export default function ReportCardPage({ params }: { params: Promise<{ studentId
         params.push(`termId=${encodeURIComponent(termFilter)}`)
       }
       const qs = params.length ? `?${params.join('&')}` : ''
-      const res = await fetch(`/api/reports/academic/${sid}${qs}`)
+      const res = await fetch(`/portal/api/reports/academic/${sid}${qs}`)
       if (res.ok) {
         const data = await res.json()
         setReport(data)
@@ -319,7 +319,7 @@ export default function ReportCardPage({ params }: { params: Promise<{ studentId
       <div className="space-y-4">
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="sm" asChild>
-            <Link href="/reports">&larr; Back to Reports</Link>
+            <Link href="/portal/reports">&larr; Back to Reports</Link>
           </Button>
         </div>
         <Card>
@@ -340,7 +340,7 @@ export default function ReportCardPage({ params }: { params: Promise<{ studentId
       <div className="space-y-4">
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="sm" asChild>
-            <Link href="/reports">&larr; Back to Reports</Link>
+            <Link href="/portal/reports">&larr; Back to Reports</Link>
           </Button>
         </div>
         <Card>
@@ -379,7 +379,7 @@ export default function ReportCardPage({ params }: { params: Promise<{ studentId
       <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2 no-print">
         <Button variant="ghost" size="sm" asChild>
-          <Link href="/reports">&larr; Back to Reports</Link>
+          <Link href="/portal/reports">&larr; Back to Reports</Link>
         </Button>
         <div className="flex flex-wrap items-center gap-2">
           {/* Term selector: picks which enrollment's term the report covers */}

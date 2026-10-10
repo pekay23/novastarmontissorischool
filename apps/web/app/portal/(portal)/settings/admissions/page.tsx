@@ -83,7 +83,7 @@ export default function AdmissionsPage() {
     const seq = ++requestSeqRef.current
     setLoading(true)
     try {
-      const res = await fetch('/api/admissions/status')
+      const res = await fetch('/portal/api/admissions/status')
       if (res.status === 403) {
         // The page gate already refused this caller, so a 403 on the read means
         // the endpoint's permitted set and this page's have drifted apart.
@@ -139,7 +139,7 @@ export default function AdmissionsPage() {
     setSaving(true)
     setPendingOpen(nextOpen)
     try {
-      const res = await fetch('/api/admissions/status', {
+      const res = await fetch('/portal/api/admissions/status', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

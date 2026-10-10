@@ -10,7 +10,7 @@ export default function UnauthorizedPage() {
         You do not have permission to access this page. Contact your administrator
         if you believe this is an error.
       </p>
-      <Link href="/dashboard">
+      <Link href="/portal/dashboard">
         <Button>Return to Dashboard</Button>
       </Link>
     </div>
