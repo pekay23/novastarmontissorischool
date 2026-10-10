@@ -36,7 +36,12 @@ const TENANT_SUSPENDED_CODE = 'tenant-suspended'
  * unthrottled so a rate-limited client can still sign out or re-authenticate.
  */
 function isCredentialsSignIn(request: Request): boolean {
-  return new URL(request.url).pathname === '/api/auth/callback/credentials'
+  // Mounted under /portal in the merged app, so the browser's sign-in
+  // POST arrives as /portal/api/auth/callback/credentials. The unprefixed
+  // spelling is kept for the direct calls the unit tests make against
+  // this handler. Comparing the unprefixed path only meant the credentials
+  // rate limit never fired in the merged app.
+  return new URL(request.url).pathname.endsWith('/api/auth/callback/credentials')
 }
 
 /**

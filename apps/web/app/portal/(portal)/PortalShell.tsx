@@ -7,6 +7,9 @@ import {
   LogOut, Menu,
   Bell, Search,
   ChevronLeft, ChevronRight, ChevronDown,
+  LayoutDashboard, GraduationCap, ClipboardCheck, BookOpen,
+  DollarSign, CreditCard, Users, LibraryBig, Calendar, Megaphone,
+  UserCheck, Clock, BarChart3, Settings, UserPlus, Bus,
   type LucideIcon,
 } from 'lucide-react'
 import { Button, cn, ToastProvider, ConfirmProvider, useToast, Avatar, AvatarFallback, AvatarImage } from '@novastar/shared-ui'
@@ -15,7 +18,40 @@ import { useState } from 'react'
 interface NavigationItem {
   name: string
   href: string
-  icon: LucideIcon
+}
+
+/**
+ * The icon for each named section, resolved on the client.
+ *
+ * Icon components are React `forwardRef` objects, which React will
+ * not serialize from a Server Component to a Client Component, so
+ * the portal layout passes the navigation as plain `{ name, href }`
+ * data and this map — kept beside the code that renders the icons —
+ * supplies each section's icon by name. A name with no entry falls
+ * back to the dashboard icon rather than to nothing, so a renamed
+ * section keeps a glyph instead of an empty sidebar row.
+ */
+const NAV_ICONS: Readonly<Record<string, LucideIcon>> = {
+  Dashboard: LayoutDashboard,
+  Students: GraduationCap,
+  Attendance: ClipboardCheck,
+  Grades: BookOpen,
+  Fees: DollarSign,
+  Payments: CreditCard,
+  Classes: Users,
+  Library: LibraryBig,
+  Calendar: Calendar,
+  Announcements: Megaphone,
+  Teachers: UserCheck,
+  Timetable: Clock,
+  Reports: BarChart3,
+  Settings: Settings,
+  Admissions: UserPlus,
+  Transport: Bus,
+}
+
+function iconFor(item: NavigationItem): LucideIcon {
+  return NAV_ICONS[item.name] ?? LayoutDashboard
 }
 
 interface PortalShellProps {
@@ -107,7 +143,7 @@ export function PortalShell({
 
             <nav className="flex-1 overflow-y-auto py-2">
               {visibleNav.map((item) => {
-                const Icon = item.icon
+                const Icon = iconFor(item)
                 const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
                 return (
                   <Link
@@ -287,17 +323,20 @@ function HeaderActions({
 
       {searchOpen && matches.length > 0 && (
         <ul className="absolute right-4 top-14 z-50 w-56 overflow-hidden rounded-md border bg-card shadow-lg">
-          {matches.map((item) => (
-            <li key={item.name}>
-              <button
-                onClick={() => goTo(item.href)}
-                className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground"
-              >
-                <item.icon className="h-4 w-4" />
-                {item.name}
-              </button>
-            </li>
-          ))}
+          {matches.map((item) => {
+            const Icon = iconFor(item)
+            return (
+              <li key={item.name}>
+                <button
+                  onClick={() => goTo(item.href)}
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground"
+                >
+                  <Icon className="h-4 w-4" />
+                  {item.name}
+                </button>
+              </li>
+            )
+          })}
         </ul>
       )}
 

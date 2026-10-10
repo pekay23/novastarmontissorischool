@@ -250,7 +250,7 @@ interface CurriculumFocusListProps {
 export function CurriculumFocusList({ items, className }: CurriculumFocusListProps) {
   return (
     <div className={cn('grid gap-4 sm:grid-cols-2', className)}>
-      {items.map((focus, index) => (
+      {items.map((focus, _index) => (
         <article
           key={focus.title}
           className={cn(

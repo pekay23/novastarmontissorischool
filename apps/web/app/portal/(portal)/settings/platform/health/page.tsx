@@ -33,7 +33,7 @@ export default function HealthPage() {
   const fetchHealth = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await fetch('/api/system/health')
+      const res = await fetch('/portal/api/system/health')
       if (!res.ok) {
         if (res.status === 403) {
           toast.error({ title: 'Access denied', description: 'Only Head of School can view system health.' })

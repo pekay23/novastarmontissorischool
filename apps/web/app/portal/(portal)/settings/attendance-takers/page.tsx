@@ -53,7 +53,7 @@ export default function AttendanceTakersPage() {
   const fetchMatrix = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await fetch('/api/attendance-takers')
+      const res = await fetch('/portal/api/attendance-takers')
       if (!res.ok) {
         if (res.status === 403) {
           toast.error({ title: 'Access denied', description: 'You must hold config:write to manage attendance takers.' })
@@ -113,7 +113,7 @@ export default function AttendanceTakersPage() {
     }))
     setSaving((prev) => ({ ...prev, [key]: true }))
     try {
-      const res = await fetch('/api/attendance-takers', {
+      const res = await fetch('/portal/api/attendance-takers', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ staffId, classId, canMarkStudent: next }),
@@ -166,7 +166,7 @@ export default function AttendanceTakersPage() {
     try {
       await Promise.all(
         held.map((g) =>
-          fetch('/api/attendance-takers', {
+          fetch('/portal/api/attendance-takers', {
             method: 'DELETE',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ staffId, classId: g.classId }),

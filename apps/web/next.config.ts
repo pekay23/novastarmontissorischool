@@ -191,6 +191,27 @@ const nextConfig: NextConfig = {
   // monorepo layout and the workspace packages it links to. Inert
   // unless `output: 'standalone'` is set (Docker parity).
   outputFileTracingRoot: repoRoot,
+  async redirects() {
+    return [
+      {
+        /*
+         * Pre-merge (ADR-024) the portal was its own app and its
+         * sign-in answered at the bare `/login`. The merge moved it
+         * to `/portal/login/` (and the console's to `/admin/login/`)
+         * but left no route for the old URL: there is no
+         * `app/login/` page, and the proxy only matches `/portal/*`
+         * and `/admin/*`, so a request for `/login` fell through to
+         * the marketing site and rendered the 404 page. This keeps
+         * old bookmarks, emails and links working. Next.js carries
+         * the query string (`?callbackUrl=…`) over to the
+         * destination automatically.
+         */
+        source: '/login',
+        destination: '/portal/login/',
+        permanent: false,
+      },
+    ]
+  },
   async headers() {
     const isProd = process.env.NODE_ENV === 'production'
 

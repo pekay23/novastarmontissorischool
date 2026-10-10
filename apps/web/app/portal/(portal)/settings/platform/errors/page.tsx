@@ -99,7 +99,7 @@ export default function ErrorsPage() {
       params.set('limit', String(limit))
       params.set('offset', String(offset))
 
-      const res = await fetch(`/api/system/errors?${params.toString()}`)
+      const res = await fetch(`/portal/api/system/errors?${params.toString()}`)
       if (!res.ok) {
         if (res.status === 403) {
           toast.error({ title: 'Access denied', description: 'Only Head of School can view system errors.' })
@@ -130,7 +130,7 @@ export default function ErrorsPage() {
 
   const handleResolve = async (id: string, resolved: boolean) => {
     try {
-      const res = await fetch(`/api/system/errors/${id}`, {
+      const res = await fetch(`/portal/api/system/errors/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ resolved }),

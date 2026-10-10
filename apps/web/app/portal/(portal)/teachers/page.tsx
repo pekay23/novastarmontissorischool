@@ -75,7 +75,7 @@ export default function TeachersPage() {
   const fetchTeachers = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await fetch('/api/teachers')
+      const res = await fetch('/portal/api/teachers')
       if (res.ok) {
         const data = await res.json()
         setTeachers(data.data || [])
@@ -97,7 +97,7 @@ export default function TeachersPage() {
    */
   const fetchCreateCapability = useCallback(async () => {
     try {
-      const res = await fetch('/api/teachers/invite')
+      const res = await fetch('/portal/api/teachers/invite')
       if (!res.ok) {
         setCanCreate(false)
         setGrantableRoleNames([])
@@ -134,7 +134,7 @@ export default function TeachersPage() {
     if (!ok) return
 
     try {
-      const res = await fetch(`/api/teachers/${teacher.id}`, { method: 'DELETE' })
+      const res = await fetch(`/portal/api/teachers/${teacher.id}`, { method: 'DELETE' })
       if (res.ok) {
         toast.success({ title: 'Success', description: 'Staff member deleted' })
         fetchTeachers()
@@ -264,7 +264,7 @@ export default function TeachersPage() {
                         )}
                         {sessionEmail && t.user?.email === sessionEmail && (
                           <Link
-                            href="/teachers/me"
+                            href="/portal/teachers/me"
                             className="mt-1 inline-block text-xs font-medium text-primary hover:underline"
                           >
                             My Workspace

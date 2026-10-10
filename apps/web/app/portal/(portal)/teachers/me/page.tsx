@@ -37,7 +37,7 @@ export default function TeacherWorkspacePage() {
 
   const fetchCourses = useCallback(async () => {
     try {
-      const res = await fetch('/api/teachers/me/courses')
+      const res = await fetch('/portal/api/teachers/me/courses')
       if (res.ok) {
         const data: CoursesApiResponse = await res.json()
         setCourses(data.data || [])
@@ -55,7 +55,7 @@ export default function TeacherWorkspacePage() {
   // a failure here only disables those two links, never the page.
   const fetchCurrentTerm = useCallback(async () => {
     try {
-      const res = await fetch('/api/terms?current=true')
+      const res = await fetch('/portal/api/terms?current=true')
       if (res.ok) {
         const data: TermApiResponse = await res.json()
         const current = (data.data || []).find((t) => t.isCurrent)
@@ -233,7 +233,7 @@ export default function TeacherWorkspacePage() {
                                   by assessment, not by course, so there is no
                                   per-course target to link to until the page
                                   accepts a course filter. */}
-                              <Link href="/grades">
+                              <Link href="/portal/grades">
                                 <BookOpen className="h-4 w-4" />
                                 Give Marks
                               </Link>
@@ -245,7 +245,7 @@ export default function TeacherWorkspacePage() {
                               asChild
                               aria-label="View results"
                             >
-                              <Link href="/reports">
+                              <Link href="/portal/reports">
                                 <FileText className="h-4 w-4" />
                                 View Results
                               </Link>

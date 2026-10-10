@@ -1,0 +1,104 @@
+@import "tailwindcss";
+@config "../tailwind.config.mts";
+@source "../../../packages/shared-ui/src";
+
+/*
+ * `Skeleton` in @novastar/shared-ui sweeps its highlight with
+ * `animate-shimmer`. Tailwind only emits an `animate-<name>` utility when a
+ * matching `--animate-<name>` token is registered here, so without this block
+ * the class name reaches the DOM and Tailwind drops the rule silently,
+ * leaving a static off-screen gradient instead of a pulse.
+ *
+ * Declared per app because `@theme` is scoped to the stylesheet that declares
+ * it; a token in one app's globals.css is invisible to the other two.
+ */
+@theme {
+  --animate-shimmer: shimmer 2s linear infinite;
+}
+
+/*
+ * Starts at -100% to match the overlay's own `-translate-x-full` offset, so the
+ * loop has no visible jump where 100% wraps back to 0%.
+ */
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+/*
+ * Dark mode is class-driven: next-themes is mounted with attribute="class",
+ * which toggles `.dark` on <html>.
+ */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  /*
+   * Design tokens are stored as raw HSL triplets and consumed via
+   * hsl(var(--token)) from tailwind.config.ts. Keep them in sync with
+   * packages/shared-ui, which reads the same variable names.
+   */
+  :root {
+    /* Novastar brand */
+    --primary: 107 91% 18%; /* emerald-900 */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 191 71% 50%; /* teal-600 */
+    --secondary-foreground: 0 0% 100%;
+    --accent: 28 83% 40%; /* amber-600 */
+    --accent-foreground: 0 0% 100%;
+
+    /* Surfaces */
+    --background: 0 0% 100%;
+    --foreground: 222 47% 12%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 12%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 12%;
+
+    /* Feedback */
+    --destructive: 0 72% 45%;
+    --destructive-foreground: 0 0% 100%;
+
+    /* Structure & forms */
+    --border: 220 31% 91%;
+    --input: 220 31% 91%;
+    --ring: 222 47% 12%;
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 20% 40%;
+
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    --background: 224 71% 4%;
+    --foreground: 0 0% 93%;
+    --card: 224 71% 8%;
+    --card-foreground: 0 0% 93%;
+    --popover: 224 71% 8%;
+    --popover-foreground: 0 0% 93%;
+    --border: 224 71% 12%;
+    --input: 224 71% 12%;
+    --muted: 222 47% 12%;
+    --muted-foreground: 215 20% 70%;
+    --ring: 191 71% 65%;
+  }
+
+  /*
+   * Tailwind v4 preflight defaults border-color to currentColor (v3 used
+   * gray-200), so bare `border` / `border-b` / `border-r` utilities would
+   * otherwise render using the text colour.
+   */
+  *,
+  ::before,
+  ::after {
+    border-color: hsl(var(--border));
+  }
+
+  body {
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+    font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
+

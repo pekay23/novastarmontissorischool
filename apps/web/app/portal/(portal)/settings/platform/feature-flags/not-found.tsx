@@ -9,7 +9,7 @@ export default function FeatureFlagsNotFound() {
       description="The feature flags page you tried to access does not exist."
       action={
         <Link
-          href="/settings/platform/feature-flags"
+          href="/portal/settings/platform/feature-flags"
           className={notFoundActionClasses}
         >
           Back to Feature Flags

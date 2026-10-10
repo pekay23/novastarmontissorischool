@@ -41,7 +41,7 @@ export function PasskeySetup({ userEmail }: PasskeySetupProps) {
     setError(null)
 
     try {
-      const res = await fetch('/api/auth/passkey/register-options', {
+      const res = await fetch('/portal/api/auth/passkey/register-options', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: userEmail }),
@@ -91,7 +91,7 @@ export function PasskeySetup({ userEmail }: PasskeySetupProps) {
       }
 
       // Verify with server
-      const verifyRes = await fetch('/api/auth/passkey/register-verify', {
+      const verifyRes = await fetch('/portal/api/auth/passkey/register-verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ credential: attestationResponse, email: userEmail, name: userEmail }),

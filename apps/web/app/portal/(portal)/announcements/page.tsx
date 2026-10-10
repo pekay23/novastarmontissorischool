@@ -127,7 +127,7 @@ export default function AnnouncementsPage() {
   const fetchAnnouncements = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await fetch('/api/announcements')
+      const res = await fetch('/portal/api/announcements')
       if (res.ok) {
         const data = await res.json()
         setAnnouncements(data.data || [])
@@ -184,7 +184,7 @@ export default function AnnouncementsPage() {
     if (!ok) return
 
     try {
-      const res = await fetch(`/api/announcements/${a.id}`, { method: 'DELETE' })
+      const res = await fetch(`/portal/api/announcements/${a.id}`, { method: 'DELETE' })
       if (res.ok) {
         toast.success({ title: 'Success', description: 'Announcement deleted' })
         void fetchAnnouncements()
@@ -230,13 +230,13 @@ export default function AnnouncementsPage() {
     try {
       let res: Response
       if (editingAnnouncement) {
-        res = await fetch(`/api/announcements/${editingAnnouncement.id}`, {
+        res = await fetch(`/portal/api/announcements/${editingAnnouncement.id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
         })
       } else {
-        res = await fetch('/api/announcements', {
+        res = await fetch('/portal/api/announcements', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),

@@ -28,7 +28,17 @@ export function LoginForm({
 }) {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const resolvedReturnTo = returnTo ?? callbackUrl ?? searchParams.get('returnTo') ?? searchParams.get('callbackUrl') ?? '/admin/tenants'
+  const rawReturnTo =
+    returnTo ?? callbackUrl ?? searchParams.get('returnTo') ?? searchParams.get('callbackUrl')
+  // Only a console-relative path may be followed after sign-in.
+  // Anything else — an absolute URL, a protocol-relative `//…` —
+  // would send the browser off the domain the page was loaded
+  // from, so it is dropped in favour of the console default. The
+  // sign-in route sanitizes the `returnTo` it returns the same
+  // way; this guard is the client-side half of that promise.
+  const resolvedReturnTo = rawReturnTo?.startsWith('/admin/')
+    ? rawReturnTo
+    : '/admin/tenants'
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
 

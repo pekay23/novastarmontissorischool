@@ -12,7 +12,7 @@ export const metadata = {
  *
  * The shared `NotFound` supplies the layout and copy; this file supplies the
  * link. The portal runs under `basePath: '/portal'`, so navigation must go
- * through `next/link` — a plain `<a href="/dashboard">` would drop the
+ * through `next/link` — a plain `<a href="/portal/dashboard">` would drop the
  * `/portal` prefix and 404 a second time.
  */
 export default function PortalNotFound() {
@@ -21,7 +21,7 @@ export default function PortalNotFound() {
       label="404"
       description="The page you are looking for could not be found or you do not have permission to view it."
       action={
-        <Link href="/dashboard" className={notFoundActionClasses}>
+        <Link href="/portal/dashboard" className={notFoundActionClasses}>
           Back to Dashboard
         </Link>
       }

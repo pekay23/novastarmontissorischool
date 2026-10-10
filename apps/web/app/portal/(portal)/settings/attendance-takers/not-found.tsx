@@ -9,7 +9,7 @@ export default function AttendanceTakersNotFound() {
       description="The attendance taker grant matrix you tried to access does not exist."
       action={
         <Link
-          href="/settings/attendance-takers"
+          href="/portal/settings/attendance-takers"
           className={notFoundActionClasses}
         >
           Back to Attendance Takers

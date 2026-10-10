@@ -71,7 +71,7 @@ export default function TimetablePage() {
       const params = new URLSearchParams()
       params.set('classId', cid)
       params.set('termId', tid)
-      const res = await fetch(`/api/timetable?${params}`)
+      const res = await fetch(`/portal/api/timetable?${params}`)
       if (res.ok) {
         const data: TimetableApiResponse = await res.json()
         setTimetable(data.data)
@@ -120,7 +120,7 @@ export default function TimetablePage() {
               class and term.
             </p>
             <Button variant="outline" size="sm" asChild className="mt-4">
-              <Link href="/teachers/me">Go to My Workspace</Link>
+              <Link href="/portal/teachers/me">Go to My Workspace</Link>
             </Button>
           </CardContent>
         </Card>

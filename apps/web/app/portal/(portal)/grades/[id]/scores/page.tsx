@@ -84,7 +84,7 @@ export default function GradesScorePage({ params }: { params: Promise<{ id: stri
 
   const fetchStudents = useCallback(async (classId: string) => {
     try {
-      const res = await fetch(`/api/classes/${classId}`)
+      const res = await fetch(`/portal/api/classes/${classId}`)
       if (res.ok) {
         const data = await res.json()
         const studentsWithIds = (data.students || []).map((s: { id: string; firstName: string; lastName: string; studentId: string | null }) => ({
@@ -102,7 +102,7 @@ export default function GradesScorePage({ params }: { params: Promise<{ id: stri
 
   const fetchScores = useCallback(async (id: string) => {
     try {
-      const res = await fetch(`/api/assessments/${id}/scores`)
+      const res = await fetch(`/portal/api/assessments/${id}/scores`)
       if (res.ok) {
         const data = await res.json()
         const mappedScores = (data.scores || []).map((s: { 
@@ -134,7 +134,7 @@ export default function GradesScorePage({ params }: { params: Promise<{ id: stri
   const fetchAssessment = useCallback(async (id: string) => {
     setLoading(true)
     try {
-      const res = await fetch(`/api/assessments/${id}`)
+      const res = await fetch(`/portal/api/assessments/${id}`)
       if (res.ok) {
         const data = await res.json()
         setAssessment(data)
@@ -217,7 +217,7 @@ export default function GradesScorePage({ params }: { params: Promise<{ id: stri
     }
 
     try {
-      const res = await fetch(`/api/assessments/${assessmentId}/scores`, {
+      const res = await fetch(`/portal/api/assessments/${assessmentId}/scores`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ studentId, rawScore, notes }),
@@ -270,7 +270,7 @@ export default function GradesScorePage({ params }: { params: Promise<{ id: stri
       for (const student of students) {
         const score = scores.find(s => s.studentId === student.id)
         if (score && score.rawScore !== null) {
-          const res = await fetch(`/api/assessments/${assessmentId}/scores`, {
+          const res = await fetch(`/portal/api/assessments/${assessmentId}/scores`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -299,7 +299,7 @@ export default function GradesScorePage({ params }: { params: Promise<{ id: stri
     return (
       <div className="space-y-4">
         <Button variant="ghost" size="sm" asChild>
-          <Link href="/grades">&larr; Back to Grades</Link>
+          <Link href="/portal/grades">&larr; Back to Grades</Link>
         </Button>
         <Card>
           <CardContent className="pt-6">
@@ -318,7 +318,7 @@ export default function GradesScorePage({ params }: { params: Promise<{ id: stri
     return (
       <div className="space-y-4">
         <Button variant="ghost" size="sm" asChild>
-          <Link href="/grades">&larr; Back to Grades</Link>
+          <Link href="/portal/grades">&larr; Back to Grades</Link>
         </Button>
         <Card>
           <CardContent className="pt-6">
@@ -335,7 +335,7 @@ export default function GradesScorePage({ params }: { params: Promise<{ id: stri
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <Button variant="ghost" size="sm" asChild>
-          <Link href="/grades">&larr; Back to Grades</Link>
+          <Link href="/portal/grades">&larr; Back to Grades</Link>
         </Button>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={handleBulkSave} disabled={saving || students.length === 0}>

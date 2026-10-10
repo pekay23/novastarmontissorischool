@@ -369,8 +369,8 @@ export default async function AcademicsPage() {
             { label: 'Primary', caption: '6 – 12yrs', active: true },
             { label: 'Junior High', caption: '12 – 15yrs', active: true },
           ]}
-          className="mx-auto flex justify-center"
-          containerClassName="flex items-center min-w-max gap-3 px-0 md:px-1"
+          className="mx-auto"
+          containerClassName="px-2 md:px-1"
         />
       </section>
 

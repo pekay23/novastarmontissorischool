@@ -99,7 +99,7 @@ export default function InventoryPage() {
     try {
       const params = new URLSearchParams()
       if (search) params.set('search', search)
-      const res = await fetch(`/api/inventory/${params.toString() ? `?${params}` : ''}`)
+      const res = await fetch(`/portal/api/inventory/${params.toString() ? `?${params}` : ''}`)
       if (res.ok) {
         const data = await res.json()
         setItems(data.data || [])
@@ -160,7 +160,7 @@ export default function InventoryPage() {
     if (!ok) return
 
     try {
-      const res = await fetch(`/api/inventory/${item.id}`, { method: 'DELETE' })
+      const res = await fetch(`/portal/api/inventory/${item.id}`, { method: 'DELETE' })
       if (res.ok) {
         toast.success({ title: 'Success', description: 'Item deleted' })
         void fetchItems()
@@ -204,13 +204,13 @@ export default function InventoryPage() {
     try {
       let res: Response
       if (editingItem) {
-        res = await fetch(`/api/inventory/${editingItem.id}`, {
+        res = await fetch(`/portal/api/inventory/${editingItem.id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
         })
       } else {
-        res = await fetch('/api/inventory', {
+        res = await fetch('/portal/api/inventory', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),

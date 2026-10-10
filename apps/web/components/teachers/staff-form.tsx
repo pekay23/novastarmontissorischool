@@ -106,7 +106,7 @@ export function StaffForm({
     const load = async () => {
       setLoading(true)
       if (editId) {
-        const res = await fetch(`/api/teachers/${editId}`)
+        const res = await fetch(`/portal/api/teachers/${editId}`)
         const staff = res.ok ? await res.json() : null
         if (staff) {
           setForm({
@@ -140,7 +140,7 @@ export function StaffForm({
     setLoading(true)
     try {
       if (isEditing) {
-        const res = await fetch(`/api/teachers/${editId}`, {
+        const res = await fetch(`/portal/api/teachers/${editId}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -162,7 +162,7 @@ export function StaffForm({
         return
       }
 
-      const res = await fetch('/api/teachers/invite', {
+      const res = await fetch('/portal/api/teachers/invite', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

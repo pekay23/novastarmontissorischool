@@ -71,9 +71,9 @@ export default function PromotionsPage() {
   const fetchLookups = useCallback(async () => {
     try {
       const [classRes, termRes, capabilityRes] = await Promise.all([
-        fetch('/api/classes'),
-        fetch('/api/terms'),
-        fetch('/api/promotions'),
+        fetch('/portal/api/classes'),
+        fetch('/portal/api/terms'),
+        fetch('/portal/api/promotions'),
       ])
 
       if (classRes.ok) {
@@ -105,7 +105,7 @@ export default function PromotionsPage() {
     if (!classId) return
 
     try {
-      const res = await fetch(`/api/classes/${classId}`)
+      const res = await fetch(`/portal/api/classes/${classId}`)
       if (!res.ok) {
         toast.error({ title: 'Error', description: 'Failed to load the class roster' })
         return
@@ -185,7 +185,7 @@ export default function PromotionsPage() {
 
     setPromoting(true)
     try {
-      const res = await fetch('/api/promotions', {
+      const res = await fetch('/portal/api/promotions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

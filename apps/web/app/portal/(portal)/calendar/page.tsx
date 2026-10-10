@@ -88,7 +88,7 @@ export default function CalendarPage() {
     try {
       const params = new URLSearchParams()
       if (search) params.set('search', search)
-      const res = await fetch(`/api/events?${params}`)
+      const res = await fetch(`/portal/api/events?${params}`)
       if (res.ok) {
         const data = await res.json()
         setEvents(data.data || [])
@@ -154,7 +154,7 @@ export default function CalendarPage() {
     if (!ok) return
 
     try {
-      const res = await fetch(`/api/events/${e.id}`, { method: 'DELETE' })
+      const res = await fetch(`/portal/api/events/${e.id}`, { method: 'DELETE' })
       if (res.ok) {
         toast.success({ title: 'Success', description: 'Event deleted' })
         void fetchEvents()
@@ -184,13 +184,13 @@ export default function CalendarPage() {
     try {
       let res: Response
       if (editingEvent) {
-        res = await fetch(`/api/events/${editingEvent.id}`, {
+        res = await fetch(`/portal/api/events/${editingEvent.id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
         })
       } else {
-        res = await fetch('/api/events', {
+        res = await fetch('/portal/api/events', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),

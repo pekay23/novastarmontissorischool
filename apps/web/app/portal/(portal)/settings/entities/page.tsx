@@ -20,7 +20,7 @@ export default function EntityDefinitionsPage() {
   const confirm = useConfirm()
 
   useEffect(() => {
-    fetch('/api/config/entities')
+    fetch('/portal/api/config/entities')
       .then(res => res.json())
       .then(data => {
         const merged = DEFAULT_ENTITY_REGISTRY.map(def => {
@@ -50,7 +50,7 @@ export default function EntityDefinitionsPage() {
 
     setSaving(s => ({ ...s, [type]: true }))
     try {
-      const res = await fetch(`/api/config/entities/${type}`, {
+      const res = await fetch(`/portal/api/config/entities/${type}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -100,7 +100,7 @@ export default function EntityDefinitionsPage() {
 
     setSaving(s => ({ ...s, [type]: true }))
     try {
-      const res = await fetch(`/api/config/entities/${type}`, { method: 'DELETE' })
+      const res = await fetch(`/portal/api/config/entities/${type}`, { method: 'DELETE' })
       if (res.ok) {
         setEntities(prev => prev.map(e =>
           e.type === type ? { ...DEFAULT_ENTITY_REGISTRY.find(d => d.type === type)!, _isOverridden: false } : e

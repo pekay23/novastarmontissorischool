@@ -28,8 +28,8 @@ export default function PlatformPage() {
       setLoading(true)
       try {
         const [flagsRes, errorsRes] = await Promise.all([
-          fetch('/api/system/config'),
-          fetch('/api/system/errors?limit=1'),
+          fetch('/portal/api/system/config'),
+          fetch('/portal/api/system/errors?limit=1'),
         ])
 
         if (flagsRes.ok) {

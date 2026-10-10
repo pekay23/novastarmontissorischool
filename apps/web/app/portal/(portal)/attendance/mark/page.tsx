@@ -89,7 +89,7 @@ export default function AttendanceMarkPage() {
 
   const fetchStudentsForClass = useCallback(async (cid: string) => {
     try {
-      const res = await fetch(`/api/classes/${cid}`)
+      const res = await fetch(`/portal/api/classes/${cid}`)
       if (res.ok) {
         const data = await res.json()
         // The class itself carries the name the header shows.
@@ -113,7 +113,7 @@ export default function AttendanceMarkPage() {
       params.set('classId', cid)
       params.set('date', attendanceDate)
       if (periodFilter) params.set('period', periodFilter)
-      const res = await fetch(`/api/attendance?${params}`)
+      const res = await fetch(`/portal/api/attendance?${params}`)
       if (res.ok) {
         const data = await res.json()
         setRecords(data.data || [])
@@ -248,7 +248,7 @@ export default function AttendanceMarkPage() {
       const failures: string[] = []
 
       if (markable.length > 0) {
-        const res = await fetch('/api/attendance', {
+        const res = await fetch('/portal/api/attendance', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(markable),
@@ -276,7 +276,7 @@ export default function AttendanceMarkPage() {
           if (field === 'period') values.period = record.period ?? ''
           if (field === 'notes') values.notes = record.notes ?? ''
         }
-        const res = await fetch(`/api/attendance/${record.id}`, {
+        const res = await fetch(`/portal/api/attendance/${record.id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(attendanceCorrectionBody(record, fields, values, reason)),
@@ -325,7 +325,7 @@ export default function AttendanceMarkPage() {
     if (!ok) return
 
     try {
-      const res = await fetch(`/api/attendance/${record.id}/unfinalize`, {
+      const res = await fetch(`/portal/api/attendance/${record.id}/unfinalize`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ amendmentReason: reason.trim() }),
@@ -354,7 +354,7 @@ export default function AttendanceMarkPage() {
     if (!ok) return
 
     try {
-      const res = await fetch(`/api/attendance/${record.id}`, { method: 'DELETE' })
+      const res = await fetch(`/portal/api/attendance/${record.id}`, { method: 'DELETE' })
       if (res.ok) {
         toast.success({ title: 'Success', description: 'Record deleted' })
         setRecords(prev => prev.filter(r => r.id !== record.id))
@@ -412,7 +412,7 @@ export default function AttendanceMarkPage() {
     return (
       <div className="space-y-4">
         <Button variant="ghost" size="sm" asChild>
-          <Link href="/attendance">&larr; Back to Attendance</Link>
+          <Link href="/portal/attendance">&larr; Back to Attendance</Link>
         </Button>
         <Card>
           <CardContent className="pt-6">
@@ -431,7 +431,7 @@ export default function AttendanceMarkPage() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <Button variant="ghost" size="sm" asChild>
-          <Link href="/attendance">&larr; Back to Attendance</Link>
+          <Link href="/portal/attendance">&larr; Back to Attendance</Link>
         </Button>
         <div className="flex items-center gap-2">
           <Button

@@ -66,7 +66,7 @@ export function StudentForm({ open, onOpenChange, editId, onSuccess }: StudentFo
   useEffect(() => {
     if (open) {
       const loadClasses = async () => {
-        const res = await fetch('/api/classes')
+        const res = await fetch('/portal/api/classes')
         const data = res.ok ? await res.json() : { data: [] }
         setClasses(data.data || [])
       }
@@ -80,7 +80,7 @@ export function StudentForm({ open, onOpenChange, editId, onSuccess }: StudentFo
       if (open && editId) {
         setIsEditing(true)
         setLoading(true)
-        const res = await fetch(`/api/students/${editId}`)
+        const res = await fetch(`/portal/api/students/${editId}`)
         const student = res.ok ? await res.json() : null
         if (student) {
           setForm({

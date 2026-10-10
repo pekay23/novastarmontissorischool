@@ -74,7 +74,7 @@ export default function FeesPage() {
         const params = new URLSearchParams()
         if (search) params.set('search', search)
         params.set('page', String(page))
-        const res = await fetch(`/api/finance/invoices?${params}`)
+        const res = await fetch(`/portal/api/finance/invoices?${params}`)
         if (res.ok) {
           const data = await res.json()
           setInvoices(data.data || [])
@@ -92,7 +92,7 @@ export default function FeesPage() {
 
   const fetchPaymentMethods = useCallback(async () => {
     try {
-      const res = await fetch('/api/finance/payment-methods')
+      const res = await fetch('/portal/api/finance/payment-methods')
       if (res.ok) {
         const data = await res.json()
         setPaymentMethods(data.data || [])
@@ -108,8 +108,8 @@ export default function FeesPage() {
   const fetchGenerateLookups = useCallback(async () => {
     try {
       const [classRes, termRes] = await Promise.all([
-        fetch('/api/classes'),
-        fetch('/api/terms'),
+        fetch('/portal/api/classes'),
+        fetch('/portal/api/terms'),
       ])
       if (classRes.ok) {
         const data = await classRes.json()
@@ -180,7 +180,7 @@ export default function FeesPage() {
 
     setSubmittingPayment(true)
     try {
-      const res = await fetch(`/api/finance/invoices/${selectedInvoice.id}/payments`, {
+      const res = await fetch(`/portal/api/finance/invoices/${selectedInvoice.id}/payments`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -224,7 +224,7 @@ export default function FeesPage() {
 
     setGenerating(true)
     try {
-      const res = await fetch('/api/finance/invoices', {
+      const res = await fetch('/portal/api/finance/invoices', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         // The term carries its academic year, which is what the
@@ -269,7 +269,7 @@ export default function FeesPage() {
     if (!ok) return
 
     try {
-      const res = await fetch(`/api/finance/invoices/${inv.id}`, { method: 'DELETE' })
+      const res = await fetch(`/portal/api/finance/invoices/${inv.id}`, { method: 'DELETE' })
       if (res.ok) {
         toast.success({ title: 'Success', description: 'Invoice deleted' })
         fetchInvoices()

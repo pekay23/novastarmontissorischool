@@ -14,7 +14,7 @@ export default function PromotionsNotFound() {
       label="404 · Promotions"
       description="The promotions page you tried to access does not exist."
       action={
-        <Link href="/dashboard" className={notFoundActionClasses}>
+        <Link href="/portal/dashboard" className={notFoundActionClasses}>
           Back to Dashboard
         </Link>
       }

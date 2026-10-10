@@ -1,0 +1,17 @@
+{
+  "navigation": {
+    "home": "Home",
+    "about": "About Us",
+    "academics": "Academics",
+    "preschool": "Preschool",
+    "primarySchool": "Primary School",
+    "admissions": "Admissions",
+    "fees": "Fees",
+    "facilities": "Facilities",
+    "news": "News",
+    "events": "Events",
+    "gallery": "Gallery",
+    "contact": "Contact",
+    "applyNow": "Apply Now"
+  }
+}

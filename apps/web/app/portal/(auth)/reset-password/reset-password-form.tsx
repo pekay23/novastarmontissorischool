@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { signIn } from 'next-auth/react'
 import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Input } from '@novastar/shared-ui'
 import { MIN_PASSWORD_LENGTH, meetsPasswordComplexity, PASSWORD_COMPLEXITY_LABEL } from '@/lib/password-policy'
+import { signInLandingPath } from '@/lib/auth/signin-landing'
 
 /**
  * Chooses a new password from an emailed reset link.
@@ -55,7 +56,7 @@ export function ResetPasswordForm({ token }: { token: string | null }) {
         email: body?.email,
         password,
       })
-      router.push(result?.error ? '/portal/login' : result?.url || '/portal/dashboard')
+      router.push(result?.error ? '/portal/login' : signInLandingPath(result?.url ?? undefined, '/portal/dashboard'))
     } catch {
       setError('We could not reach the server. Check your connection and try again.')
     } finally {

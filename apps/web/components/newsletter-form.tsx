@@ -5,25 +5,41 @@ import { cn } from '@novastar/shared-ui'
 
 export function NewsletterForm() {
   const [email, setEmail] = useState('')
+  const [name, setName] = useState('')
   const [status, setStatus] = useState<'idle' | 'submitting' | 'success' | 'error'>('idle')
+  const [errorMessage, setErrorMessage] = useState('')
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     if (!email || status === 'submitting') return
 
     setStatus('submitting')
+    setErrorMessage('')
+
     try {
-      // In a real implementation, this would call an API endpoint
-      await new Promise((resolve) => setTimeout(resolve, 1000))
+      const response = await fetch('/api/newsletter/subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, name: name || undefined, source: 'footer' }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to subscribe')
+      }
+
       setStatus('success')
       setEmail('')
-    } catch {
+      setName('')
+    } catch (error) {
       setStatus('error')
+      setErrorMessage(error instanceof Error ? error.message : 'Failed to subscribe. Please try again.')
     }
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex w-full max-w-sm items-center space-x-2">
+    <form onSubmit={handleSubmit} className="relative flex w-full max-w-sm items-center space-x-2">
       <label htmlFor="newsletter-email" className="sr-only">
         Email address
       </label>
@@ -79,9 +95,14 @@ export function NewsletterForm() {
         </p>
       )}
       {status === 'error' && (
-        <p id="newsletter-error" className="sr-only" aria-live="assertive">
-          Failed to subscribe. Please try again.
-        </p>
+        <>
+          <p id="newsletter-error" className="sr-only" aria-live="assertive">
+            Failed to subscribe. Please try again.
+          </p>
+          <p className="absolute -bottom-6 left-0 text-xs text-red-400" role="alert">
+            {errorMessage}
+          </p>
+        </>
       )}
     </form>
   )

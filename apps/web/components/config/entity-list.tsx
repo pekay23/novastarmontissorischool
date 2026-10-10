@@ -125,7 +125,7 @@ export function EntityList({ entityType }: EntityListProps) {
       params.set('order', order)
       if (search) params.set('search', search)
 
-      const res = await fetch(`/api/config/${entityType}?${params}`)
+      const res = await fetch(`/portal/api/config/${entityType}?${params}`)
       if (res.ok) {
         const json = await res.json()
         setData(json.data)
@@ -187,7 +187,7 @@ export function EntityList({ entityType }: EntityListProps) {
     })) return
 
     try {
-      const res = await fetch(`/api/config/${entityType}/${id}`, { method: 'DELETE' })
+      const res = await fetch(`/portal/api/config/${entityType}/${id}`, { method: 'DELETE' })
       if (res.ok) {
         setError(null)
         fetchData()
@@ -223,12 +223,12 @@ export function EntityList({ entityType }: EntityListProps) {
 
     try {
       const res = editMode && selectedId
-        ? await fetch(`/api/config/${entityType}/${selectedId}`, {
+        ? await fetch(`/portal/api/config/${entityType}/${selectedId}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body),
           })
-        : await fetch(`/api/config/${entityType}`, {
+        : await fetch(`/portal/api/config/${entityType}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body),

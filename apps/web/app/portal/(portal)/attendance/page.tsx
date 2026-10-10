@@ -19,7 +19,7 @@ export default function AttendancePage() {
   const fetchClasses = async () => {
     setLoading(true)
     try {
-      const res = await fetch('/api/classes')
+      const res = await fetch('/portal/api/classes')
       if (res.ok) {
         const data = await res.json()
         const mapped = (data.data || []).map((c: { id: string; name: string; _count?: { students?: number } }) => ({

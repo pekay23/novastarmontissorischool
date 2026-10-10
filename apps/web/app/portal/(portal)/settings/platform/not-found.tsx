@@ -8,7 +8,7 @@ export default function PlatformNotFound() {
       label="404 · Platform Settings"
       description="The platform configuration page you tried to access does not exist."
       action={
-        <Link href="/settings/platform" className={notFoundActionClasses}>
+        <Link href="/portal/settings/platform" className={notFoundActionClasses}>
           Back to Platform Settings
         </Link>
       }

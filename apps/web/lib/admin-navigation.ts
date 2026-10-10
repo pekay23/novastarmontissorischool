@@ -35,6 +35,12 @@ export const PLATFORM_NAV: readonly NavItem[] = [
     capability: 'tenant:read',
   },
   {
+    href: '/admin/newsletter',
+    label: 'Newsletter',
+    description: 'View and copy newsletter subscribers for manual campaigns.',
+    capability: 'tenant:read',
+  },
+  {
     href: '/admin/health',
     label: 'Health',
     description: 'Migration status, mirror reachability and audit volume.',

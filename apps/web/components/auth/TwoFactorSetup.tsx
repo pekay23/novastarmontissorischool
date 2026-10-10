@@ -20,7 +20,7 @@ export function TwoFactorSetup({ userId }: TwoFactorSetupProps) {
   useEffect(() => {
     const loadStatus = async () => {
       try {
-        const res = await fetch(`/api/users/${userId}/security`)
+        const res = await fetch(`/portal/api/users/${userId}/security`)
         const data = await res.json()
         if (data.twoFactorEnabled) {
           setStatus('enabled')
@@ -39,7 +39,7 @@ export function TwoFactorSetup({ userId }: TwoFactorSetupProps) {
     setError(null)
 
     try {
-      const res = await fetch('/api/auth/totp', {
+      const res = await fetch('/portal/api/auth/totp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId }),
@@ -70,7 +70,7 @@ export function TwoFactorSetup({ userId }: TwoFactorSetupProps) {
     setError(null)
 
     try {
-      const res = await fetch('/api/auth/totp/verify', {
+      const res = await fetch('/portal/api/auth/totp/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId, code }),
