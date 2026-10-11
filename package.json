@@ -7,7 +7,7 @@
     "packages/*",
     "tools/*"
   ],
-"scripts": {
+  "scripts": {
     "postinstall": "bun run --cwd packages/database db:generate",
     "db:generate": "bun run --cwd packages/database db:generate",
     "dev": "turbo run dev",
@@ -41,7 +41,6 @@
     "ci:docker": "bun run scripts/ci/docker.ts",
     "ci:deploy": "bun run scripts/ci/deploy-vercel.ts",
     "setup": "bun run scripts/setup-local.ts",
-    "prepare": "husky install",
     "changeset": "changeset",
     "version": "changeset version",
     "release": "changeset publish"
@@ -90,7 +89,7 @@
     "bun": ">=1.4.0"
   },
   "packageManager": "bun@1.4.0",
-   "dependencies": {
+  "dependencies": {
     "argon2": "^0.45.1"
   }
 }
