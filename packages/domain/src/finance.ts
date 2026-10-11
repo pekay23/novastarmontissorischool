@@ -1,4 +1,4 @@
-﻿import { InvoiceStatus, PENDING, PARTIAL, PAID, OVERDUE, COMPLETED } from './enums';
+import { InvoiceStatus, PENDING, PARTIAL, PAID, OVERDUE, COMPLETED } from './enums';
 /**
  * Finance domain service.
  *
@@ -9,7 +9,7 @@
  * - Atomic invoice-balance updates (no lost updates)
  * - Audit trail on every mutation
  *
- * Also provides `generateInvoicesForClass()` (fee-structure â†’ invoices),
+ * Also provides `generateInvoicesForClass()` (fee-structure → invoices),
  * `calculateOutstandingBalance()` (computed view), and
  * `getInvoiceById()` (detailed invoice view).
  */
@@ -71,7 +71,7 @@ export class FinanceService extends BaseService {
    * Record a payment against an invoice.
    *
    * Atomicity: creates the Payment and decrements the invoice balance
-   * in a single Prisma transaction â€” prevents lost updates and the
+   * in a single Prisma transaction — prevents lost updates and the
    * "balance never updated" bug from the legacy endpoints.
    *
    * Idempotency: if a payment with the same `reference` already exists
@@ -145,7 +145,7 @@ export class FinanceService extends BaseService {
       // --- Compute new values ---
       const newPaidAmount = Number(invoice.paidAmount) + input.amount
       const newBalance = Number(invoice.balance) - input.amount
-      const newStatus: InvoiceStatus =
+      const newStatus: any =
         newBalance <= 0
           ? PAID
           : newBalance < Number(invoice.totalAmount)
