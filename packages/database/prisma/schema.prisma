@@ -53,7 +53,6 @@ model Tenant {
   syllabi               Syllabus[]
   systemConfigs         SystemConfig[]
   systemErrors          SystemError[]
-  newsletterSubscriptions NewsletterSubscription[]
 }
 
 model School {
@@ -100,8 +99,7 @@ model School {
   assessments      Assessment[]
   brandings        Branding[]
   configEntities   ConfigEntity[]
-  syllabi          Syllabus[]
-  newsletterSubscriptions NewsletterSubscription[]
+  syllabi        Syllabus[]
 
   @@unique([tenantId, code])
 }
@@ -1383,12 +1381,18 @@ enum AnnouncementStatus {
 }
 
 // ============ NEWSLETTER SUBSCRIPTION ============
+
+// The newsletter list is the school's own mailing list, not per-tenant data. The
+// model used to carry `tenantId`/`schoolId` and a `@@unique([tenantId, schoolId,
+// email])` composite while `email` was ALSO globally `@unique` — which made the
+// composite unreachable (the column constraint always fires first) and left the
+// admin read at `app/admin/(dashboard)/newsletter/page.tsx` accidentally correct
+// rather than correct by construction. This deployment is one school (ADR-024),
+// so the scoping columns are gone rather than tolerated. Reintroducing them
+// means re-adding them here AND removing `email @unique`, so a second school
+// could hold the same address.
 model NewsletterSubscription {
   id             String     @id @default(cuid())
-  tenantId       String
-  tenant         Tenant     @relation(fields: [tenantId], references: [id])
-  schoolId       String?
-  school         School?    @relation(fields: [schoolId], references: [id])
   email          String     @unique
   isActive       Boolean    @default(true)
   name           String?
@@ -1397,8 +1401,6 @@ model NewsletterSubscription {
   unsubscribedAt DateTime?
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
-
-  @@unique([tenantId, schoolId, email])
 }
 
 // ============ HOUSES ============

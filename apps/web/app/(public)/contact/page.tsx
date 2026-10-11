@@ -8,11 +8,15 @@ import { SCHOOL_INFO, generateContactMetadata } from '@/lib/metadata'
 export const metadata = generateContactMetadata()
 
 /*
- * There is no server to receive a contact form: `output: 'export'` builds a
- * static bundle and `app/api/` cannot run. The previous version rendered a
- * "Send Message" form with no action and no handler, so every submission
- * silently vanished. Contact routes are surfaced as tel:, mailto: and WhatsApp
- * links instead, which work on a static host.
+ * Contact routes are surfaced as tel:, mailto: and WhatsApp links.
+ *
+ * The page used to carry a "Send Message" form with no action and no handler, so
+ * every submission silently vanished. This app is one SSR deployment
+ * (`next.config.ts` deliberately does NOT set `output: 'export'`, which a static
+ * export could not prerender), so an `app/api/` handler is technically possible
+ * here — a contact form would just be a second write path for one person to
+ * maintain, and a phone number gets answered. Delete this note only if the form
+ * and its handler ever come back together.
  */
 export default async function ContactPage() {
   // One more build-time read, for one sentence and one link. Admissions being
@@ -167,13 +171,14 @@ export default async function ContactPage() {
           </div>
 
           {/*
-            Every action below is a link, never a `<button>`. `output: 'export'`
-            builds a static bundle with no server, so a control that appears to
-            submit has nowhere to go — the same failure the removed "Send Message"
-            form had. `MarketingButton` carries the marketing scale (44px at the
-            default size, so the target clears WCAG 2.5.8), the focus ring, and the
-            `external` switch that renders a real `<a>` for `tel:`, `mailto:` and
-            wa.me targets instead of routing them through `next/link`.
+            Every action below is a link, never a `<button>`. There is no form
+            on this page and no `app/api/` route behind one, so a control that
+            looks submit-shaped has nowhere to go — the failure the removed
+            "Send Message" form had. `MarketingButton` carries the marketing
+            scale (44px at the default size, so the target clears WCAG 2.5.8),
+            the focus ring, and the `external` switch that renders a real `<a>`
+            for `tel:`, `mailto:` and wa.me targets instead of routing them
+            through `next/link`.
           */}
           {/*
             `self-start`: at `lg` the two-column grid stretches every item
