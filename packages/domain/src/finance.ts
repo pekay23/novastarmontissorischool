@@ -146,9 +146,9 @@ export class FinanceService extends BaseService {
       const newBalance = Number(invoice.balance) - input.amount
       const newStatus: InvoiceStatus =
         newBalance <= 0
-          ? InvoiceStatus.PAID
+          ? PAID
           : newBalance < Number(invoice.totalAmount)
-            ? InvoiceStatus.PARTIAL
+            ? PARTIAL
             : invoice.status
 
       // --- Create the payment ---
@@ -161,7 +161,7 @@ export class FinanceService extends BaseService {
           amount: input.amount,
           methodId: paymentMethod.id,
           reference: input.reference,
-          status: PaymentStatus.COMPLETED,
+          status: COMPLETED,
           momoPhone: input.momoPhone ?? undefined,
           recordedById: this.ctx.userId,
           notes: input.notes ?? undefined,
@@ -287,7 +287,7 @@ export class FinanceService extends BaseService {
             totalAmount,
             paidAmount: 0,
             balance: totalAmount,
-            status: InvoiceStatus.PENDING,
+            status: PENDING,
             dueDate: new Date(),
             lineItems: {
               create: lineItems.map((li) => ({
@@ -334,7 +334,7 @@ export class FinanceService extends BaseService {
         tenantId,
         schoolId,
         status: {
-          in: [InvoiceStatus.PENDING, InvoiceStatus.PARTIAL, InvoiceStatus.OVERDUE],
+          in: [PENDING, PARTIAL, OVERDUE],
         },
       },
       _sum: { balance: true },
