@@ -14,8 +14,6 @@
  */
 
 import {
-  InvoiceStatus,
-  PaymentStatus,
   type Prisma,
 } from '@novastar/database'
 import { BaseService, type ServiceContext } from './base'
