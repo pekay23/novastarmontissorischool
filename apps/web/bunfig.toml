@@ -1,0 +1,9 @@
+[test]
+# `server-only` throws when imported outside a Server Component and is installed
+# in this workspace, so it is stubbed before any test file is evaluated. See the
+# comment in tests/preload.ts. Without this, `bun test tests` dies partway
+# through with "This module cannot be imported from a Client Component module"
+# as an unhandled error between `data-integrity.test.ts`'s tests.
+#
+# Deliberately NOT `./tests/harness.ts`: see the note at the bottom of that file.
+preload = ["./tests/preload.ts"]

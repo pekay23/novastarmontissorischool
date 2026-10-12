@@ -164,8 +164,14 @@ export function decidePortalPath(
 ): PortalPathDecision {
   if (role == null) return { outcome: 'unknown-role' }
 
-  // Strip /portal prefix before matching (merged app uses /portal/*)
-  const strippedPathname = pathname.startsWith('/portal') ? pathname.slice(6) : pathname
+  // Strip /portal prefix before matching (merged app uses /portal/*). The slice
+  // drops the whole prefix INCLUDING its slash: slicing at 6 leaves "l/…", whose
+  // first segment is "l" — a section no role holds, so every role without '*'
+  // was denied every /portal/* path while the same path without the prefix was
+  // allowed. The merged app moved every portal URL under the prefix.
+  const strippedPathname = pathname.startsWith('/portal')
+    ? pathname.slice('/portal'.length)
+    : pathname
 
   const sections = PORTAL_SECTIONS_BY_ROLE[role]
   if (!sections) return { outcome: 'unknown-role' }

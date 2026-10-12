@@ -1054,11 +1054,11 @@ describe('the invariant travels with the entity, and the route never names it', 
 
   it('is dispatched by kind in both config routes, before the write', () => {
     const routeSrc = readFileSync(
-      join(import.meta.dir, '..', 'app', 'api', 'config', '[entityType]', 'route.ts'),
+      join(import.meta.dir, '..', 'app', 'portal', 'api', 'config', '[entityType]', 'route.ts'),
       'utf-8',
     )
     const idSrc = readFileSync(
-      join(import.meta.dir, '..', 'app', 'api', 'config', '[entityType]', '[id]', 'route.ts'),
+      join(import.meta.dir, '..', 'app', 'portal', 'api', 'config', '[entityType]', '[id]', 'route.ts'),
       'utf-8',
     )
     for (const src of [routeSrc, idSrc]) {

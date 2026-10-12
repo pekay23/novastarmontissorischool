@@ -173,7 +173,14 @@ for (const { specifier, factory } of FAKES) {
 // `pages`, and `NEXTAUTH_URL` over https is what selects the `__Secure-` cookie
 // name the middleware looks for.
 process.env.NEXTAUTH_SECRET = 'must-change-password-test-secret-not-real'
-process.env.NEXTAUTH_URL = 'https://portal.example.test'
+// The URL must carry the auth-API path, not just the origin, and `.env` does the
+// same: `withAuth` derives the request paths it refuses to gate from
+// `parseUrl(NEXTAUTH_URL).path`, and a pathless URL resolves to next-auth's own
+// default `/api/auth`. With that default no `/portal/api/auth/*` path is exempt,
+// so the session fetch a browser makes before any sign-in is met with a redirect
+// to the sign-in page instead of the JSON it expects — an origin-only URL makes
+// these tests assert a deployment nobody runs.
+process.env.NEXTAUTH_URL = 'https://portal.example.test/portal/api/auth'
 
 const { resetRateLimit } = await import('@/lib/rate-limit')
 const { issueEmailToken, lookupEmailToken } = await import('@/lib/auth/email-verification')
@@ -477,24 +484,35 @@ async function run(path: string, claims: Record<string, unknown>) {
 }
 
 describe('proxy sends a session that owes a password change to the setup page', () => {
+  /**
+   * The portal lives under `/portal/*`, and that prefix is load-bearing in a way
+   * it never used to be: the proxy answers `NextResponse.next()` for any path
+   * that is neither `/portal/*` nor `/admin/*` before `withAuth` is reached at
+   * all. Every path below therefore carries the prefix — a bare `/dashboard`
+   * was answered 200 by the public-site branch and the assertions were green
+   * against a handler that never ran.
+   */
+  const PORTAL_DASHBOARD = '/portal/dashboard'
+  const SET_PASSWORD_TARGET = `${ORIGIN}/portal/set-password`
+
   it('should redirect a flagged session away from the portal', async () => {
-    const { res, location } = await run('/dashboard', { mustChangePassword: true })
+    const { res, location } = await run(PORTAL_DASHBOARD, { mustChangePassword: true })
 
     expect(res.status).toBe(307)
-    expect(location).toBe(`${ORIGIN}/set-password`)
+    expect(location).toBe(SET_PASSWORD_TARGET)
   })
 
   it('should redirect the API too, so the flag is not a page-only badge', async () => {
-    const { res, location } = await run('/api/students', { mustChangePassword: true })
+    const { res, location } = await run('/portal/api/students', { mustChangePassword: true })
 
     expect(res.status).toBe(307)
-    expect(location).toBe(`${ORIGIN}/set-password`)
+    expect(location).toBe(SET_PASSWORD_TARGET)
   })
 
   it('should not redirect the setup page itself, which is what would make this a loop', async () => {
     // The redirect target is itself exempt, so the second request terminates
     // instead of bouncing forever.
-    const { res } = await run('/set-password?token=vem_abc', { mustChangePassword: true })
+    const { res } = await run('/portal/set-password?token=vem_abc', { mustChangePassword: true })
 
     expect(res.status).toBe(200)
     expect(res.headers.get('location')).toBeNull()
@@ -502,42 +520,44 @@ describe('proxy sends a session that owes a password change to the setup page', 
 
   it('should leave every recovery route reachable, so a flagged session is never locked out', async () => {
     for (const path of [
-      '/set-password',
-      '/set-password?token=vem_abc',
-      '/forgot-password',
-      '/reset-password?token=prt_abc',
-      '/verify-email?token=vem_abc',
+      '/portal/set-password',
+      '/portal/set-password?token=vem_abc',
+      '/portal/forgot-password',
+      '/portal/reset-password?token=prt_abc',
+      '/portal/verify-email?token=vem_abc',
     ]) {
       const { res, location } = await run(path, { mustChangePassword: true })
       expect(`${path}: ${res.status} ${location}`).toBe(`${path}: 200 null`)
     }
 
-    // `/login` and all of `/api/auth/*` never reach the proxy body at all:
-    // `withAuth` returns before the handler runs for the sign-in page and the
-    // auth path. So the sign-in the setup page performs after setting a password
-    // is unaffected by anything asserted here.
-    for (const path of ['/login', '/api/auth/session']) {
+    // The sign-in page and everything under the auth path never reach the proxy
+    // body at all: `withAuth` returns before the handler runs for them, so the
+    // sign-in the setup page performs after setting a password is unaffected by
+    // anything asserted here. The sign-in page is matched by exact pathname, and
+    // the trailing slash is what makes it that URL rather than a redirect into
+    // one — see the `pages.signIn` comment in proxy.ts.
+    for (const path of ['/portal/login/', '/portal/api/auth/session']) {
       expect(`${path}: ${await callProxy(path, '')}`).toBe(`${path}: undefined`)
     }
   })
 
   it('should drop the query string, which the setup page has no use for', async () => {
-    const { location } = await run('/dashboard?schoolId=other&callbackUrl=/students', {
+    const { location } = await run(`${PORTAL_DASHBOARD}?schoolId=other&callbackUrl=/students`, {
       mustChangePassword: true,
     })
 
-    expect(location).toBe(`${ORIGIN}/set-password`)
+    expect(location).toBe(SET_PASSWORD_TARGET)
   })
 
   it('should let an unflagged session through untouched', async () => {
-    const { res } = await run('/dashboard', { mustChangePassword: false })
+    const { res } = await run(PORTAL_DASHBOARD, { mustChangePassword: false })
     expect(res.status).toBe(200)
   })
 
   it('should let a session with no flag claim through untouched', async () => {
     // A token minted before the claim existed must not be treated as flagged;
     // `undefined` is not `true`.
-    const { res } = await run('/dashboard', {})
+    const { res } = await run(PORTAL_DASHBOARD, {})
     expect(res.status).toBe(200)
   })
 
@@ -552,7 +572,7 @@ describe('proxy sends a session that owes a password change to the setup page', 
     for (let i = 0; i < 302; i++) {
       // Every request carries the same `x-real-ip`, so they all share one client
       // bucket, and a page path so the budget is the 300/min page limit.
-      const res = await callProxy('/dashboard', cookie)
+      const res = await callProxy(PORTAL_DASHBOARD, cookie)
       statuses.push(res?.status ?? 0)
     }
 
