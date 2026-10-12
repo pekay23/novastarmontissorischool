@@ -275,6 +275,27 @@ export async function main(
       : `\n${mismatches} table(s) MISMATCHED.`
   );
 
+  // The attestation, printed at the one moment it is exactly known.
+  //
+  // `tools/migrate`'s require-backup guard measures the failsafe's age from the
+  // newest `finished_at` in its `_prisma_migrations` ledger, which after a
+  // mirror is the PRIMARY's newest migration time -- so the failsafe ages with
+  // the primary's migration cadence rather than with mirror freshness, and a
+  // healthy database with no recent migrations reads as stale. Passing
+  // `--mirror-synced-at` overrides that signal, and is the right lever.
+  //
+  // The wrong lever is `--max-mirror-age-hours`: it widens a safety limit for
+  // every future run to work around one measurement that is answering the wrong
+  // question. Age is opt-in strict anyway (`--require-mirror-age`), so this is
+  // about the strict case being one paste away rather than a deadlock.
+  if (mismatches === 0) {
+    const syncedAt = new Date().toISOString();
+    console.log(
+      `\nTo attest the failsafe is current as of now, pass this to the next ` +
+        `migrate command:\n  --mirror-synced-at=${syncedAt}`
+    );
+  }
+
   await neon.end();
   await supabase.end();
   // An incomplete failsafe is not verified, however well the shared tables

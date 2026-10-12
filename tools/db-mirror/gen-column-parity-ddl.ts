@@ -100,12 +100,20 @@ for (const [table, pcols] of [...primary].sort()) {
     if (fcols.has(col.name)) continue;
     const type = sqlType(col);
     const def = col.def ? ` DEFAULT ${col.def}` : "";
-    stmts.push(`ALTER TABLE "${table}" ADD COLUMN "${col.name}" ${type}${def};`);
+    // `NOT NULL` belongs on the ADD COLUMN itself whenever there is a default:
+    // Postgres fills existing rows with it, so the statement is safe on a
+    // populated table and the column lands with the primary's constraint
+    // rather than quietly becoming nullable. Emitting it only in the
+    // no-default branch below left `healthDeclaredByParent` -- NOT NULL
+    // DEFAULT false on the primary -- as a nullable column on the failsafe,
+    // which check-column-parity.ts cannot see because it compares names only.
+    const notNull = !col.nullable && col.def ? " NOT NULL" : "";
+    stmts.push(`ALTER TABLE "${table}" ADD COLUMN "${col.name}" ${type}${notNull}${def};`);
     added++;
+    // Without a default the inline form fails on a non-empty table, so add it
+    // nullable and tighten afterwards. Still fails if rows exist to leave null,
+    // which is correct: there is no honest value to invent.
     if (!col.nullable && !col.def) {
-      // ADD COLUMN ... NOT NULL with no default fails on a non-empty table, so
-      // add it nullable and tighten afterwards. Still fails if rows exist to
-      // leave null, which is correct: there is no honest value to invent.
       stmts.push(
         `ALTER TABLE "${table}" ALTER COLUMN "${col.name}" SET NOT NULL;`,
       );
