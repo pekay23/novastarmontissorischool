@@ -1,18 +1,18 @@
-/**
+﻿/**
  * The failsafe-parity decision, separated from the mirror that acts on it.
  *
  * `mirror.ts` used to compute `onlyNeon = neonTables.filter(...)`, print it as
  * `Missing on Supabase (skipped)`, mirror the tables that matched, and exit 0
  * having printed "MIRROR VERIFIED". A failsafe missing `_prisma_migrations`
  * therefore reported healthy, while `tools/migrate/guards/require-backup.ts`
- * — correct, and unchanged by this work — refused every deploy against it with
+ * â€” correct, and unchanged by this work â€” refused every deploy against it with
  * "a mirror missing tables is not a backup". The operator was told the mirror
  * was fine by the mirror and told it was not a backup by the guard, with
  * nothing explaining the gap.
  *
  * So the decision lives here, as pure functions, and `mirror.ts` routes through
  * it. The split is the point: a pure function can be tested against the exact
- * shapes that occur, and `mirror.ts` cannot — its I/O is two live databases.
+ * shapes that occur, and `mirror.ts` cannot â€” its I/O is two live databases.
  *
  * Provisioning is a reviewed DDL file applied through `apply-schema.ts`, never
  * DDL generated at mirror time. Generating `CREATE TABLE` from a diff of two
@@ -22,7 +22,7 @@
 /**
  * Prisma's migration ledger. `tools/migrate` reads `max(finished_at)` from it
  * to find the last applied migration, so a failsafe without it cannot report
- * which migrations ran — which is why a missing ledger is a parity failure
+ * which migrations ran â€” which is why a missing ledger is a parity failure
  * rather than a table the mirror may leave to Prisma.
  */
 export const LEDGER_TABLE = "_prisma_migrations";
@@ -34,6 +34,33 @@ export const LEDGER_TABLE = "_prisma_migrations";
  * module prints can be pasted as-is.
  */
 export const PARITY_DDL_FILE = "tools/db-mirror/failsafe-parity.sql";
+
+/**
+ * What the parity DDL is extracted from, and what it must cover.
+ *
+ * `MIGRATIONS` is the authoritative source: the DDL is lifted verbatim from
+ * these migration files rather than written by hand, so it cannot disagree
+ * with what the primary actually ran.
+ *
+ * `TABLES` is the CURRENT GAP, not history. A table already provisioned on the
+ * failsafe must be removed from it, because the emitted DDL is plain `CREATE
+ * TABLE` and the apply is one-shot and atomic: a stale entry fails the batch.
+ *
+ * The failure that put these here: the primary gained `NewsletterSubscription`
+ * and `StudentHealthDocument`, the mirror refused for weeks with nothing in the
+ * DDL naming them, and the cause was that neither migration was listed here.
+ * They live next to `PARITY_DDL_FILE` so `failsafe-parity-ddl.test.ts` can
+ * assert that the emitted file covers exactly this list.
+ */
+export const PARITY_MIGRATIONS = [
+  "20261005145130_add_student_health",
+  "20261011224609_newsletter_single_school",
+];
+
+export const PARITY_TABLES = ["StudentHealthDocument", "NewsletterSubscription"];
+
+/** Enums the failsafe is missing at generation time. Empty needs no `CREATE TYPE`. */
+export const PARITY_ENUMS: string[] = [];
 
 /** How the two databases' table sets compare. */
 export interface FailsafeParity {
@@ -108,12 +135,12 @@ export function parityRefusalReason(parity: FailsafeParity): string | null {
  *
  * Dry run first, then the apply, so the operator sees what would land before it
  * lands. Both carry `--allow-nonempty` because the failsafe is populated by
- * definition — an apply that omitted it would refuse on the very database it
+ * definition â€” an apply that omitted it would refuse on the very database it
  * exists to repair. The target is always the failsafe: the primary is read-only
  * to the mirror and is never written to.
  *
  * `tables` states what is being provisioned. It does not change the command,
- * because the DDL is one reviewed file that covers the whole gap — a table-list
+ * because the DDL is one reviewed file that covers the whole gap â€” a table-list
  * argument that selected per-table DDL would let a caller provision a subset and
  * call the rest "someone else's".
  */
@@ -133,9 +160,9 @@ export function provisioningCommands(
 function ledgerNote(table: string): string {
   if (table !== LEDGER_TABLE) return "";
   return (
-    ` — the Prisma ledger: tools/migrate reads max(finished_at) from it to find ` +
+    ` â€” the Prisma ledger: tools/migrate reads max(finished_at) from it to find ` +
     `the last applied migration, so a failsafe without it cannot report which ` +
-    `migrations ran. It must be provisioned like any other table — the mirror is ` +
+    `migrations ran. It must be provisioned like any other table â€” the mirror is ` +
     `a copy and must never itself be a migrate deploy target.`
   );
 }
@@ -145,7 +172,7 @@ function ledgerNote(table: string): string {
  *
  * Empty when the failsafe is complete and holds nothing extra, so `mirror.ts`
  * can print it unconditionally without a conditional blank line. A missing table
- * is never described as "skipped" — that word is the original defect in two
+ * is never described as "skipped" â€” that word is the original defect in two
  * words, telling the operator a class of loss was a deliberate choice.
  */
 export function formatParityReport(parity: FailsafeParity): string {
@@ -159,7 +186,7 @@ export function formatParityReport(parity: FailsafeParity): string {
     lines.push(
       `Supabase failsafe is missing ${parity.missingOnFailsafe.length} table(s) ` +
         `the Neon primary has. Each must be provisioned before the mirror will ` +
-        `copy — a failsafe missing tables is not a backup:`
+        `copy â€” a failsafe missing tables is not a backup:`
     );
     for (const table of parity.missingOnFailsafe) {
       lines.push(`  - ${table}${ledgerNote(table)}`);
@@ -172,7 +199,7 @@ export function formatParityReport(parity: FailsafeParity): string {
 
   if (parity.extraOnFailsafe.length > 0) {
     lines.push(
-      `Extra on the Supabase failsafe, absent from the primary — left alone: ` +
+      `Extra on the Supabase failsafe, absent from the primary â€” left alone: ` +
         `${parity.extraOnFailsafe.join(", ")}`
     );
   }

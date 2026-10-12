@@ -16,23 +16,22 @@
  * nothing.
  */
 import { readFileSync, writeFileSync } from "node:fs";
+import { PARITY_ENUMS as ENUMS, PARITY_MIGRATIONS as MIGRATIONS, PARITY_TABLES as TABLES } from "./provisioning";
 
-const MIGRATIONS = [
-  "20261002103000_platform_config",
-  "20261003000000_unifiedtransform_port_wave0",
-  "20261003164500_platform_operator",
-];
+/**
+ * `TABLES` is the CURRENT gap, not history. The seven tables this file first
+ * carried (PlatformOperator, Syllabus, Passkey, PasskeyChallenge, SystemConfig,
+ * SystemError, LogEntry) are provisioned on the failsafe and have been pruned
+ * from the list: regenerating with a stale entry emits a plain `CREATE TABLE`
+ * for a table that already exists, and apply-schema's one-shot batch then fails
+ * atomically. Add the new gap, remove what has been provisioned.
+ *
+ * When the primary gains a table, this list is what the 6-hourly mirror job
+ * finds wrong — it stopped with two missing and nothing in this file naming
+ * them, because the migrations were not listed. Keep `TABLES`, `MIGRATIONS` and
+ * the emitted file in step: `failsafe-parity-ddl.test.ts` asserts they agree.
+ */
 
-const TABLES = [
-  "PlatformOperator",
-  "Syllabus",
-  "Passkey",
-  "PasskeyChallenge",
-  "SystemConfig",
-  "SystemError",
-  "LogEntry",
-];
-const ENUMS = ["UserStatus", "ErrorSeverity", "LogLevel"];
 
 /** Strips `--` comments so matching sees code, not rationale. */
 const codeOf = (stmt: string): string =>
@@ -133,11 +132,16 @@ const body = ordered.map((s) => `-- ${s.migration}\n${s.text}\n`).join("\n");
 const header = `-- Failsafe parity DDL: brings the Supabase failsafe up to the primary's
 -- table set so tools/migrate's require-backup guard stops refusing writes.
 --
--- Missing tables at generation time (7): ${TABLES.join(", ")}
--- Missing enums at generation time (3): ${ENUMS.join(", ")}
+-- Missing tables at generation time (${TABLES.length}): ${TABLES.join(", ")}
+-- Missing enums at generation time (${ENUMS.length})${ENUMS.length > 0 ? `: ${ENUMS.join(", ")}` : ""}
 --
 -- Generated from packages/database/prisma/migrations by gen-parity-ddl.ts.
 -- ONE-SHOT, applied atomically by tools/db-mirror/apply-schema.ts.
+--
+-- A table already present on the failsafe MUST be removed from TABLES before
+-- regenerating: these are plain CREATEs, so a repeat apply fails as a whole.
+-- The count above is derived from the list precisely so it cannot disagree
+-- with it.
 `;
 
 const out = header + "\n" + body;
