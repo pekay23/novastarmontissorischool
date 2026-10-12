@@ -30,9 +30,22 @@ export function directUrl(url: string): string {
 }
 
 /**
- * The Supabase endpoint. `SUPABASE_DATABASE_URL` points at the transaction
- * pooler, which is the only host that accepts connections from this network;
- * the direct `db.*.supabase.co` host does not resolve here.
+ * The Supabase endpoint.
+ *
+ * Use port 5432, the SESSION pooler. Two things bite on 6543, the transaction
+ * pooler:
+ *
+ *   1. It takes no multi-statement simple-query transaction, so `mirror.ts`'s
+ *      whole-copy — one INSERT batch across every table — cannot run on it at
+ *      all, and `apply-schema.ts`'s one-shot DDL batch cannot either.
+ *   2. It is IPv6-only by default. `db.<ref>.supabase.co`, the direct host,
+ *      likewise resolves only to AAAA.
+ *
+ * The session pooler is IPv4-proxied, so it is the endpoint that works from an
+ * ordinary network. This docstring previously claimed the opposite — that the
+ * transaction pooler was "the only host that accepts connections from this
+ * network" — and that was believed long enough to cost a password reset while
+ * diagnosing a DDL apply that could not have worked on 6543 in any case.
  */
 export function supabaseUrl(): string {
   return requireEnv("SUPABASE_DATABASE_URL");
