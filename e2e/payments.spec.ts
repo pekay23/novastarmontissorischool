@@ -1,4 +1,4 @@
-import { expect, hasCredentials, loginAs, test } from './fixtures';
+import { expect, hasCredentials, loginAs, PORTAL_PREFIX, test } from './fixtures';
 
 /**
  * Fees and payments coverage.
@@ -24,7 +24,7 @@ test.describe('Fees and payments', () => {
 
   test.beforeEach(async ({ page }) => {
     await loginAs(page);
-    await page.goto('/fees');
+    await page.goto(`${PORTAL_PREFIX}/fees`);
   });
 
   test('should render the invoices surface', async ({ page }) => {
@@ -53,28 +53,47 @@ test.describe('Fees and payments', () => {
 });
 
 test.describe('Invoice lifecycle', () => {
-  test.fixme(
-    'should generate an invoice for a student',
-    'The /fees page creates invoices through a dialog, not a dedicated /invoices/new route. Needs a seeded student to select, then a form submission that asserts the created row.',
-  );
+  // Written as `test(name, fn)` + an inner `test.fixme(reason)` on purpose — see
+  // the note in auth.spec.ts. `test.fixme('title', 'details')` passes a truthy
+  // string to Playwright's `fixme(condition, description)` overload and marks
+  // the whole enclosing describe as fixme, which is what made this suite report
+  // 87 skipped and nothing else.
+  test('should generate an invoice for a student', async () => {
+    // The /fees page creates invoices through a dialog, not a dedicated
+    // /invoices/new route. Needs a seeded student to select, then a form
+    // submission that asserts the created row.
+    test.fixme(
+      'The /fees page creates invoices through a dialog, not a dedicated /invoices/new route. Needs a seeded student to select, then a form submission that asserts the created row.',
+    );
+  });
 
-  test.fixme(
-    'should mark an invoice as paid',
-    'Payment capture exists on /fees but marks an invoice paid via the payment dialog against a real finance record. Needs a seeded invoice with a known total so the assertion is deterministic.',
-  );
+  test('should mark an invoice as paid', async () => {
+    // Payment capture exists on /fees but marks an invoice paid via the payment
+    // dialog against a real finance record. Needs a seeded invoice with a known
+    // total so the assertion is deterministic.
+    test.fixme(
+      'Payment capture exists on /fees but marks an invoice paid via the payment dialog against a real finance record. Needs a seeded invoice with a known total so the assertion is deterministic.',
+    );
+  });
 
-  test.fixme(
-    'should handle a refund',
-    'No refund flow exists in the portal. Needs a refund model, a permitted state transition on a paid invoice, and audit logging for it.',
-  );
+  test('should handle a refund', async () => {
+    // No refund flow exists in the portal. Needs a refund model, a permitted
+    // state transition on a paid invoice, and audit logging for it.
+    test.fixme(
+      'No refund flow exists in the portal. Needs a refund model, a permitted state transition on a paid invoice, and audit logging for it.',
+    );
+  });
 
-  test.fixme(
-    'should export payments to CSV',
-    'No export control exists on /fees. Needs a server endpoint that streams CSV and a trigger in the UI.',
-  );
+  test('should export payments to CSV', async () => {
+    // No export control exists on /fees. Needs a server endpoint that streams
+    // CSV and a trigger in the UI.
+    test.fixme('No export control exists on /fees. Needs a server endpoint that streams CSV and a trigger in the UI.');
+  });
 
-  test.fixme(
-    'should filter payments by status',
-    'The /fees page filters by student name search only. Needs a status filter wired to the API and a deterministic fixture set covering each status.',
-  );
+  test('should filter payments by status', async () => {
+    // The /fees page filters by student name search only.
+    test.fixme(
+      'The /fees page filters by student name search only. Needs a status filter wired to the API and a deterministic fixture set covering each status.',
+    );
+  });
 });

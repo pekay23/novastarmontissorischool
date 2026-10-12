@@ -1,4 +1,4 @@
-import { expect, hasCredentials, loginAs, test } from './fixtures';
+import { expect, hasCredentials, loginAs, PORTAL_PREFIX, test, type Page } from './fixtures';
 
 /**
  * Authentication coverage for the routes the portal actually serves.
@@ -13,33 +13,37 @@ import { expect, hasCredentials, loginAs, test } from './fixtures';
 
 test.describe('Authentication', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/login');
+    await page.goto(`${PORTAL_PREFIX}/login`);
   });
 
+  // `getByLabel('Password')` is ambiguous unless it is exact: the input is
+  // labelled "Password" and the show/hide button carries `aria-label="Show
+  // password"`, and Playwright's default label matching is a substring, so both
+  // matched and every use of it failed in strict mode.
+  const emailField = (page: Page) => page.getByLabel('Email', { exact: true });
+  const passwordField = (page: Page) => page.getByLabel('Password', { exact: true });
+
   test('should show login form', async ({ page }) => {
-    await expect(page.getByLabel('Email')).toBeVisible();
-    await expect(page.getByLabel('Password')).toBeVisible();
-    await expect(page.getByLabel('School Code')).toBeVisible();
+    await expect(emailField(page)).toBeVisible();
+    await expect(passwordField(page)).toBeVisible();
     await expect(page.getByRole('button', { name: /sign in/i })).toBeVisible();
   });
 
   test('should associate every label with its input', async ({ page }) => {
     // Each control must be reachable by its accessible name, which is the
     // contract the specs and screen readers both depend on.
-    await expect(page.getByLabel('Email')).toHaveAttribute('name', 'email');
-    await expect(page.getByLabel('Password')).toHaveAttribute('name', 'password');
-    await expect(page.getByLabel('School Code')).toHaveAttribute('name', 'schoolCode');
+    await expect(emailField(page)).toHaveAttribute('name', 'email');
+    await expect(passwordField(page)).toHaveAttribute('name', 'password');
   });
 
   test('should reject invalid credentials', async ({ page }) => {
-    await page.getByLabel('Email').fill('nobody@example.invalid');
-    await page.getByLabel('Password').fill('definitely-not-the-password');
-    await page.getByLabel('School Code').fill('definitely-not-a-school');
+    await emailField(page).fill('nobody@example.invalid');
+    await passwordField(page).fill('definitely-not-the-password');
     await page.getByRole('button', { name: /sign in/i }).click();
 
     // The form must stay on /login and announce the failure rather than
     // navigating away or silently doing nothing.
-    await expect(page).toHaveURL(/\/login/);
+    await expect(page).toHaveURL(new RegExp(`${PORTAL_PREFIX}/login`));
     await expect(page.getByRole('alert')).toBeVisible();
   });
 
@@ -78,17 +82,35 @@ test.describe('Authentication', () => {
   });
 
   test('should protect routes from unauthenticated access', async ({ page }) => {
-    await page.goto('/dashboard');
+    await page.goto(`${PORTAL_PREFIX}/dashboard`);
     await expect(page).toHaveURL(/\/login/);
   });
 
-  test.fixme(
-    'should request password reset',
-    'No password-reset feature exists. Needs an /forgot-password route, a reset token table, and an email sender before this can be tested.',
-  );
+  /*
+   * `test.fixme('title', 'details')` DOES NOT declare a fixme test — the string
+   * title satisfies Playwright's `fixme(condition, description)` overload, a
+   * non-empty string is truthy, and the call marks the ENCLOSING DESCRIBE as
+   * fixme. Written that way, every test in that describe was reported skipped,
+   * which is how this suite came to report 87 skipped and 0 failures: the whole
+   * of `Authentication` never ran at all.
+   *
+   * The form below is the one that does what was intended: a real test that
+   * marks itself fixme, so the reason stays visible in the report and the test
+   * flips to running the day the feature lands.
+   */
+  test('should request password reset', async () => {
+    // No password-reset feature exists. Needs an /forgot-password route, a reset
+    // token table, and an email sender before this can be tested.
+    test.fixme(
+      'No password-reset feature exists. Needs an /forgot-password route, a reset token table, and an email sender before this can be tested.',
+    );
+  });
 
-  test.fixme(
-    'should prompt for MFA after login',
-    'No MFA implementation exists. apps/portal/lib/auth.ts has no TOTP or second-factor logic, so there is nothing to prompt for.',
-  );
+  test('should prompt for MFA after login', async () => {
+    // No MFA implementation exists. apps/portal/lib/auth.ts has no TOTP or
+    // second-factor logic, so there is nothing to prompt for.
+    test.fixme(
+      'No MFA implementation exists. apps/portal/lib/auth.ts has no TOTP or second-factor logic, so there is nothing to prompt for.',
+    );
+  });
 });

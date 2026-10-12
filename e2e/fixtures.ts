@@ -12,11 +12,10 @@ import { test as base, expect, type Page } from '@playwright/test';
  * than 90 identical timeouts.
  */
 
-/** Set E2E_EMAIL / E2E_PASSWORD / E2E_SCHOOL_CODE to run the signed-in specs. */
+/** Set E2E_EMAIL / E2E_PASSWORD to run the signed-in specs. */
 export const CREDENTIALS = {
   email: process.env.E2E_EMAIL ?? '',
   password: process.env.E2E_PASSWORD ?? '',
-  schoolCode: process.env.E2E_SCHOOL_CODE ?? '',
 };
 
 /**
@@ -31,15 +30,30 @@ export function hasCredentials(): boolean {
 }
 
 /**
+ * The portal is mounted under `/portal` (directory-based routing in
+ * `apps/web/app/portal`, not `basePath` in `next.config.ts`), so every route
+ * is reached through this prefix. Exported rather than repeated as a literal
+ * because the specs navigate to a dozen routes and the prefix has already been
+ * wrong once.
+ */
+export const PORTAL_PREFIX = '/portal';
+
+/**
  * Fills the login form and waits for the dashboard.
  *
- * The school code is only typed when one is configured; the server falls back
- * to DEFAULT_SCHOOL_CODE when it is blank.
+ * There is no school code field on this form. `E2E_SCHOOL_CODE` used to be typed
+ * into one, and the portal's login page no longer renders a "School Code" input
+ * — the school comes from DEFAULT_SCHOOL_CODE on the server. Filling a field
+ * that is not there failed with a strict-mode / timeout error.
+ *
+ * The labels are exact: `getByLabel('Password')` otherwise matches the
+ * show/hide button's `aria-label="Show password"` too, and Playwright's default
+ * label matching is a substring, so both matched and the call failed in strict
+ * mode.
  */
 export async function loginAs(page: Page, overrides: Partial<typeof CREDENTIALS> = {}) {
   const email = overrides.email ?? CREDENTIALS.email;
   const password = overrides.password ?? CREDENTIALS.password;
-  const schoolCode = overrides.schoolCode ?? CREDENTIALS.schoolCode;
 
   if (!email || !password) {
     throw new Error(
@@ -48,10 +62,9 @@ export async function loginAs(page: Page, overrides: Partial<typeof CREDENTIALS>
     );
   }
 
-  await page.goto('/login');
-  await page.getByLabel('School Code').fill(schoolCode);
-  await page.getByLabel('Email').fill(email);
-  await page.getByLabel('Password').fill(password);
+  await page.goto(`${PORTAL_PREFIX}/login`);
+  await page.getByLabel('Email', { exact: true }).fill(email);
+  await page.getByLabel('Password', { exact: true }).fill(password);
   await page.getByRole('button', { name: /sign in/i }).click();
 
   // The layout redirects to /login when the session is unauthenticated, so

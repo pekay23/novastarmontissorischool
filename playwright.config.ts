@@ -6,13 +6,11 @@ import { defineConfig, devices } from '@playwright/test';
  * Three deliberate choices here, each of which fixes a specific way this suite
  * used to waste CI time:
  *
- * 1. The webServer runs the PORTAL ONLY, on a pinned port.
- *    It used to run `bun run dev` (i.e. `turbo run dev`), which starts the
- *    portal and the public site at once. Neither declares a PORT, so both ask
- *    for 3000 and Next silently hands the loser 3001. Whichever app won was a
- *    coin flip, and the public site has no /login or /dashboard at all, so on a
- *    bad run every test 404s. Pinning the port and filtering to one app makes
- *    the target deterministic.
+ * 1. The webServer runs the MERGED WEB APP ONLY (apps/web), on a pinned port.
+ *    It used to run the legacy portal app (apps/portal) via turbo filter.
+ *    The merged app serves public site (/), portal (/portal/*), and admin (/admin/*)
+ *    from a single Next.js process. The dev script is `NEXT_TURBOPACK=0 HOST=0.0.0.0 next dev --port 3000`
+ *    and the trailing `-- --port` overrides the port.
  *
  * 2. Retries are 0 and the per-test timeout is short.
  *    A selector that matches zero elements fails instantly, not slowly, so
@@ -21,14 +19,18 @@ import { defineConfig, devices } from '@playwright/test';
  *    is exactly the 2h16m the last CI run took to report three passing tests.
  *    A red suite should surface in minutes.
  *
- * 3. The webServer probes /login, not just the origin.
+ * 3. The webServer probes /portal/login, not just the origin.
  *    `url` only proves something answers on the port. Probing a real route
  *    waits until the app has actually compiled that page, so the first test
  *    does not pay the dev-compile cost inside its own timeout.
+ *    The /portal prefix comes from the directory structure (apps/web/app/portal),
+ *    not from a basePath config — apps/web/next.config.ts has no basePath.
  */
 
 const PORT = Number(process.env.E2E_PORT ?? 3100);
 const BASE_URL = `http://localhost:${PORT}`;
+/** The app's portal path prefix. Every portal route is reached through this prefix. */
+const BASE_PATH = '/portal';
 
 export default defineConfig({
   testDir: './e2e',
@@ -73,10 +75,18 @@ export default defineConfig({
   ],
 
   webServer: {
-    command: `bunx turbo run dev --filter=portal -- --port ${PORT}`,
-    url: `${BASE_URL}/login`,
+    command: `bunx turbo run dev --filter=web -- --port ${PORT}`,
+    url: `${BASE_URL}${BASE_PATH}/login`,
     reuseExistingServer: !process.env.CI,
-    timeout: 180_000,
+    // 300s, not the 120s default: a cold Turbopack dev server takes ~51s to
+    // compile the portal's first page (the (portal) route group plus the proxy),
+    // and under parallel load that stretches. 180s made the run time out before
+    // a single test executed, which is indistinguishable from the suite failing.
+    timeout: 300_000,
+    // Piped, not ignored: with `ignore` the dev server never came up under
+    // Playwright on Windows (every run died at the webServer timeout), which is
+    // a worse failure than the reporter output being interleaved with the
+    // server's compile log.
     stdout: 'pipe',
     stderr: 'pipe',
   },
