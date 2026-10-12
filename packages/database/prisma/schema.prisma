@@ -1193,6 +1193,11 @@ model Message {
   replies         Message[]      @relation("Thread")
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
+
+  // Recipient-scoped reads ("messages for user X") filter on array membership,
+  // which is a sequential scan without a GIN index. Prisma cannot express the
+  // operator class in the schema DSL, hence the raw() escape.
+  @@index([recipientIds(ops: raw("array_ops"))], type: Gin)
 }
 
 enum MessageChannel {
