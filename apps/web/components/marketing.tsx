@@ -212,6 +212,9 @@ interface CardProps {
  * `transition-duration: 0.01ms` under reduced motion, so a user who has asked
  * for less motion still gets a card that responds rather than one that appears
  * inert.
+ *
+ * Raised cards get a subtle purple hint background for brand consistency.
+ * Flat cards use the surface container low for a more neutral look.
  */
 export function Card({
   children,
@@ -226,9 +229,11 @@ export function Card({
       id={id}
       className={cn(
         'rounded-md border border-border',
-        tone === 'raised' ? 'bg-surface-container-lowest' : 'bg-surface-container-low',
+        tone === 'raised'
+          ? 'bg-surface-container-lowest bg-purple-hint shadow-purple-glow'
+          : 'bg-surface-container-low',
         interactive &&
-          'shadow-raised transition-[transform,box-shadow,border-color] duration-base ease-out-soft hover:-translate-y-px hover:border-border hover:shadow-floating motion-reduce:hover:translate-y-0',
+          'transition-[transform,box-shadow,border-color] duration-base ease-out-soft hover:-translate-y-px hover:border-primary/30 hover:shadow-floating motion-reduce:hover:translate-y-0',
         className,
       )}
     >
@@ -399,8 +404,10 @@ interface HeroBandProps {
    * `plain` for a page whose content starts immediately under the header;
    * `flush` for one that wants the band's own top padding removed so a stacked
    * visual can run to the header.
+   * `tinted` uses the warm tint (existing behavior).
+   * `purple` adds a subtle purple gradient accent.
    */
-  tone?: 'tinted' | 'plain'
+  tone?: 'tinted' | 'plain' | 'purple'
   className?: string
 }
 
@@ -410,18 +417,22 @@ interface HeroBandProps {
  * Every page's hero is the same shape: a tinted band that clears the sticky
  * header, then the heading block. Centralising it keeps the top padding
  * consistent, which is the part that is easy to get subtly wrong per page — and
- * it was wrong per page before this existed.
+ * it was wrong per page before this exists.
  *
  * The band tint is `--color-tint-warm` (`#f8f3ec`), not the maroon-derived
  * `--color-primary-soft` (`#f8eef1`). Both are pale; one is pink and one is
  * smoke. That single hex change is the largest part of "stop the pink".
+ *
+ * The 'purple' tone adds a subtle diagonal purple gradient for pages that want
+ * a stronger brand presence.
  */
 export function HeroBand({ children, tone = 'tinted', className }: HeroBandProps) {
   return (
     <section
       className={cn(
         'border-b border-border',
-        tone === 'tinted' && 'bg-gradient-to-b from-tint-warm to-background',
+        tone === 'tinted' && 'bg-linear-to-b from-tint-warm to-background',
+        tone === 'purple' && 'bg-purple-gradient-diagonal',
         className,
       )}
     >
@@ -457,6 +468,11 @@ interface SectionShellProps {
    * A filled band rather than the canvas. The ramp steps are 1.45:1 apart at
    * most, which is enough to separate bands without a border and without a
    * shadow — the alternative was a hairline top and bottom on every band.
+   * 
+   * Each tone gets a unique subtle purple accent:
+   * - 'canvas': Barely-there purple whisper (solid)
+   * - 'band': Soft purple gradient (vertical)
+   * - 'deep': Purple glow with radial gradient
    */
   tone?: 'canvas' | 'band' | 'deep'
   className?: string
@@ -465,9 +481,9 @@ interface SectionShellProps {
 }
 
 const SECTION_TONES = {
-  canvas: 'bg-background',
-  band: 'bg-surface-container-low',
-  deep: 'bg-surface-container',
+  canvas: 'bg-purple-whisper',
+  band: 'bg-purple-gradient-vertical',
+  deep: 'bg-purple-gradient-radial',
 } as const
 
 export function SectionShell({

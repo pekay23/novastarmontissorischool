@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import Image from 'next/image'
 import { usePathname } from 'next/navigation'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { Clock, Menu, Phone, X, Search, User, ChevronDown } from 'lucide-react'
 import { cn } from '@novastar/shared-ui'
 import { MarketingButton } from '@/components/marketing-button'
@@ -110,6 +110,19 @@ export default function Header({ navigation, siteName: _siteName, contact }: Hea
    */
   const [isScrolled, setIsScrolled] = useState(false)
 
+  // Global search shortcut (Cmd/Ctrl + K)
+  const handleGlobalSearch = useCallback((event: KeyboardEvent) => {
+    if ((event.metaKey || event.ctrlKey) && event.key === 'k') {
+      event.preventDefault()
+      window.location.href = '/search'
+    }
+  }, [])
+
+  useEffect(() => {
+    document.addEventListener('keydown', handleGlobalSearch)
+    return () => document.removeEventListener('keydown', handleGlobalSearch)
+  }, [handleGlobalSearch])
+
   useEffect(() => {
     const handleScroll = () => {
       setIsScrolled(window.scrollY > 10)
@@ -183,13 +196,14 @@ export default function Header({ navigation, siteName: _siteName, contact }: Hea
               <User className="h-4 w-4" aria-hidden="true" />
               Parent Portal
             </Link>
-            <button
+            <Link
+              href="/search"
               className="inline-flex min-h-8 items-center gap-2 rounded-sm px-1 transition-colors duration-fast hover:text-white"
               aria-label="Search"
             >
               <Search className="h-4 w-4 text-accent-warm" aria-hidden="true" />
               Search
-            </button>
+            </Link>
           </div>
         </div>
       </div>
@@ -240,7 +254,7 @@ export default function Header({ navigation, siteName: _siteName, contact }: Hea
                 </Link>
 
                 {/* Dropdown Menu */}
-                <div className="absolute top-[60px] left-1/2 -translate-x-1/2 w-72 pt-4 opacity-0 invisible translate-y-2 group-hover:opacity-100 group-hover:visible group-hover:translate-y-0 transition-all duration-200 z-50">
+                <div className="absolute top-15 left-1/2 -translate-x-1/2 w-72 pt-4 opacity-0 invisible translate-y-2 group-hover:opacity-100 group-hover:visible group-hover:translate-y-0 transition-all duration-200 z-50">
                   <div className="bg-background rounded-xl shadow-floating border border-border/60 overflow-hidden p-2 flex flex-col gap-1 backdrop-blur-xl">
                     {category.items.map((item) => (
                       <Link

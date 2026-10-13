@@ -222,7 +222,7 @@ export default function PoliciesPage() {
     <div className="min-h-screen">
       {/* Hero. `HeroBand` owns the band wash, the header clearance and the
           section rhythm, so none of it is re-stated here. */}
-      <HeroBand>
+      <HeroBand tone="purple">
         <h1 className="font-serif text-5xl md:text-6xl mx-auto max-w-[18ch] text-center text-primary">Policies for Parents</h1>
         <p className="mx-auto mt-6 max-w-[60ch] text-lg leading-relaxed text-foreground/85 text-center">
           These are the policies every parent and guardian at Novastar signs and is held to,

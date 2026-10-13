@@ -43,7 +43,7 @@ export default async function FeesPage() {
       {/* Hero. The band wash is `--color-tint-warm` rather than the maroon-tinted
           `from-primary/10` every inner page carried before; `HeroBand` also owns
           the header clearance, which was re-stated per page. */}
-      <HeroBand>
+      <HeroBand tone="purple">
         <h1 className="font-serif text-5xl md:text-6xl mx-auto max-w-[18ch] text-center text-primary">Fee Structure</h1>
         <p className="mx-auto mt-6 max-w-[60ch] text-lg leading-relaxed text-foreground/85 text-center">
           Transparent, competitive fees offering excellent value for quality education.

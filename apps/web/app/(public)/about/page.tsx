@@ -39,7 +39,7 @@ export default function AboutPage() {
           section rhythm, which used to be re-stated slightly differently on
           every page. The wash is `--color-tint-warm`, not the maroon-tinted
           `from-primary/10` this band carried before. */}
-      <HeroBand>
+      <HeroBand tone="purple">
         <h1 className="font-serif text-5xl md:text-6xl mx-auto max-w-[18ch] text-center text-primary">
           About Novastar Montessori School
         </h1>
@@ -103,7 +103,7 @@ export default function AboutPage() {
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/images/photo_2_2026-10-05_11-06-55%20for%20primary%20school.jpg" alt="Novastar Classroom" className="h-full w-full object-cover object-center animate-ken-burns" loading="lazy" />
           <div className="absolute inset-0 bg-black/60 mix-blend-multiply pointer-events-none"></div>
-          <div className="absolute inset-0 bg-gradient-to-t from-background via-black/40 to-background pointer-events-none"></div>
+          <div className="absolute inset-0 bg-linear-to-t from-background via-black/40 to-background pointer-events-none"></div>
         </div>
 
         <div className="container relative z-10 mx-auto px-4 md:px-6">

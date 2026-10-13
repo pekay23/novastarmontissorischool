@@ -130,10 +130,30 @@
   --color-secondary-fixed: #e3e8f5;  /*  6.11:1 with --color-secondary */
   --color-tertiary-fixed:  #f7e7de;  /*  6.26:1 with --color-accent-warm-dark */
 
+  /* ---- Subtle purple accent backgrounds for public site ---------------
+     These provide varying intensities of purple on white/neutral backgrounds.
+     Each uses 10-30% opacity equivalents of the brand purple (#6a019f). */
+  /* Light purple wash (10% opacity equivalent) */
+  --color-purple-whisper: #f3e8fa;
+  /* Subtle purple tint (15% opacity equivalent) */
+  --color-purple-hint: #e8d5f5;
+  /* Soft purple glow (20% opacity equivalent) */
+  --color-purple-glow: #dec2f0;
+  /* Stronger purple gradient stop (25% opacity equivalent) */
+  --color-purple-gradient-start: #e8d5f5;
+  --color-purple-gradient-end: #dec2f0;
+  /* Purple noise/grain overlay (for texture) - 15% */
+  --color-purple-grain: rgba(106, 1, 159, 0.15);
+  /* Purple radial gradient center (20%) / edge (10%) */
+  --color-purple-radial-center: #dec2f0;
+  --color-purple-radial-edge: #f3e8fa;
+
   /* ---- Fonts ----------------------------------------------------------
      See layout.tsx for the actual next/font loading. */
-  --font-sans:    var(--font-jakarta), -apple-system, Arial, sans-serif;
+  --font-sans:    var(--font-inter), ui-sans-serif, system-ui, sans-serif;
   --font-heading: var(--font-playfair), ui-serif, Georgia, serif;
+  --font-display: var(--font-outfit), ui-sans-serif, system-ui, sans-serif;
+  --font-mono:    var(--font-jetbrains-mono), ui-monospace, Menlo, monospace;
 
   /* ---- Radius ---------------------------------------------------------
      One curve language, and every computed radius on every page is a member of
@@ -176,6 +196,20 @@
   --transition-duration-slow: 280ms; /* panel crossfade */
   --ease-out-soft:   cubic-bezier(0.22, 1, 0.36, 1);
   --ease-in-out-soft: cubic-bezier(0.65, 0, 0.35, 1);
+
+  /* Component motion tokens — consumed by shared-ui dialog, dropdown, toast */
+  --animate-dialog-in:  dialog-in 200ms cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-dialog-out: dialog-out 150ms cubic-bezier(0.4, 0, 1, 1) forwards;
+  /*
+   * `overlay-*`, not `fade-*`: this file owns a public `animate-fade-in`
+   * utility (the @utility further down) with a different duration, and a
+   * token sharing the name would silently override it.
+   */
+  --animate-overlay-in:  overlay-in 150ms ease-out;
+  --animate-overlay-out: overlay-out 150ms ease-in forwards;
+  --animate-dropdown-in: dropdown-in 150ms ease-out;
+  --animate-toast-in:   toast-in 250ms cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-toast-out:  toast-out 200ms ease-in forwards;
 }
 
 /*
@@ -186,6 +220,42 @@
 @keyframes shimmer {
   0% { transform: translateX(-100%); }
   100% { transform: translateX(100%); }
+}
+
+/* Component motion keyframes — paired with --animate-* tokens above */
+@keyframes overlay-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes overlay-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes dialog-in {
+  from { opacity: 0; transform: scale(0.96) translateY(12px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@keyframes dialog-out {
+  from { opacity: 1; transform: scale(1) translateY(0); }
+  to { opacity: 0; transform: scale(0.96) translateY(12px); }
+}
+
+@keyframes dropdown-in {
+  from { opacity: 0; transform: scale(0.95) translateY(-4px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateX(120%); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes toast-out {
+  from { opacity: 1; transform: translateX(0); }
+  to { opacity: 0; transform: translateX(120%); }
 }
 
 @layer base {
@@ -433,6 +503,70 @@
 @utility grain {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
   background-repeat: repeat;
+}
+
+/* Subtle purple accent backgrounds — varying designs and intensities.
+ * Each provides a whisper of Novastar purple on white/neutral surfaces.
+ * None are the same pattern or intensity, creating visual variety. */
+@utility bg-purple-whisper {
+  background-color: var(--color-purple-whisper);
+}
+
+@utility bg-purple-hint {
+  background-color: var(--color-purple-hint);
+}
+
+@utility bg-purple-glow {
+  background-color: var(--color-purple-glow);
+}
+
+/* Gradient variants — different directions and stops */
+@utility bg-purple-gradient-vertical {
+  background-image: linear-gradient(to bottom, var(--color-purple-gradient-start), var(--color-purple-gradient-end));
+}
+
+@utility bg-purple-gradient-horizontal {
+  background-image: linear-gradient(to right, var(--color-purple-gradient-start), var(--color-purple-gradient-end));
+}
+
+@utility bg-purple-gradient-diagonal {
+  background-image: linear-gradient(135deg, var(--color-purple-gradient-start), var(--color-purple-gradient-end));
+}
+
+@utility bg-purple-gradient-radial {
+  background-image: radial-gradient(ellipse at center, var(--color-purple-radial-center), var(--color-purple-radial-edge));
+}
+
+/* Purple grain/noise overlay for texture */
+.purple-grain {
+  position: relative;
+}
+.purple-grain::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-color: var(--color-purple-grain);
+  pointer-events: none;
+  opacity: 0.5;
+}
+
+/* Subtle purple accent border */
+@utility border-purple-subtle {
+  border-color: rgba(106, 1, 159, 0.15);
+}
+
+/* Purple glow shadow for elevated elements */
+@utility shadow-purple-glow {
+  box-shadow:
+    0 1px 2px rgba(28, 26, 23, 0.04),
+    0 4px 12px rgba(106, 1, 159, 0.08),
+    0 12px 28px rgba(106, 1, 159, 0.05);
+}
+
+/* Very subtle purple ring for focus */
+@utility focus-ring-purple {
+  outline: 2px solid rgba(106, 1, 159, 0.3);
+  outline-offset: 2px;
 }
 
 /* Respect users who ask for less motion. */
