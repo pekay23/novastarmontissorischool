@@ -4,7 +4,8 @@
 
 import type { Permission, Role, Delegation } from '@novastar/shared-types'
 import { permissionMatches } from '@novastar/shared-types'
-import { prisma } from '@novastar/database'
+import { prisma, Prisma } from '@novastar/database'
+import crypto from 'crypto'
 
 // --- Permission Resolution ---
 
@@ -422,23 +423,127 @@ interface AuditInput {
   userAgent?: string
 }
 
-export async function logAudit(input: AuditInput): Promise<void> {
-  await prisma.auditLog.create({
-    data: {
-      tenantId: input.tenantId,
-      schoolId: input.schoolId as string,
-      userId: input.userId as string,
-      action: input.action,
-      entity: input.entity,
-      entityId: input.entityId,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Prisma JSON column type
-      oldData: input.oldData as any,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Prisma JSON column type
-      newData: input.newData as any,
-      ipAddress: input.ipAddress,
-      userAgent: input.userAgent,
-    },
+interface AuditChainParams {
+  tenantId?: string
+  schoolId?: string
+  userId?: string
+  action: string
+  entity?: string
+  entityId?: string
+  changes?: Prisma.InputJsonValue
+  oldData?: Prisma.InputJsonValue
+  details?: Prisma.InputJsonValue
+  description?: string
+  ipAddress?: string
+  userAgent?: string
+}
+
+type AuditClient = Prisma.TransactionClient | typeof prisma
+
+function computeAuditHash(
+  previousHash: string | null,
+  tenantId: string,
+  action: string,
+  entityId: string | undefined,
+  changes: Prisma.InputJsonValue,
+  timestamp: Date
+): string {
+  const data = [
+    previousHash || '',
+    tenantId,
+    action,
+    entityId || '',
+    JSON.stringify(changes || {}),
+    timestamp.toISOString(),
+  ].join('|')
+  return crypto.createHash('sha256').update(data).digest('hex')
+}
+
+/**
+ * Shared hash-chain append: resolves tenant/school from the user if needed,
+ * reads the previous entry's hash for this tenant, computes the new hash,
+ * and creates the audit log row with chain data — all within the supplied
+ * Prisma client so callers can pass a transaction.
+ *
+ * Chain continuity is scoped per tenant so one tenant's writes cannot become
+ * links in another tenant's chain.
+ */
+export async function appendAuditChain(
+  client: AuditClient,
+  params: AuditChainParams
+): Promise<Prisma.AuditLogUncheckedCreateInput> {
+  let tenantId: string | undefined = params.tenantId
+  let schoolId: string | undefined = params.schoolId
+
+  if (!tenantId && params.userId) {
+    const user = await client.user.findUnique({
+      where: { id: params.userId },
+      select: { tenantId: true, schoolId: true },
+    })
+    if (user) {
+      tenantId = tenantId ?? user.tenantId
+      schoolId = schoolId ?? user.schoolId ?? undefined
+    }
+  }
+
+  tenantId = tenantId ?? 'system'
+  schoolId = schoolId ?? 'system'
+
+  const lastEntry = await client.auditLog.findFirst({
+    where: { tenantId },
+    orderBy: { createdAt: 'desc' },
+    select: { hash: true },
   })
+
+  const previousHash = lastEntry?.hash ?? null
+  const timestamp = new Date()
+  const changesData = params.changes || params.details || {}
+
+  const hash = computeAuditHash(
+    previousHash,
+    tenantId,
+    params.action,
+    params.entityId,
+    changesData,
+    timestamp
+  )
+
+  const data: Prisma.AuditLogUncheckedCreateInput = {
+    action: params.action,
+    entity: params.entity ?? 'system',
+    tenantId,
+    schoolId,
+    previousHash: previousHash || undefined,
+    hash,
+  }
+
+  if (params.userId) data.userId = params.userId
+  if (params.entityId) data.entityId = params.entityId
+  if (params.description) data.description = params.description
+  else if (params.details) data.description = JSON.stringify(params.details)
+
+  if (changesData) data.newData = changesData as Prisma.InputJsonValue
+  if (params.oldData) data.oldData = params.oldData as Prisma.InputJsonValue
+  if (params.ipAddress) data.ipAddress = params.ipAddress
+  if (params.userAgent) data.userAgent = params.userAgent
+
+  return data
+}
+
+export async function logAudit(input: AuditInput): Promise<void> {
+  const chainData = await appendAuditChain(prisma, {
+    tenantId: input.tenantId,
+    schoolId: input.schoolId,
+    userId: input.userId,
+    action: input.action,
+    entity: input.entity,
+    entityId: input.entityId,
+    changes: input.newData as Prisma.InputJsonValue,
+    oldData: input.oldData as Prisma.InputJsonValue,
+    ipAddress: input.ipAddress,
+    userAgent: input.userAgent,
+  })
+  await prisma.auditLog.create({ data: chainData })
 }
 
 // --- Session Utils ---

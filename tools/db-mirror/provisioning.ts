@@ -5,14 +5,14 @@
  * `Missing on Supabase (skipped)`, mirror the tables that matched, and exit 0
  * having printed "MIRROR VERIFIED". A failsafe missing `_prisma_migrations`
  * therefore reported healthy, while `tools/migrate/guards/require-backup.ts`
- * â€” correct, and unchanged by this work â€” refused every deploy against it with
+ * — correct, and unchanged by this work — refused every deploy against it with
  * "a mirror missing tables is not a backup". The operator was told the mirror
  * was fine by the mirror and told it was not a backup by the guard, with
  * nothing explaining the gap.
  *
  * So the decision lives here, as pure functions, and `mirror.ts` routes through
  * it. The split is the point: a pure function can be tested against the exact
- * shapes that occur, and `mirror.ts` cannot â€” its I/O is two live databases.
+ * shapes that occur, and `mirror.ts` cannot — its I/O is two live databases.
  *
  * Provisioning is a reviewed DDL file applied through `apply-schema.ts`, never
  * DDL generated at mirror time. Generating `CREATE TABLE` from a diff of two
@@ -22,7 +22,7 @@
 /**
  * Prisma's migration ledger. `tools/migrate` reads `max(finished_at)` from it
  * to find the last applied migration, so a failsafe without it cannot report
- * which migrations ran â€” which is why a missing ledger is a parity failure
+ * which migrations ran — which is why a missing ledger is a parity failure
  * rather than a table the mirror may leave to Prisma.
  */
 export const LEDGER_TABLE = "_prisma_migrations";
@@ -135,12 +135,12 @@ export function parityRefusalReason(parity: FailsafeParity): string | null {
  *
  * Dry run first, then the apply, so the operator sees what would land before it
  * lands. Both carry `--allow-nonempty` because the failsafe is populated by
- * definition â€” an apply that omitted it would refuse on the very database it
+ * definition — an apply that omitted it would refuse on the very database it
  * exists to repair. The target is always the failsafe: the primary is read-only
  * to the mirror and is never written to.
  *
  * `tables` states what is being provisioned. It does not change the command,
- * because the DDL is one reviewed file that covers the whole gap â€” a table-list
+ * because the DDL is one reviewed file that covers the whole gap — a table-list
  * argument that selected per-table DDL would let a caller provision a subset and
  * call the rest "someone else's".
  */
@@ -160,9 +160,9 @@ export function provisioningCommands(
 function ledgerNote(table: string): string {
   if (table !== LEDGER_TABLE) return "";
   return (
-    ` â€” the Prisma ledger: tools/migrate reads max(finished_at) from it to find ` +
+    ` — the Prisma ledger: tools/migrate reads max(finished_at) from it to find ` +
     `the last applied migration, so a failsafe without it cannot report which ` +
-    `migrations ran. It must be provisioned like any other table â€” the mirror is ` +
+    `migrations ran. It must be provisioned like any other table — the mirror is ` +
     `a copy and must never itself be a migrate deploy target.`
   );
 }
@@ -172,7 +172,7 @@ function ledgerNote(table: string): string {
  *
  * Empty when the failsafe is complete and holds nothing extra, so `mirror.ts`
  * can print it unconditionally without a conditional blank line. A missing table
- * is never described as "skipped" â€” that word is the original defect in two
+ * is never described as "skipped" — that word is the original defect in two
  * words, telling the operator a class of loss was a deliberate choice.
  */
 export function formatParityReport(parity: FailsafeParity): string {
@@ -186,7 +186,7 @@ export function formatParityReport(parity: FailsafeParity): string {
     lines.push(
       `Supabase failsafe is missing ${parity.missingOnFailsafe.length} table(s) ` +
         `the Neon primary has. Each must be provisioned before the mirror will ` +
-        `copy â€” a failsafe missing tables is not a backup:`
+        `copy — a failsafe missing tables is not a backup:`
     );
     for (const table of parity.missingOnFailsafe) {
       lines.push(`  - ${table}${ledgerNote(table)}`);
@@ -199,7 +199,7 @@ export function formatParityReport(parity: FailsafeParity): string {
 
   if (parity.extraOnFailsafe.length > 0) {
     lines.push(
-      `Extra on the Supabase failsafe, absent from the primary â€” left alone: ` +
+      `Extra on the Supabase failsafe, absent from the primary — left alone: ` +
         `${parity.extraOnFailsafe.join(", ")}`
     );
   }

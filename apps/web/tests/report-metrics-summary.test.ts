@@ -389,9 +389,11 @@ describe('the zero-weight guard', () => {
     // The assertion follows the definition: the check itself moved to
     // @novastar/shared-utils so the admin write path and the seed share ONE
     // implementation, and it is asserted on the module that now owns it rather
-    // than on the seed's copy of the wording.
+    // than on the seed's copy of the wording. That module is `grading.ts` —
+    // `index.ts` is the barrel that re-exports it — so the read names the file
+    // that holds the logic.
     const sharedUtilsSrc = readFileSync(
-      join(import.meta.dir, '..', '..', '..', 'packages', 'shared-utils', 'index.ts'),
+      join(import.meta.dir, '..', '..', '..', 'packages', 'shared-utils', 'grading.ts'),
       'utf-8',
     )
     expect(sharedUtilsSrc).toContain('does not cover 0-100 exactly once')

@@ -243,7 +243,7 @@ function LoginContent() {
         },
       }
 
-      // Step 2: Verify and get bridge token
+      // Step 2: Verify and get bridge token (set as HttpOnly cookie)
       const verifyRes = await fetch('/portal/api/auth/passkey/login-verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -254,12 +254,9 @@ function LoginContent() {
         throw new Error(`Verification failed: ${verifyRes.statusText}`)
       }
 
-      const { token } = await verifyRes.json()
-
-      // Step 3: Use bridge token to sign in via NextAuth
+      // Step 3: Use bridge token (set as cookie by the route) to sign in via NextAuth
       const result = await signIn('credentials', {
         redirect: false,
-        token,
         callbackUrl: returnTo,
       })
 

@@ -2,6 +2,7 @@ import 'server-only'
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { createHmac } from 'crypto'
+import { logError } from '@/lib/logger'
 import { rateLimitAsync, clientIdentifier } from '@/lib/rate-limit'
 import { portalOrigin, resolveSchool } from '@/lib/auth/school-lookup'
 import {
@@ -133,7 +134,7 @@ export async function POST(req: Request) {
         text: rendered.text,
       })
     } catch (error) {
-      console.error('[auth] password reset email was not delivered:', error)
+      logError('[auth]', error, { detail: 'password reset email was not delivered' })
     }
   })()
 

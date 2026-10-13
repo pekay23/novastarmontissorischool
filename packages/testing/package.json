@@ -13,7 +13,7 @@
   "scripts": {
     "lint": "eslint . --ext .ts",
     "typecheck": "tsc --noEmit",
-    "test": "bun test --pass-with-no-tests"
+    "test": "bun test --pass-with-no-tests --timeout 30000"
   },
   "dependencies": {
     "@novastar/shared-types": "workspace:*"

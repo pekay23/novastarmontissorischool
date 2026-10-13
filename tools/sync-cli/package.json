@@ -17,7 +17,7 @@
     "drain": "bun index.ts drain",
     "lint": "eslint . --ext .ts",
     "typecheck": "tsc --noEmit",
-    "test": "bun test"
+    "test": "bun test --timeout 30000"
   },
   "dependencies": {
     "@novastar/database": "workspace:*",

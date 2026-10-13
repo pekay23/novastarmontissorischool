@@ -102,8 +102,9 @@ const nextConfig: NextConfig = {
    *   trailing slash ("Trailing slash matches `trailingSlash: true`").
    * - `components/header.tsx` normalises `usePathname()` for exactly
    *   this setting.
-   * - The static-export tooling (`nginx.conf`, `Dockerfile.public-site`,
-   *   `tools/serve-export.mjs`) serves `<route>/index.html` trees.
+ * - The pre-ADR-024 `nginx.conf` / public-site image consumed the same
+ *   `<route>/index.html` shape; the merged app is SSR, and `Dockerfile.web`
+ *   runs it under `next start`.
    *
    * It is also a hydration contract. `next/link` runs every internal
    * href through `normalizePathTrailingSlash()` on the client, keyed

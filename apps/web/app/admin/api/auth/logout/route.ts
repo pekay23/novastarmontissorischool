@@ -3,9 +3,10 @@ import { ADMIN_SESSION_COOKIE, ADMIN_TENANT_COOKIE, verifySessionToken } from '@
 import { AdminAuditAction, auditPlatformAction } from '@/lib/audit'
 import { toErrorResponse } from '@/lib/errors'
 import { clientAddressOf } from '@/lib/http'
+import { logError } from '@/lib/logger'
 
 /**
- * `POST /api/auth/logout` — drop the session cookie and the selected tenant.
+ * `POST /api/auth/logout` ”— drop the session cookie and the selected tenant.
  *
  * Answers 204 whether or not a session existed. A logout that reports "you were not
  * signed in" is a session oracle: it tells an unauthenticated caller whether a
@@ -25,12 +26,12 @@ export async function POST(request: NextRequest): Promise<Response> {
     // it destroys the caller's own cookie either way, and re-reading the row would
     // mean an unauthenticated endpoint paying a database query an attacker controls
     // the rate of. What it does need is to be attributable, so the entry names the
-    // operator the *verified* token claims — `operatorId` is a foreign key, so a
+    // operator the *verified* token claims ”— `operatorId` is a foreign key, so a
     // token naming an id that no longer exists makes the write fail and the entry is
     // dropped rather than dangling.
     // Best effort, and deliberately the opposite of `login`, which refuses to issue
     // a session it could not audit. Refusing to complete a sign-out would leave the
-    // operator authenticated because the audit table was briefly unavailable — a
+    // operator authenticated because the audit table was briefly unavailable ”— a
     // worse outcome than a missing LOGOUT row, and one an attacker could engineer by
     // breaking the audit write first. Ending the session always succeeds; the gap is
     // logged.
@@ -44,7 +45,7 @@ export async function POST(request: NextRequest): Promise<Response> {
         ipAddress: clientAddressOf(request),
         userAgent: request.headers.get('user-agent'),
       }).catch((error: unknown) => {
-        console.error('[super-admin] Could not record a sign-out:', error)
+        logError('[super-admin] Could not record a sign-out', error)
       })
     }
 

@@ -1,3 +1,5 @@
+import { logError } from '@/lib/logger'
+
 /**
  * The failure types this app distinguishes, and the one place each becomes a
  * status code.
@@ -144,14 +146,14 @@ export function toErrorResponse(error: unknown): Response {
     )
   }
   if (error instanceof ServerConfigError) {
-    console.error('[super-admin] Server configuration error:', error.message)
+    logError('[super-admin]', error, { detail: 'Server configuration error' })
     return json({ error: 'The control plane is not configured' }, 503)
   }
 
   // Anything else is a bug or an outage. Log server-side with the message only,
   // and answer with a fixed body so a driver error carrying a connection string
   // fragment never reaches a browser.
-  console.error('[super-admin] Unhandled error:', error instanceof Error ? error.message : error)
+  logError('[super-admin]', error, { detail: 'Unhandled error' })
   return json({ error: 'Internal server error' }, 500)
 }
 

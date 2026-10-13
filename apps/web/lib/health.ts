@@ -1,4 +1,5 @@
 import { adminDatabaseSource } from '@/lib/prisma'
+import { logError } from '@/lib/logger'
 import { countAppliedMigrations, countPlatformTotals } from '@/lib/queries'
 import type { HealthCheck, PlatformHealth } from '@/types/admin'
 
@@ -106,7 +107,7 @@ async function attempt<T>(fn: () => Promise<T>): Promise<Attempt<T>> {
   try {
     return { ok: true, value: await fn() }
   } catch (error) {
-    console.error('[super-admin] Health check failed:', error instanceof Error ? error.message : error)
+    logError('[super-admin]', error, { detail: 'health check failed' })
     return { ok: false }
   }
 }

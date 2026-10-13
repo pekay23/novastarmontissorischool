@@ -21,7 +21,7 @@
     "consolidate-env-local": "bun consolidate-env-local.ts",
     "lint": "eslint . --ext .ts",
     "typecheck": "tsc --noEmit",
-    "test": "bun test"
+    "test": "bun test --timeout 30000"
   },
   "dependencies": {
     "dotenv": "^17.2.3",

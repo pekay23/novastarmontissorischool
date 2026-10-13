@@ -1,4 +1,5 @@
 import 'server-only'
+import { logError } from '@/lib/logger'
 import { prisma } from '@/lib/prisma'
 
 /**
@@ -75,7 +76,7 @@ export async function logSystemError(params: SystemErrorRecord): Promise<void> {
     ])
   } catch (logErr) {
     // Don't let logging failures crash the original error handler
-    console.error('[SYSTEM_ERROR_LOGGER]', 'Failed to persist system error:', logErr)
+    logError('[SYSTEM_ERROR_LOGGER]', logErr, { detail: 'Failed to persist system error' })
   } finally {
     if (timer) clearTimeout(timer)
     // Nothing awaits `write` if the timeout won; swallow its late rejection so

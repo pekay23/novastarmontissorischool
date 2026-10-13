@@ -1,6 +1,7 @@
 import 'server-only'
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
+import { logError } from '@/lib/logger'
 import { checkRateLimit, clientIdentifier } from '@/lib/rate-limit'
 import { portalOrigin, resolveSchool } from '@/lib/auth/school-lookup'
 import {
@@ -121,7 +122,7 @@ export async function POST(req: Request) {
       // is the whole point of `sendEmail` throwing: it used to swallow the failure
       // and return null, so a person waiting on a link that was never sent had no
       // way to learn that, and neither did the operator.
-      console.error('[auth] verification email was not delivered:', error)
+      logError('[auth]', error, { detail: 'verification email was not delivered' })
     }
   })()
 

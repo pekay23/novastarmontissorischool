@@ -58,6 +58,11 @@ const CALLS: Array<[string, (service: FinanceService) => Promise<unknown>]> = [
         reference: "receipt_1",
       }),
   ],
+  [
+    "settlePayment",
+    (service) =>
+      service.settlePayment("receipt_1", async () => ({ status: "PENDING" })),
+  ],
 ];
 
 /** The only wording a caller gets when their school assignment is missing. */

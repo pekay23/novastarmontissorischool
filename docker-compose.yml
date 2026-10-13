@@ -1,5 +1,5 @@
 # ============================================================================
-# Novastar Montessori - local Docker stack
+# Novastar Montessori - local Docker stack (merged web app)
 #
 # There is deliberately NO postgres container here, and that is not an
 # oversight:
@@ -16,7 +16,7 @@
 #   switch -- but that is runtime database code, not CI/CD, so it is not done
 #   here.
 #
-# There is also NO redis container: apps/portal/lib/rate-limit.ts talks to
+# There is also NO redis container: apps/web/lib/rate-limit.ts talks to
 # Upstash over its REST endpoint (UPSTASH_REDIS_REST_URL / _TOKEN) and falls
 # back to an in-process map when those are unset. A tcp/6379 container would be
 # ignored.
@@ -41,15 +41,15 @@ x-build-cache: &build-cache
   # BuildKit layer cache on disk. `.docker-cache` must stay in .dockerignore or
   # the cache directory is copied into the build context and busts every layer.
   cache_from:
-    - type=local,src=.docker-cache/portal
+    - type=local,src=.docker-cache/web
   cache_to:
-    - type=local,dest=.docker-cache/portal-new,mode=max
+    - type=local,dest=.docker-cache/web-new,mode=max
 
 services:
-  portal:
+  web:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.web
       <<: *build-cache
       args:
         # Inlined into the client bundle at build time -- not runtime values.
@@ -59,10 +59,10 @@ services:
         # Supply a real one here only if a prerender needs live rows.
         NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-build-only-placeholder-not-a-real-secret}
         NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
-    image: novastar/portal:local
-    container_name: novastar-portal
+    image: novastar/web:local
+    container_name: novastar-web
     # Runtime config. The standalone server does not evaluate next.config.ts, so
-    # apps/portal/next.config.ts's loadRootEnv() does NOT apply inside the
+    # apps/web/next.config.ts's loadRootEnv() does NOT apply inside the
     # container -- everything must arrive via the environment.
     env_file:
       - path: .env.local
@@ -80,31 +80,8 @@ services:
         - CMD
         - node
         - -e
-        - "fetch('http://127.0.0.1:3000/login',{redirect:'manual'}).then(r=>process.exit(r.status<500?0:1)).catch(()=>process.exit(1))"
+        - "fetch('http://127.0.0.1:3000/portal/login',{redirect:'manual'}).then(r=>process.exit(r.status>=200&&r.status<400?0:1)).catch(()=>process.exit(1))"
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 20s
-
-  public-site:
-    build:
-      context: .
-      dockerfile: Dockerfile.public-site
-      cache_from:
-        - type=local,src=.docker-cache/public-site
-      cache_to:
-        - type=local,dest=.docker-cache/public-site-new,mode=max
-      args:
-        NEXT_PUBLIC_ORIGIN: ${NEXT_PUBLIC_ORIGIN:-http://localhost:8080}
-        NEXT_PUBLIC_DOMAIN: ${NEXT_PUBLIC_DOMAIN:-localhost:8080}
-    image: novastar/public-site:local
-    container_name: novastar-public-site
-    ports:
-      - "8080:80"
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1/health"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 5s

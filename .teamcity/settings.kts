@@ -197,7 +197,7 @@ project {
 
         // --- Auth ---
         // NEXTAUTH_SECRET signs the portal's sessions; PLATFORM_SESSION_SECRET
-        // signs the super-admin console's (apps/super-admin/lib/admin-auth.ts).
+        // signs the admin console's (apps/web/lib/admin-auth.ts).
         // It is a password parameter rather than plain text so TeamCity masks it
         // in build logs, and it is listed in turbo.json's globalEnv because turbo
         // strips undeclared variables from every task environment -- and a
@@ -226,11 +226,7 @@ project {
         // --- Vercel ---
         password("env.VERCEL_TOKEN", "SET_IN_TEAMCITY")
         param("env.VERCEL_ORG_ID", "SET_IN_TEAMCITY")
-        param("env.VERCEL_PROJECT_ID_PORTAL", "SET_IN_TEAMCITY")
-        param("env.VERCEL_PROJECT_ID_PUBLIC", "SET_IN_TEAMCITY")
-        // The cross-tenant operator console. Without this the deploy step added for
-        // super-admin is skipped, so the app would build in CI and ship nowhere.
-        param("env.VERCEL_PROJECT_ID_SUPER_ADMIN", "SET_IN_TEAMCITY")
+        param("env.VERCEL_PROJECT_ID_WEB", "SET_IN_TEAMCITY")
 
         // --- Container registry (only used when DOCKER_PUSH=true) ---
         param("env.DOCKER_REGISTRY", "ghcr.io")
@@ -317,7 +313,7 @@ object Verify : BuildType({
 object E2ETest : BuildType({
     id("E2ETest")
     name = "E2E Tests"
-    description = "Playwright suite (chromium, firefox, webkit) against the portal"
+    description = "Playwright suite (chromium, firefox, webkit) against the merged web app (apps/web)"
 
     vcs {
         root(AbsoluteId("NovastarMontessori_nmsGit"))
@@ -364,7 +360,7 @@ object E2ETest : BuildType({
 object DockerBuild : BuildType({
     id("DockerBuild")
     name = "Docker Build"
-    description = "Build both container images with BuildKit layer caching"
+    description = "Build the merged web container image with BuildKit layer caching"
 
     vcs {
         root(AbsoluteId("NovastarMontessori_nmsGit"))
@@ -379,7 +375,7 @@ object DockerBuild : BuildType({
 
     steps {
         script {
-            name = "Build images"
+            name = "Build image"
             scriptContent = "bun run ci:docker"
         }
     }

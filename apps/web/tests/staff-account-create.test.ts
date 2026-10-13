@@ -1,4 +1,8 @@
 import { describe, it, expect, beforeEach, mock } from 'bun:test'
+// Registers the complete `@/lib/prisma` double and exports `rootPrisma`, the
+// base this file's own store is overlaid on. Must precede any import that
+// resolves `@/lib/prisma`.
+import { rootPrisma } from './harness'
 
 /**
  * `POST /api/teachers/invite` — the one request that gives somebody a login AND a
@@ -338,6 +342,20 @@ const prisma = {
   $transaction,
 }
 
+/**
+ * The store with the harness's complete client underneath it.
+ *
+ * The same order-dependence the newsletter file documents: `bun test` evaluates
+ * files in an order that is not alphabetical, and module bindings are captured
+ * at first import, so a file whose route resolves `@/lib/prisma` while THIS
+ * file's registration is live used to receive a client with five models on it.
+ * A route looking for `prisma.platformOperator` then died with "undefined is not
+ * an object" in a file that never touches this one. Spreading the complete
+ * client first and overlaying this store keeps this file's doubles authoritative
+ * for its own route while leaving every other model present for anybody else.
+ */
+const staffPrisma = { ...rootPrisma, ...prisma }
+
 // Load the real modules before replacing them: Bun's `mock.module` patches a module
 // already in the registry, so registering for one that has not resolved yet does
 // not reach the modules that import it afterwards.
@@ -457,10 +475,10 @@ const FAKES = [
       setPasswordTemplate: realNotifications.setPasswordTemplate,
     }),
   },
-  { specifier: '@/lib/prisma', factory: () => ({ ...base('@/lib/prisma'), prisma, default: prisma }) },
+  { specifier: '@/lib/prisma', factory: () => ({ ...base('@/lib/prisma'), prisma: staffPrisma, default: staffPrisma }) },
   {
     specifier: '@novastar/database',
-    factory: () => ({ ...base('@novastar/database'), prisma, default: prisma }),
+    factory: () => ({ ...base('@novastar/database'), prisma: staffPrisma, default: staffPrisma }),
   },
   { specifier: '@novastar/auth', factory: () => ({ ...base('@novastar/auth'), hasPermission }) },
   {

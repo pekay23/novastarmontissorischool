@@ -14,7 +14,7 @@
 
 import { withAuth } from 'next-auth/middleware'
 import { NextResponse, type NextFetchEvent, type NextRequest } from 'next/server'
-import { checkRateLimit, clientIdentifier } from '@/lib/rate-limit'
+import { rateLimitAsync, clientIdentifier } from '@/lib/rate-limit'
 import { decidePortalPath } from '@/lib/portal-sections'
 import {
   ADMIN_SESSION_COOKIE,
@@ -247,7 +247,7 @@ export default async function proxy(req: NextRequest, event: NextFetchEvent) {
     const isApi = pathname.startsWith('/portal/api/')
     const isAuthApi = pathname.startsWith('/portal/api/auth')
     const max = isAuthApi ? AUTH_RATE_LIMIT : isApi ? API_RATE_LIMIT : PAGE_RATE_LIMIT
-    const { success, reset } = checkRateLimit(clientIdentifier(req), max, RATE_LIMIT_WINDOW_MS)
+    const { success, reset } = await rateLimitAsync(clientIdentifier(req), max, RATE_LIMIT_WINDOW_MS)
 
     if (!success) {
       const retryAfterSeconds = Math.max(1, Math.ceil((reset - Date.now()) / 1000))
@@ -266,7 +266,7 @@ export default async function proxy(req: NextRequest, event: NextFetchEvent) {
   const isApi = pathname.startsWith('/admin/api/')
   const isAuthApi = pathname.startsWith('/admin/api/auth')
   const max = isAuthApi ? AUTH_RATE_LIMIT : isApi ? API_RATE_LIMIT : PAGE_RATE_LIMIT
-  const { success, reset } = checkRateLimit(clientIdentifier(req), max, RATE_LIMIT_WINDOW_MS)
+  const { success, reset } = await rateLimitAsync(clientIdentifier(req), max, RATE_LIMIT_WINDOW_MS)
 
   if (!success) {
     const retryAfterSeconds = Math.max(1, Math.ceil((reset - Date.now()) / 1000))

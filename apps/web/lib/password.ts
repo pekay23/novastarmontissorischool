@@ -1,4 +1,5 @@
 import { hash as argon2Hash, verify as argon2Verify } from 'argon2'
+import { logError } from '@/lib/logger'
 import {
   MIN_PASSWORD_LENGTH,
   PASSWORD_COMPLEXITY,
@@ -71,7 +72,7 @@ export async function verifyPassword(password: string, passwordHash: string): Pr
     return await argon2Verify(passwordHash, password)
   } catch (error) {
     // A malformed/unknown hash must fail closed, never 500 the sign-in request.
-    console.error('[password] Argon2 verification failed:', error)
+    logError('[password]', error)
     return false
   }
 }

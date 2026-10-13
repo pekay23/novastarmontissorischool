@@ -10,7 +10,9 @@
  * they did not control and use the stored secret to satisfy it. A `userId` in
  * the body is now ignored.
  */
+import 'server-only'
 import { NextResponse } from 'next/server'
+import { logError } from '@/lib/logger'
 import { prisma } from '@/lib/prisma'
 import { getCachedSessionAndTenant } from '@/lib/auth/session-context'
 import { verifyTOTP } from '@/lib/auth/totp'
@@ -64,7 +66,7 @@ export async function POST(req: Request) {
     if (error instanceof Error && error.name === 'UnauthorizedError') {
       return new NextResponse('Unauthorized', { status: 401 })
     }
-    console.error('[TOTP_VERIFY]', error)
+    logError('[TOTP_VERIFY]', error)
     return new NextResponse('Internal Error', { status: 500 })
   }
 }

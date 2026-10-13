@@ -1,3 +1,4 @@
+import 'server-only'
 /**
  * PATCH  /api/system/errors/:id   — mark error as resolved/unresolved
  *

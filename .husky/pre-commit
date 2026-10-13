@@ -1,0 +1,1 @@
+node tools/scan-secrets.mjs --staged

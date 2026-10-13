@@ -1,18 +1,19 @@
 /**
  * The ledger side: what `PaymentService` writes when a payment is taken, what it
- * does when one is verified, and what `reconcilePayments` does with a settlement
- * file.
+ * reports when the provider is consulted about one, what the receipt path does,
+ * and what `reconcilePayments` does with a settlement file.
  *
- * The properties pinned here are state changes, because that is where money goes
- * wrong quietly:
+ * The properties pinned here are state changes and verdicts, because that is
+ * where money goes wrong quietly:
  *
- *   - settling a payment takes a reference and nothing else. No signature, no
- *     secret, no caller identity, no tenant. Whoever holds a reference -- and a
- *     reference is printed in every instruction string, drawn into every QR, and
- *     written on a bank statement -- can flip a row to COMPLETED.
- *   - the row written for a payment disagrees with the result returned to the
- *     caller: cash settles as PENDING with a `paidAt` on it, the term is dropped,
- *     and the amount is the caller's unrounded float going into `Decimal(12,2)`.
+ *   - COMPLETED is the provider's word, never the local row's. A row that
+ *     already says COMPLETED is not evidence of settlement; MTN saying
+ *     SUCCESSFUL, or an explicit bank reconciliation, is.
+ *   - consultation fails closed: no provider reference, no configuration, an
+ *     unknown status, an auth failure — PENDING or FAILED, never COMPLETED.
+ *   - the row written for a payment carries the provider's own verdict (cash
+ *     settles on the spot), and the amount is the caller's unrounded float
+ *     going into `Decimal(12,2)`.
  *   - reconciliation compares amounts with `!==`, counts an amount mismatch as
  *     `unmatched` alongside a row it has never seen, reports a row it does not
  *     hold with no `actual` at all, and lets a non-COMPLETED provider row
@@ -22,22 +23,20 @@
  * that records one is named `DEFECT` and will fail when the behaviour changes.
  *
  * There is no signature, webhook or HMAC anywhere in this package -- no `crypto`
- * import, no shared secret, no constant-time comparison. `verifyPayment` trusts a
- * bare reference string, so the `settling a payment` cases are what stands in for
- * signature verification here: a tampered payload is the reference, the wrong
- * secret is the absence of any secret, and a missing signature is a missing
- * argument. A test that fed a canary secret in and expected it back would have
- * nothing to assert, because no code path reads one.
+ * import, no shared secret, no constant-time comparison. A test that fed a
+ * canary secret in and expected it back would have nothing to assert, because
+ * no code path reads one.
  *
  * The database is the in-memory fake in `support/fake-prisma.ts`, which matches
  * every key a caller supplies -- so a lookup that grew a `tenantId` would stop
  * finding another school's row and the cross-tenant cases below would fail
- * rather than quietly pass. Nothing here contacts a database or a mail server.
+ * rather than quietly pass. Nothing here contacts a database or a mail server;
+ * the MTN endpoints are answered by a stubbed `fetch`.
  */
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { db, resetDb, seedStudentWithParent } from "./support/fake-prisma";
 
-const { PaymentService, reconcilePayments } = await import("../index");
+const { PaymentService, reconcilePayments, sendPaymentReceipt } = await import("../index");
 
 type PaymentInput = import("../index").PaymentInput;
 type PaymentProviderType = import("../index").PaymentProviderType;
@@ -185,25 +184,31 @@ describe("recording a payment", () => {
     expect(createdRow().recordedById).toBe("user_7");
   });
 
-  test("DEFECT: a payment with no tenant or school in its metadata is written with undefined rather than refused", async () => {
-    const result = await PaymentService.processPayment("bank-transfer", {
+  test("a payment with no tenant or school in its metadata is refused, not written with undefined", async () => {
+    // The metadata index signature makes both `string | undefined`, and the old
+    // `as string` casts wrote `undefined` into non-nullable columns — the insert
+    // then failed at the database, far from the mistake. The refusal happens
+    // here instead, and no row is written.
+    const attempt = PaymentService.processPayment("bank-transfer", {
       ...input(),
       metadata: { invoiceId: "invoice_1", studentId: STUDENT_ID, termId: "term_1" },
-    });
+    }).then(
+      () => null,
+      (error: Error) => error,
+    );
 
-    expect(result.success).toBe(true);
-    expect(createdRow().tenantId).toBeUndefined();
-    expect(createdRow().schoolId).toBeUndefined();
+    const error = await attempt;
+    expect(error?.message).toContain("tenantId, schoolId and studentId");
+    expect(db.callsTo("payment", "create")).toHaveLength(0);
   });
 
-  test("DEFECT: a cash payment is recorded PENDING with a paidAt, though the provider settled it", async () => {
-    // `CashProvider.processPayment` returns COMPLETED (`index.ts:236`) and the
-    // service writes `status: "PENDING"` regardless of provider (`index.ts:302`),
-    // then stamps `paidAt` with the moment the row was created.
+  test("a cash payment is recorded COMPLETED, matching the provider that settled it", async () => {
+    // `CashProvider.processPayment` returns COMPLETED, and the row now carries
+    // the provider's own verdict instead of an unrelated PENDING.
     const result = await PaymentService.processPayment("cash", input());
 
     expect(result.status).toBe("COMPLETED");
-    expect(createdRow().status).toBe("PENDING");
+    expect(createdRow().status).toBe("COMPLETED");
     expect(createdRow().paidAt).toBeInstanceOf(Date);
   });
 
@@ -263,15 +268,270 @@ describe("the fee sentence", () => {
 });
 
 // ---------------------------------------------------------------------------
-// settling a payment
+// consulting the provider about a payment
 // ---------------------------------------------------------------------------
 
-describe("settling a payment", () => {
+/**
+ * `PaymentService.verifyPayment` is a pure consult: it asks the provider what
+ * it knows and reports that. It writes no row and sends no mail — the settle
+ * transition, the invoice balance it moves, and the receipt all belong to
+ * callers that can do them once, atomically (`FinanceService.settlePayment`
+ * and the verify endpoint). The properties pinned here:
+ *
+ *   - COMPLETED comes from the provider's own verdict, never from the local
+ *     row. A row that already says COMPLETED is not evidence of settlement;
+ *     only MTN saying SUCCESSFUL, or an explicit bank reconciliation, is.
+ *   - verification FAILS CLOSED: no configuration, no provider reference, an
+ *     unknown reference, an auth or network failure — every one of them is
+ *     PENDING or FAILED, never COMPLETED.
+ *   - a provider amount that disagrees with the recorded amount is a FAILED
+ *     verification, not a settled one at a different price.
+ */
+describe("consulting the provider about a payment", () => {
+  const REFERENCE = "MM-1760000000000-student_1";
+
+/** The caller's tenant and school: every consult is scoped to them. */
+const SCOPE = { tenantId: "tenant_1", schoolId: "school_1" };
+
+  const recorded = (overrides: Record<string, unknown> = {}) =>
+    db.seedPayment({
+      reference: REFERENCE,
+      // The scope the consults are narrowed to.
+      tenantId: SCOPE.tenantId,
+      schoolId: SCOPE.schoolId,
+      amount: "100.50",
+      status: "PENDING",
+      studentId: STUDENT_ID,
+      paidAt: null,
+      transactionId: "mtn-ref-1",
+      ...overrides,
+    });
+
+  const seedFetch = (impl: typeof fetch): (() => void) => {
+    const original = globalThis.fetch;
+    globalThis.fetch = impl as typeof fetch;
+    return () => {
+      globalThis.fetch = original;
+    };
+  };
+
+  /** Token exchange followed by a status response carrying `body`. */
+  const mtnReplies = (status: number, body: unknown): typeof fetch =>
+    (async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith("/collection/token/")) {
+        return new Response(JSON.stringify({ access_token: "token-canary" }), { status: 200 });
+      }
+      return new Response(JSON.stringify(body), { status });
+    }) as unknown as typeof fetch;
+
+  const configureMtn = () => {
+    process.env.MTN_API_USER = "api-user";
+    process.env.MTN_API_KEY = "api-key";
+    process.env.MTN_SUBSCRIPTION_KEY = "sub-key";
+    process.env.MTN_TARGET_ENVIRONMENT = "sandbox";
+  };
+
+  beforeEach(() => {
+    for (const name of ["MTN_API_USER", "MTN_API_KEY", "MTN_SUBSCRIPTION_KEY", "MTN_TARGET_ENVIRONMENT", "MTN_API_BASE_URL"]) {
+      delete process.env[name];
+    }
+  });
+
+  test("consults no row and sends no mail: it is a pure consult", async () => {
+    recorded();
+    seedStudentWithParent();
+
+    const result = await PaymentService.verifyPayment("bank-transfer", REFERENCE, SCOPE);
+
+    expect(result.status).toBe("PENDING");
+    expect(db.callsTo("payment", "updateMany")).toHaveLength(0);
+    expect(db.callsTo("payment", "update")).toHaveLength(0);
+    expect(db.sentEmails).toHaveLength(0);
+  });
+
+  test("the provider says SUCCESSFUL and the amount agrees, so it is COMPLETED", async () => {
+    recorded();
+    configureMtn();
+    const restore = seedFetch(
+      mtnReplies(200, { amount: "100.50", status: "SUCCESSFUL", financialTransactionId: "txn_mtn_9" }),
+    );
+
+    const result = await PaymentService.verifyPayment("mtn-momo", REFERENCE, SCOPE);
+
+    expect(result).toMatchObject({ success: true, status: "COMPLETED", amount: 100.5, transactionId: "txn_mtn_9" });
+    restore();
+  });
+
+  test("the provider settled a different amount, so it is FAILED, not completed at the wrong price", async () => {
+    recorded();
+    configureMtn();
+    const restore = seedFetch(
+      mtnReplies(200, { amount: "50.00", status: "SUCCESSFUL", financialTransactionId: "txn_mtn_9" }),
+    );
+
+    const result = await PaymentService.verifyPayment("mtn-momo", REFERENCE, SCOPE);
+
+    expect(result.status).toBe("FAILED");
+    expect(result.error).toContain("50.00");
+    restore();
+  });
+
+  test("the provider reports FAILED, and the reason is carried to the caller", async () => {
+    recorded();
+    configureMtn();
+    const restore = seedFetch(
+      mtnReplies(200, { status: "FAILED", reason: { message: "payer cancelled" } }),
+    );
+
+    const result = await PaymentService.verifyPayment("mtn-momo", REFERENCE, SCOPE);
+
+    expect(result).toMatchObject({ success: true, status: "FAILED", error: "payer cancelled" });
+    restore();
+  });
+
+  test("an unknown provider status is PENDING, not completed", async () => {
+    recorded();
+    configureMtn();
+    const restore = seedFetch(
+      mtnReplies(200, { amount: "100.50", status: "PROCESSING", financialTransactionId: "txn_mtn_9" }),
+    );
+
+    const result = await PaymentService.verifyPayment("mtn-momo", REFERENCE, SCOPE);
+
+    expect(result.status).toBe("PENDING");
+    restore();
+  });
+
+  test("no MTN configuration fails closed to PENDING and says why", async () => {
+    recorded();
+
+    const result = await PaymentService.verifyPayment("mtn-momo", REFERENCE, SCOPE);
+
+    expect(result.status).toBe("PENDING");
+    expect(result.error).toContain("not configured");
+    expect(db.callsTo("payment", "updateMany")).toHaveLength(0);
+  });
+
+  test("a payment with no provider reference cannot be verified and stays PENDING", async () => {
+    recorded({ transactionId: null });
+    configureMtn();
+    const restore = seedFetch(mtnReplies(200, { status: "SUCCESSFUL" }));
+
+    const result = await PaymentService.verifyPayment("mtn-momo", REFERENCE, SCOPE);
+
+    expect(result.status).toBe("PENDING");
+    expect(result.error).toContain("No provider reference");
+    restore();
+  });
+
+  test("an unknown reference is PENDING on both transfer paths and FAILED on the cash path", async () => {
+    configureMtn();
+
+    const bank = await PaymentService.verifyPayment("bank-transfer", "BANK-never-existed", SCOPE);
+    const momo = await PaymentService.verifyPayment("mtn-momo", "MM-never-existed", SCOPE);
+    const cash = await PaymentService.verifyPayment("cash", "CASH-never-existed", SCOPE);
+
+    expect(bank).toMatchObject({ success: true, status: "PENDING", amount: 0 });
+    expect(bank.error).toContain("No payment recorded");
+    expect(momo).toMatchObject({ success: false, status: "PENDING", amount: 0 });
+    expect(cash).toMatchObject({ success: false, status: "FAILED", error: "Payment not found" });
+  });
+
+  test("a token request that fails is PENDING with the transport reason, never COMPLETED", async () => {
+    recorded();
+    configureMtn();
+    const restore = seedFetch((async () => new Response("nope", { status: 401 })) as unknown as typeof fetch);
+
+    const result = await PaymentService.verifyPayment("mtn-momo", REFERENCE, SCOPE);
+
+    expect(result.status).toBe("PENDING");
+    expect(result.error).toContain("401");
+    restore();
+  });
+
+  test("a driver error is reported as PENDING without quoting the connection string", async () => {
+    db.failOn("payment.findFirst", `Can't reach database server at ${CONNECTION_CANARY}`);
+
+    const result = await PaymentService.verifyPayment("mtn-momo", REFERENCE, SCOPE);
+
+    // Prisma and `pg` both put the host and the credentials in the message of a
+    // connection error. This path must not hand that to the caller.
+    expect(result.status).toBe("PENDING");
+    expect(result.success).toBe(false);
+    expect(result.error).toBe("Verification could not be completed");
+    expect(String(result.error)).not.toContain("canary-7f3a1c9e");
+  });
+
+  test("the same driver failure rejects outright on the bank path, which looks the row up directly", async () => {
+    db.failOn("payment.findFirst", "connection terminated unexpectedly");
+
+    const bank = PaymentService.verifyPayment("bank-transfer", "BANK-1", SCOPE).then(
+      () => null,
+      (error: Error) => error,
+    );
+
+    expect((await bank)?.message).toBe("connection terminated unexpectedly");
+  });
+
+  test("a pending verification reports the recorded amount, so a caller can tell pending-at-₵100 from nothing", async () => {
+    recorded();
+
+    const result = await PaymentService.verifyPayment("bank-transfer", REFERENCE, SCOPE);
+
+    expect(result.status).toBe("PENDING");
+    expect(result.amount).toBe(100.5);
+    expect(Number(db.paymentByReference(REFERENCE)?.amount)).toBe(100.5);
+  });
+
+  test("a bank payment settles only on an explicit reconciliation row", async () => {
+    recorded({ status: "COMPLETED", paidAt: new Date("2026-10-01T09:00:00Z") });
+
+    const result = await PaymentService.verifyPayment("bank-transfer", REFERENCE, SCOPE);
+
+    expect(result).toMatchObject({ success: true, status: "COMPLETED", amount: 100.5 });
+  });
+
+  test("a cash payment settles only when the invoice's matching payment row is COMPLETED", async () => {
+    db.seedInvoice({
+      id: "invoice_1",
+      // The scope the caller passed: the cash provider narrows the invoice
+      // lookup to the caller's tenant and school, so the seeded row has to
+      // carry them or nothing is found.
+      tenantId: SCOPE.tenantId,
+      schoolId: SCOPE.schoolId,
+      payments: [
+        { reference: "CASH-1", amount: "75.00", status: "COMPLETED", paidAt: new Date("2026-10-01") },
+      ],
+    });
+
+    const result = await PaymentService.verifyPayment("cash", "CASH-1", SCOPE);
+
+    expect(result).toMatchObject({ success: true, status: "COMPLETED", amount: 75 });
+    // Only the matching payment came back, so the amount is that payment's and not
+    // the first one on the invoice.
+    expect(db.callsTo("feeInvoice", "findFirst")[0]?.args.include).toEqual({
+      payments: { where: { reference: "CASH-1" } },
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// the receipt
+// ---------------------------------------------------------------------------
+
+describe("the receipt for a settled payment", () => {
   const REFERENCE = "BANK-1760000000000-student_1";
+
+  /** The caller's tenant and school: the receipt lookup is narrowed to them. */
+  const SCOPE = { tenantId: "tenant_1", schoolId: "school_1" };
 
   const settled = (overrides: Record<string, unknown> = {}) =>
     db.seedPayment({
       reference: REFERENCE,
+      // The scope the receipt lookup is narrowed to.
+      tenantId: SCOPE.tenantId,
+      schoolId: SCOPE.schoolId,
       amount: "100.50",
       status: "COMPLETED",
       studentId: STUDENT_ID,
@@ -284,7 +544,7 @@ describe("settling a payment", () => {
     settled();
     seedStudentWithParent();
 
-    await PaymentService.verifyPayment("bank-transfer", REFERENCE);
+    await sendPaymentReceipt(REFERENCE, "MTN Mobile Money", SCOPE);
 
     expect(db.sentEmails).toHaveLength(1);
     expect(db.sentEmails[0]?.to).toBe(PARENT_EMAIL);
@@ -292,194 +552,59 @@ describe("settling a payment", () => {
     expect(db.callsTo("student", "findUnique")[0]?.args.where).toEqual({ id: STUDENT_ID });
   });
 
-  test("DEFECT: the receipt quotes the amount with whatever digits the float carries", async () => {
-    // `Number("100.50")` is `100.5`, so a parent reads ₵100.5 where the ledger
-    // holds ₵100.50. No formatter is applied to the amount in the body.
+  test("the receipt quotes the amount to the pesewa the ledger holds", async () => {
     settled();
     seedStudentWithParent();
 
-    await PaymentService.verifyPayment("bank-transfer", REFERENCE);
+    await sendPaymentReceipt(REFERENCE, "MTN Mobile Money", SCOPE);
 
-    expect(db.sentEmails[0]?.html).toContain("₵100.5");
-    expect(db.sentEmails[0]?.html).not.toContain("₵100.50");
+    expect(db.sentEmails[0]?.html).toContain("₵100.50");
+    expect(db.sentEmails[0]?.html).not.toContain("₵100.5 ");
   });
 
-  test("the update writes COMPLETED and the provider's transaction id, scoped to nothing but the reference", async () => {
+  test("a parent with no email address gets no mail, and nothing throws", async () => {
+    settled();
+    seedStudentWithParent({ parent: { id: "parent_1", email: null } });
+
+    expect(await sendPaymentReceipt(REFERENCE, "MTN Mobile Money", SCOPE)).toBe(false);
+    expect(db.sentEmails).toHaveLength(0);
+  });
+
+  test("a mail failure propagates to the caller, which logs it, and the settlement itself is already recorded", async () => {
+    // `sendEmail` throws by design — a silent drop strands any credential email —
+    // so this function no longer swallows. The settle route catches the throw
+    // and logs it through the app's structured logger; what must NOT happen is
+    // the library quietly returning "no receipt sent" as if that were normal.
     settled();
     seedStudentWithParent();
+    db.emailFailure = new Error("smtp: connection refused");
 
-    await PaymentService.verifyPayment("bank-transfer", REFERENCE);
+    const attempt = sendPaymentReceipt(REFERENCE, "MTN Mobile Money", SCOPE).then(
+      () => null,
+      (error: Error) => error,
+    );
 
-    const update = db.callsTo("payment", "updateMany")[0];
-    expect(update?.args.data).toEqual({ status: "COMPLETED", transactionId: "txn_mtn_1" });
-    expect(Object.keys(update?.args.where as Record<string, unknown>)).toEqual(["reference"]);
+    expect((await attempt)?.message).toBe("smtp: connection refused");
+    expect(db.sentEmails).toHaveLength(0);
   });
 
-  test("DEFECT: holding a reference from another school is enough to settle that school's payment", async () => {
-    // `verifyPayment(providerType, reference)` is the whole signature: no secret,
-    // no signature, no caller identity, no tenant. And `updateMany` matches on the
-    // reference alone, so the local row -- which was never settled -- is settled
-    // too, by a reference that proves nothing about it.
+  test("an unknown reference sends nothing", async () => {
+    expect(await sendPaymentReceipt("BANK-never-existed", "MTN Mobile Money", SCOPE)).toBe(false);
+    expect(db.sentEmails).toHaveLength(0);
+  });
+
+  test("a reference that belongs to another school is not receipted, whatever the row holds", async () => {
+    // The reference is caller-supplied and not unique, so the scope is what
+    // keeps one school's parent from being mailed about another school's money.
     settled({ tenantId: "tenant_other", schoolId: "school_other", studentId: "student_other" });
-    const local = settled({ tenantId: "tenant_1", schoolId: "school_1", status: "PENDING" });
-    expect(local.status).toBe("PENDING");
     db.seedStudent({
       id: "student_other",
       parent: { id: "parent_2", email: "parent-other@novastar.test" },
       class: null,
     });
 
-    const result = await PaymentService.verifyPayment("bank-transfer", REFERENCE);
-
-    expect(result.status).toBe("COMPLETED");
-    // The write that settled it matched both rows, because its selector was the
-    // reference and nothing else, so the local row that was never settled became
-    // settled on the strength of another school's row -- and the receipt went to
-    // the other school's parent.
-    expect(local.schoolId).toBe("school_1");
-    expect(local.status).toBe("COMPLETED");
-    expect(db.payments).toHaveLength(2);
-    expect(db.sentEmails).toHaveLength(1);
-    expect(db.sentEmails[0]?.to).toBe("parent-other@novastar.test");
-  });
-
-  test("DEFECT: verifying the same payment twice sends the parent two receipts", async () => {
-    settled();
-    seedStudentWithParent();
-
-    await PaymentService.verifyPayment("bank-transfer", REFERENCE);
-    await PaymentService.verifyPayment("bank-transfer", REFERENCE);
-
-    expect(db.sentEmails).toHaveLength(2);
-    expect(db.sentEmails[0]).toEqual(db.sentEmails[1]);
-  });
-
-  test("a payment that is not settled sends no receipt", async () => {
-    settled({ status: "PENDING" });
-    seedStudentWithParent();
-
-    const result = await PaymentService.verifyPayment("bank-transfer", REFERENCE);
-
-    expect(result.status).toBe("PENDING");
+    expect(await sendPaymentReceipt(REFERENCE, "MTN Mobile Money", SCOPE)).toBe(false);
     expect(db.sentEmails).toHaveLength(0);
-    expect(db.callsTo("payment", "updateMany")).toHaveLength(0);
-  });
-
-  test("a parent with no email address is not emailed, and the payment still settles", async () => {
-    settled();
-    seedStudentWithParent({ parent: { id: "parent_1", email: null } });
-
-    const result = await PaymentService.verifyPayment("bank-transfer", REFERENCE);
-
-    expect(result.status).toBe("COMPLETED");
-    expect(db.sentEmails).toHaveLength(0);
-    expect(db.paymentByReference(REFERENCE)?.status).toBe("COMPLETED");
-  });
-
-  test("a payment whose student has no parent settles without an email", async () => {
-    settled();
-    db.seedStudent({ id: STUDENT_ID, parent: null, class: null });
-
-    const result = await PaymentService.verifyPayment("bank-transfer", REFERENCE);
-
-    expect(result.status).toBe("COMPLETED");
-    expect(db.sentEmails).toHaveLength(0);
-  });
-
-  test("a failed receipt email neither undoes the settlement nor fails the verification", async () => {
-    settled();
-    seedStudentWithParent();
-    db.emailFailure = new Error("smtp: connection refused");
-    const logged: unknown[][] = [];
-    console.error = (...args: unknown[]) => {
-      logged.push(args);
-    };
-
-    const result = await PaymentService.verifyPayment("bank-transfer", REFERENCE);
-
-    expect(result.status).toBe("COMPLETED");
-    expect(result).not.toHaveProperty("error");
-    expect(db.paymentByReference(REFERENCE)?.status).toBe("COMPLETED");
-    expect(db.sentEmails).toHaveLength(0);
-    expect(logged).toHaveLength(1);
-    expect(String(logged[0]?.[0])).toContain("[payments]");
-  });
-
-  test("an unknown reference is PENDING on the transfer path and FAILED on the cash path", async () => {
-    const bank = await PaymentService.verifyPayment("bank-transfer", "BANK-never-existed");
-    const momo = await PaymentService.verifyPayment("mtn-momo", "MM-never-existed");
-    const cash = await PaymentService.verifyPayment("cash", "CASH-never-existed");
-
-    // One question -- has this payment arrived? -- gets three answers, and the
-    // mobile money one is the dangerous shape: a payment that never arrives can
-    // never fail, so an unpaid invoice is pending forever.
-    expect(bank).toEqual({ success: true, status: "PENDING", amount: 0 });
-    expect(momo).toEqual({ success: true, status: "PENDING", amount: 0 });
-    expect(cash).toMatchObject({ success: false, status: "FAILED", error: "Payment not found" });
-  });
-
-  test("a pending verification reports an amount of 0, which is also what a zero payment reports", async () => {
-    db.seedPayment({ reference: "BANK-pending", amount: "100.50", status: "PENDING", studentId: STUDENT_ID });
-
-    const result = await PaymentService.verifyPayment("bank-transfer", "BANK-pending");
-
-    expect(result.status).toBe("PENDING");
-    expect(result.amount).toBe(0);
-    expect(Number(db.paymentByReference("BANK-pending")?.amount)).toBe(100.5);
-  });
-
-  test("a cash payment settles only when the invoice's matching payment row is COMPLETED", async () => {
-    db.seedInvoice({
-      id: "invoice_1",
-      payments: [
-        { reference: "CASH-1", amount: "75.00", status: "COMPLETED", paidAt: new Date("2026-10-01") },
-      ],
-    });
-
-    const result = await PaymentService.verifyPayment("cash", "CASH-1");
-
-    expect(result).toMatchObject({ success: true, status: "COMPLETED", amount: 75 });
-    // Only the matching payment came back, so the amount is that payment's and not
-    // the first one on the invoice.
-    expect(db.callsTo("feeInvoice", "findFirst")[0]?.args.include).toEqual({
-      payments: { where: { reference: "CASH-1" } },
-    });
-  });
-
-  test("DEFECT: a cash payment that exists but is not complete is reported as not found", async () => {
-    db.seedInvoice({
-      id: "invoice_1",
-      payments: [{ reference: "CASH-1", amount: "75.00", status: "PENDING", paidAt: null }],
-    });
-
-    const result = await PaymentService.verifyPayment("cash", "CASH-1");
-
-    expect(result).toMatchObject({ success: false, status: "FAILED", error: "Payment not found" });
-  });
-
-  test("the same database failure rejects on the transfer path and is reported as FAILED on the mobile money path", async () => {
-    db.failOn("payment.findFirst", "connection terminated unexpectedly");
-
-    const bank = PaymentService.verifyPayment("bank-transfer", "BANK-1").then(
-      () => null,
-      (error: Error) => error,
-    );
-    const momo = await PaymentService.verifyPayment("mtn-momo", "MM-1");
-
-    expect((await bank)?.message).toBe("connection terminated unexpectedly");
-    expect(momo).toMatchObject({ success: false, status: "FAILED", amount: 0 });
-  });
-
-  test("DEFECT: a driver error is handed to the caller verbatim, connection string and all", async () => {
-    db.failOn("payment.findFirst", `Can't reach database server at ${CONNECTION_CANARY}`);
-
-    const result = await PaymentService.verifyPayment("mtn-momo", "MM-1");
-
-    // Prisma and `pg` both put the host and the credentials in the message of a
-    // connection error. This path puts it in the return value, which the portal
-    // renders.
-    expect(result.error).toBe(`Can't reach database server at ${CONNECTION_CANARY}`);
-    expect(String(result.error)).toContain("canary-7f3a1c9e");
   });
 });
 

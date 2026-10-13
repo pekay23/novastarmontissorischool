@@ -40,7 +40,21 @@ const {
 } = await import('@/lib/queries')
 
 const LIB = join(import.meta.dir, '..', 'lib', 'queries.ts')
-const SOURCE = readFileSync(LIB, 'utf8')
+/**
+ * The data-access layer is a directory: `queries.ts` is the barrel that
+ * re-exports `queries/*.ts`, and the model calls live in the modules. Scanning
+ * only the barrel found zero calls and every check below passed vacuously, so
+ * the scan reads the barrel and every module under `queries/`, each with its
+ * name prefixed so a violation still says which file it was in.
+ */
+function readQuerySources(): string {
+  const dir = join(import.meta.dir, '..', 'lib', 'queries')
+  const modules = readdirSync(dir)
+    .filter((entry) => entry.endsWith('.ts'))
+    .map((entry) => `// file: ${entry}\n${readFileSync(join(dir, entry), 'utf8')}`)
+  return `${readFileSync(LIB, 'utf8')}\n${modules.join('\n')}`
+}
+const SOURCE = readQuerySources()
 const LINES = SOURCE.split(/\r?\n/)
 
 

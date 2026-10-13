@@ -13,12 +13,25 @@ export interface PaymentProvider {
   id: PaymentProviderType
   name: string
   processPayment(input: PaymentInput): Promise<PaymentResult>
-  verifyPayment(reference: string): Promise<VerificationResult>
+  /**
+   * Ask the provider whether the money arrived. The scope narrows the local row
+   * lookups to the caller's tenant and school: `Payment.reference` is
+   * caller-supplied and not unique, so an unscoped lookup can read — and settle
+   * — another school's row. Required, not optional: a caller that forgot it
+   * would be a silent cross-tenant read.
+   */
+  verifyPayment(reference: string, scope: PaymentScope): Promise<VerificationResult>
   generateQR? (input: QRInput): Promise<string>
   getFees(amount: number): FeeBreakdown
 }
 
 export type PaymentProviderType = 'mtn-momo' | 'bank-transfer' | 'cash' | 'mtn-bulk'
+
+/** The caller's tenant and school, used to scope every row a provider touches. */
+export interface PaymentScope {
+  tenantId: string
+  schoolId: string
+}
 
 export interface PaymentInput {
   amount: number
@@ -28,6 +41,13 @@ export interface PaymentInput {
     name?: string
     email?: string
   }
+  /**
+   * The provider reference a collection call was issued under. Without it the
+   * status API has nothing to query, so the payment can never be verified
+   * COMPLETED — which is the correct failure direction, but recording a mobile
+   * money payment without one makes the payment permanently unsettleable.
+   */
+  providerReference?: string
   metadata: {
     invoiceId: string
     studentId: string
@@ -73,6 +93,47 @@ export interface QRInput {
 
 // --- MTN MoMo Provider ---
 
+/**
+ * MTN MoMo Collection API.
+ *
+ * Environment (all opt-in — when absent, verification FAILS CLOSED to PENDING;
+ * a missing configuration must never read as a settled payment):
+ *   MTN_API_BASE_URL          sandbox default; production base differs
+ *   MTN_API_USER              collection API user (UUID)
+ *   MTN_API_KEY               collection API key
+ *   MTN_SUBSCRIPTION_KEY      Ocp-Apim-Subscription-Key
+ *   MTN_TARGET_ENVIRONMENT    'sandbox' (default) or the live environment name
+ */
+const MTN_BASE_URL = () => process.env.MTN_API_BASE_URL ?? 'https://sandbox.momodeveloper.mtn.com'
+const MTN_TARGET_ENVIRONMENT = () => process.env.MTN_TARGET_ENVIRONMENT ?? 'sandbox'
+
+function mtnConfigured(): boolean {
+  return Boolean(
+    process.env.MTN_API_USER &&
+      process.env.MTN_API_KEY &&
+      process.env.MTN_SUBSCRIPTION_KEY
+  )
+}
+
+async function mtnAccessToken(): Promise<string> {
+  const basic = Buffer.from(
+    `${process.env.MTN_API_USER}:${process.env.MTN_API_KEY}`
+  ).toString('base64')
+  const response = await fetch(`${MTN_BASE_URL()}/collection/token/`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Basic ${basic}`,
+      'Ocp-Apim-Subscription-Key': process.env.MTN_SUBSCRIPTION_KEY ?? '',
+    },
+  })
+  if (!response.ok) {
+    throw new Error(`MTN token request failed with HTTP ${response.status}`)
+  }
+  const body = (await response.json()) as { access_token?: string }
+  if (!body.access_token) throw new Error('MTN token response carried no access token')
+  return body.access_token
+}
+
 class MTNMoMoProvider implements PaymentProvider {
   id = 'mtn-momo' as const
   name = 'MTN Mobile Money'
@@ -114,36 +175,113 @@ class MTNMoMoProvider implements PaymentProvider {
     }
   }
 
-  async verifyPayment(reference: string): Promise<VerificationResult> {
-    // Verify with MTN MoMo API
-    // In production: call MTN MoMo transaction status API
-    // This is a stub - replace with actual MTN API call
+  /**
+   * Verify a mobile money payment with the MTN Collection status API.
+   *
+   * The provider — never the local row — decides COMPLETED. Verification:
+   *   1. resolves the provider reference the collection call was issued under;
+   *   2. fetches the transaction status from MTN with API-user auth;
+   *   3. reports COMPLETED only when MTN says SUCCESSFUL **and** the amount
+   *      matches the recorded amount to the pesewa.
+   * Every other path — no provider reference, no configuration, an auth or
+   * network failure, an unknown status — is PENDING or FAILED, never COMPLETED.
+   */
+  async verifyPayment(reference: string, scope: PaymentScope): Promise<VerificationResult> {
     try {
-      // Check if payment exists in database
-      const payment = await prisma.payment.findFirst({ where: { reference } })
-      
-      if (payment && payment.status === 'COMPLETED') {
+      const payment = await prisma.payment.findFirst({
+        where: scope ? { reference, ...scope } : { reference },
+      })
+
+      if (!payment) {
+        return { success: false, status: 'PENDING', amount: 0, error: 'No payment recorded under this reference' }
+      }
+      const recordedAmount = Number(payment.amount)
+      const providerReference = payment.transactionId ?? undefined
+
+      if (!providerReference) {
         return {
           success: true,
-          status: 'COMPLETED',
-          amount: Number(payment.amount),
-          paidAt: payment.paidAt,
-          transactionId: payment.transactionId || undefined,
+          status: 'PENDING',
+          amount: recordedAmount,
+          error: 'No provider reference recorded for this payment',
+        }
+      }
+      if (!mtnConfigured()) {
+        return {
+          success: true,
+          status: 'PENDING',
+          amount: recordedAmount,
+          error: 'MTN provider is not configured; verification is not possible',
         }
       }
 
-      // If not in DB, return PENDING (would call MTN API in production)
+      const token = await mtnAccessToken()
+      const response = await fetch(
+        `${MTN_BASE_URL()}/collection/v1_0/requesttopay/${encodeURIComponent(providerReference)}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'X-Target-Environment': MTN_TARGET_ENVIRONMENT(),
+            'Ocp-Apim-Subscription-Key': process.env.MTN_SUBSCRIPTION_KEY ?? '',
+          },
+        }
+      )
+
+      if (response.status === 404) {
+        return { success: true, status: 'PENDING', amount: recordedAmount, error: 'MTN holds no such transaction' }
+      }
+      if (!response.ok) {
+        return { success: true, status: 'PENDING', amount: recordedAmount, error: `MTN status request failed with HTTP ${response.status}` }
+      }
+
+      const body = (await response.json()) as {
+        amount?: string
+        status?: string
+        financialTransactionId?: string
+        reason?: { message?: string }
+      }
+
+      if (body.status === 'FAILED') {
+        return {
+          success: true,
+          status: 'FAILED',
+          amount: recordedAmount,
+          transactionId: body.financialTransactionId,
+          error: body.reason?.message ?? 'Provider reported the transaction as failed',
+        }
+      }
+      if (body.status !== 'SUCCESSFUL') {
+        return { success: true, status: 'PENDING', amount: recordedAmount, transactionId: body.financialTransactionId }
+      }
+
+      const providerAmount = Number(body.amount ?? Number.NaN)
+      if (!Number.isFinite(providerAmount) || Math.abs(providerAmount - recordedAmount) > 0.01) {
+        return {
+          success: true,
+          status: 'FAILED',
+          amount: recordedAmount,
+          transactionId: body.financialTransactionId,
+          error: `Provider settled ₵${body.amount ?? 'unknown'} against a recorded ₵${recordedAmount}`,
+        }
+      }
+
       return {
         success: true,
-        status: 'PENDING',
-        amount: 0,
+        status: 'COMPLETED',
+        amount: recordedAmount,
+        transactionId: body.financialTransactionId ?? providerReference,
+        paidAt: new Date(),
       }
     } catch (error) {
+      // Only our own provider messages are safe to return; a driver error from
+      // Prisma or `pg` quotes the host and the credentials in its message, so
+      // anything unexpected is replaced with a generic reason.
+      const message = error instanceof Error ? error.message : 'Verification failed'
       return {
         success: false,
-        status: 'FAILED',
+        status: 'PENDING',
         amount: 0,
-        error: error instanceof Error ? error.message : 'Verification failed',
+        error: message.startsWith('MTN ') ? message : 'Verification could not be completed',
       }
     }
   }
@@ -188,11 +326,18 @@ class BankTransferProvider implements PaymentProvider {
     }
   }
 
-  async verifyPayment(reference: string): Promise<VerificationResult> {
-    // Bank reconciliation handled manually
-    // Check if payment exists in database
-    const payment = await prisma.payment.findFirst({ where: { reference } })
-    
+  /**
+   * Bank transfer has no instant verification channel: settlement happens when
+   * an operator reconciles a bank statement line, which lands as a COMPLETED row
+   * (see `reconcilePayments`). Until that explicit reconciliation exists, the
+   * payment is PENDING — the absence of a reconciliation is never read as
+   * settled money.
+   */
+  async verifyPayment(reference: string, scope: PaymentScope): Promise<VerificationResult> {
+    const payment = await prisma.payment.findFirst({
+      where: scope ? { reference, ...scope } : { reference },
+    })
+
     if (payment && payment.status === 'COMPLETED') {
       return {
         success: true,
@@ -206,7 +351,8 @@ class BankTransferProvider implements PaymentProvider {
     return {
       success: true,
       status: 'PENDING',
-      amount: 0,
+      amount: payment ? Number(payment.amount) : 0,
+      error: payment ? 'Awaiting manual bank reconciliation' : 'No payment recorded under this reference',
     }
   }
 }
@@ -238,10 +384,15 @@ class CashProvider implements PaymentProvider {
     }
   }
 
-  async verifyPayment(reference: string): Promise<VerificationResult> {
-    // Check if cash payment was recorded
+  async verifyPayment(reference: string, scope: PaymentScope): Promise<VerificationResult> {
+    // Check if cash payment was recorded. Scoped when the caller names one:
+    // `payments.some` matches any row with the reference, and the reference is
+    // caller-supplied and not unique.
     const invoice = await prisma.feeInvoice.findFirst({
-      where: { payments: { some: { reference } } },
+      where: {
+        ...(scope ?? {}),
+        payments: { some: { reference } },
+      },
       include: { payments: { where: { reference } } },
     })
 
@@ -287,20 +438,40 @@ export class PaymentService {
     const fees = provider.getFees(input.amount)
 
     if (result.success) {
-      // Record payment in database
+      // The row must name a tenant and a school. The metadata index signature
+      // makes both `string | undefined`, and the old `as string` casts wrote
+      // `undefined` into non-nullable columns whenever a caller omitted them —
+      // which then failed at the database, far from the mistake. Refuse here
+      // instead, where the caller can see it.
+      const tenantId = input.metadata.tenantId
+      const schoolId = input.metadata.schoolId
+      const studentId = input.metadata.studentId
+      if (!tenantId || !schoolId || !studentId) {
+        throw new Error('Payment metadata must carry tenantId, schoolId and studentId')
+      }
+
+      // Record payment in database. The row carries the provider's own verdict
+      // (cash settles on the spot, everything else starts PENDING) — writing
+      // PENDING over an already-settled cash row would leave the ledger
+      // disagreeing with the receipt.
       await prisma.payment.create({
         data: {
-          tenantId: input.metadata.tenantId as string,
-          schoolId: input.metadata.schoolId as string,
+          tenantId,
+          schoolId,
           invoiceId: input.metadata.invoiceId ? (input.metadata.invoiceId as unknown as string) : undefined,
-          studentId: input.metadata.studentId as unknown as string,
+          studentId,
           amount: input.amount,
           // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Prisma relation field
           method: { connect: { code: providerType } } as any,
           reference: result.reference,
-          transactionId: result.providerReference,
-          status: 'PENDING',
-          paidAt: new Date(),
+          // The reference the collection call was issued under — the only thing
+          // the status API can be asked about later.
+          transactionId: input.providerReference ?? result.providerReference,
+          status: result.status,
+          // `paidAt` is the moment the money arrived, not the moment a row was
+          // written: stamping it on a PENDING payment makes an uncollected
+          // transfer read as paid.
+          paidAt: result.status === 'COMPLETED' ? new Date() : null,
           recordedById: input.metadata.recordedById || 'system',
         // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Prisma data object
         } as any,
@@ -315,48 +486,20 @@ export class PaymentService {
     }
   }
 
+  /**
+   * Ask the provider what it knows about a reference. This is a pure consult:
+   * it changes no ledger row, because the settle transition (and the invoice
+   * balance it depends on) must happen once, atomically, in the domain layer —
+   * `FinanceService.settlePayment` owns that. The scope narrows the local row
+   * lookups to the caller's tenant and school.
+   */
   static async verifyPayment(
     providerType: PaymentProviderType,
-    reference: string
+    reference: string,
+    scope: PaymentScope
   ): Promise<VerificationResult> {
     const provider = getProvider(providerType)
-    const result = await provider.verifyPayment(reference)
-
-    if (result.success && result.status === 'COMPLETED') {
-      // Update payment status
-      await prisma.payment.updateMany({
-        where: { reference },
-        data: { 
-          status: 'COMPLETED',
-          transactionId: result.transactionId,
-        },
-      })
-
-      // Send confirmation email
-      const payment = await prisma.payment.findFirst({ where: { reference } })
-      if (payment) {
-        const student = await prisma.student.findUnique({
-          where: { id: payment.studentId },
-          include: { parent: true, class: true },
-        })
-        if (student?.parent?.email) {
-          // Best-effort: the payment is already recorded above, so a failed
-          // receipt email must not turn a settled payment into a thrown error at
-          // the caller. `sendEmail` throws by design (a silent drop strands any
-          // credential email), so this path opts out explicitly instead of
-          // relying on a swallow.
-          await sendEmail({
-            to: student.parent.email,
-            subject: 'Payment Confirmation',
-            html: `<p>Dear Parent,</p><p>We confirm receipt of your payment of ₵${result.amount} via ${provider.name}.</p><p>Thank you.</p>`,
-          }).catch((error) => {
-            console.error('[payments] payment receipt email was not delivered:', error)
-          })
-        }
-      }
-    }
-
-    return result
+    return provider.verifyPayment(reference, scope)
   }
 
   static async generatePaymentQR(
@@ -372,6 +515,42 @@ export class PaymentService {
 }
 
 // --- Reconciliation ---
+
+/**
+ * Send the parent a receipt for a settled payment.
+ *
+ * Called by the settle endpoint after the domain layer has moved the payment
+ * and the invoice balance. The scope narrows the row lookup: the reference is
+ * caller-supplied and not unique, so an unscoped lookup can email the wrong
+ * school's parent about a payment that was never theirs.
+ *
+ * Returns false when there is nothing to send (no such row, no parent email).
+ * A delivery failure THROWS: `sendEmail` throws by design — a silent drop
+ * strands any credential email — and the caller catches it and logs through the
+ * app's structured logger, which is where a mail failure belongs. A best-effort
+ * swallow here would hide it from exactly the surface that can act on it.
+ */
+export async function sendPaymentReceipt(
+  reference: string,
+  providerName: string,
+  scope: PaymentScope
+): Promise<boolean> {
+  const payment = await prisma.payment.findFirst({ where: { reference, ...scope } })
+  if (!payment) return false
+
+  const student = await prisma.student.findUnique({
+    where: { id: payment.studentId },
+    include: { parent: true, class: true },
+  })
+  if (!student?.parent?.email) return false
+
+  await sendEmail({
+    to: student.parent.email,
+    subject: 'Payment Confirmation',
+    html: `<p>Dear Parent,</p><p>We confirm receipt of your payment of ₵${Number(payment.amount).toFixed(2)} via ${providerName}.</p><p>Thank you.</p>`,
+  })
+  return true
+}
 
 export interface ReconciliationInput {
   providerType: PaymentProviderType

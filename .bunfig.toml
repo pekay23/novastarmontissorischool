@@ -1,8 +1,12 @@
 [install]
 centralStore = true
 
-[run]
-test = { timeout = 30000 }
+# NOTE: Bun's bunfig.toml parser does NOT read `timeout` from the [test]
+# section -- it is silently ignored and the 5s default applies. Verified
+# empirically on 2026-10-12: a 6s test failed at 5s with `[test] timeout = 30000`
+# in place, and passed in 6.07s with `bun test --timeout=30000`. The 30s
+# timeout therefore lives on the `test` script (package.json), not here.
+# See: https://github.com/anomalyco/opencode/issues/13491
 
 [trustedDependencies]
 "@prisma/client" = true

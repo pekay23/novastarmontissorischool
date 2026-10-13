@@ -135,6 +135,6 @@ async function persist(
     // Belt-and-braces: `logSystemError` already swallows its own failures, so
     // reaching here means the surrounding guard itself misbehaved. Report it to
     // the log stream only — the caller is about to return its 500 regardless.
-    console.error('[SYSTEM_ERROR_LOGGER]', `Failed to record ${scope} failure:`, persistErr)
+    logError('[SYSTEM_ERROR_LOGGER]', persistErr, { detail: `Failed to record ${scope} failure` })
   }
 }

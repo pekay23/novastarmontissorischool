@@ -4,6 +4,7 @@
 // cannot lose the race.
 import { beforeEach, describe, expect, it } from 'bun:test'
 import {
+  captureCompletePrismaClient,
   databaseCalls,
   failNextEmail,
   fakeOperator,
@@ -45,6 +46,12 @@ import { ADMIN_SESSION_COOKIE, createSessionToken } from '@/lib/admin-auth'
 const PLATFORM_SESSION_SECRET = 'a-test-secret-that-is-long-enough-to-pass-32'
 const OPERATOR = fakeOperator()
 
+// `bun test` evaluates files in filesystem order, so another file's partial
+// `@/lib/prisma` registration can be the live one when this route module
+// resolves below. Re-assert the complete client immediately before the import;
+// module bindings are captured at first import, so this is the only moment the
+// choice can be made.
+captureCompletePrismaClient()
 const { POST } = await import('@/app/admin/api/tenants/[tenantId]/users/route')
 
 /** A signed-in operator session, backed by a live row. */

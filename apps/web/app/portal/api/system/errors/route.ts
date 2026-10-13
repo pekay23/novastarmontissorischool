@@ -1,3 +1,4 @@
+import 'server-only'
 /**
  * System error log viewing API.
  *

@@ -1,6 +1,10 @@
 import { describe, it, expect, beforeEach, afterAll, mock } from 'bun:test'
 import { NextRequest } from 'next/server'
 import { Prisma } from '@prisma/client'
+// Registers the complete `@/lib/prisma` double before this file's own, which is
+// what makes the superset below possible. Must precede the dynamic import of
+// `@/lib/prisma` further down.
+import { rootPrisma } from './harness'
 
 /**
  * Cover for `POST /api/newsletter/subscribe`.
@@ -62,7 +66,35 @@ const update = mock(async (_args: SubscriptionArgs): Promise<StoredSubscription>
 
 /** Every write this route can make, so a refusal can be proven not to have made one. */
 const SUBSCRIPTION_MODEL = { findUnique, create, update }
-const ROOT_MODEL = { newsletterSubscription: SUBSCRIPTION_MODEL }
+
+/**
+ * The complete client with this route's model overlaid: everything
+ * `rootPrisma` has, the route's own model, and a transaction that hands out the
+ * same client.
+ */
+interface NewsletterClient extends Omit<typeof rootPrisma, '$transaction'> {
+  newsletterSubscription: typeof SUBSCRIPTION_MODEL
+  $transaction: <T>(fn: (tx: NewsletterClient) => Promise<T>) => Promise<T>
+}
+
+/**
+ * Spreading `rootPrisma` first matters beyond this file: module bindings are
+ * captured at first import and `bun test` evaluates files in an order that is
+ * not alphabetical, so the `@/lib/prisma` registration A LATER file captures is
+ * whichever one happened to be live when its route module first loaded. A
+ * one-model double here used to hand a later file's route a client missing
+ * every other model, which surfaced as `prisma.platformOperator.findUnique` is
+ * undefined in a file that never touches this route. A superset makes the load
+ * order irrelevant.
+ */
+const NEWSLETTER_CLIENT: NewsletterClient = {
+  ...rootPrisma,
+  newsletterSubscription: SUBSCRIPTION_MODEL,
+  $transaction: async <T,>(fn: (tx: NewsletterClient) => Promise<T>): Promise<T> =>
+    fn(NEWSLETTER_CLIENT),
+}
+
+const ROOT_MODEL = NEWSLETTER_CLIENT
 
 /**
  * What the create call is forbade to contain. Asserted by key rather than by a

@@ -43,6 +43,12 @@ jobs:
       - name: Generate Prisma Client
         run: bun run --cwd packages/database db:generate
 
+      # The pre-commit hook is bypassable (`--no-verify`) and local-only, so the
+      # scanner runs here too: a live-looking secret in a tracked file fails the
+      # build rather than reaching the registry.
+      - name: Scan for secrets
+        run: node tools/scan-secrets.mjs
+
       - name: Run lint
         run: bun run lint
 
@@ -213,11 +219,13 @@ jobs:
 # ============================================================================
 # Container build
 #
-# Both Dockerfiles are validated here so a broken image is caught in CI rather
-# than on a developer machine. The layer cache is pushed to GHCR with
-# mode=max, which is what makes the second and later builds fast: the `deps`
-# stage installs from package.json manifests only, so editing a .tsx file does
-# not reinstall dependencies.
+# One image, one app: ADR-024 merged the portal, the admin console and the
+# public site into `apps/web`, so `Dockerfile.web` is the only image this repo
+# builds. It is validated here so a broken image is caught in CI rather than on
+# a developer machine. The layer cache is pushed to GHCR with mode=max, which
+# is what makes the second and later builds fast: the `deps` stage installs
+# from package.json manifests only, so editing a .tsx file does not reinstall
+# dependencies.
 #
 # Disabled until you opt in, because it needs the ghcr credentials:
 #   repo variable DOCKER_BUILD_ENABLED = true
@@ -262,32 +270,23 @@ jobs:
           key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
           restore-keys: bun-${{ runner.os }}-
 
-      - name: Build and push portal image
+      # One image, one app: ADR-024 merged the portal, the admin console and the
+      # public site into `apps/web`, and the legacy apps' Dockerfiles were
+      # deleted with them. `Dockerfile.web` is the only image this repo builds.
+      - name: Build and push web image
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: Dockerfile
+          file: Dockerfile.web
           push: true
           tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/novastar-portal:latest
-            ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/novastar-portal:${{ github.sha }}
-          cache-from: type=gha,scope=portal
-          cache-to: type=gha,mode=max,scope=portal
+            ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/novastar-web:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/novastar-web:${{ github.sha }}
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,mode=max,scope=web
           build-args: |
             NEXTAUTH_SECRET=build-only-placeholder-not-a-real-secret
             NEXTAUTH_URL=https://portal.example.com
-
-      - name: Build and push public-site image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: Dockerfile.public-site
-          push: true
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/novastar-public-site:latest
-            ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/novastar-public-site:${{ github.sha }}
-          cache-from: type=gha,scope=public-site
-          cache-to: type=gha,mode=max,scope=public-site
 
 # ============================================================================
 # Vercel deploy
@@ -318,7 +317,7 @@ jobs:
     env:
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
       VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-      VERCEL_PROJECT_ID_WEB: ${{ secrets.VERCEL_PROJECT_ID_PUBLIC }}
+          VERCEL_PROJECT_ID_WEB: ${{ secrets.VERCEL_PROJECT_ID_WEB }}
 
     steps:
       - name: Checkout

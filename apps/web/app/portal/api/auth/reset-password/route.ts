@@ -1,6 +1,7 @@
 import 'server-only'
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
+import { logError } from '@/lib/logger'
 import { checkRateLimit, clientIdentifier } from '@/lib/rate-limit'
 import {
   matchesPasswordGeneration,
@@ -153,7 +154,7 @@ export async function POST(req: Request) {
     entity: 'users',
     entityId: user.id,
     description: 'Password reset via emailed link',
-  }).catch((err) => console.error('[auth] Failed to log event:', err))
+  }  ).catch((err) => logError('[auth]', err))
 
   return NextResponse.json({ status: 'ok', email: user.email }, { status: 200 })
 }

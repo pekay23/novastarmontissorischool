@@ -646,8 +646,18 @@ describe('Middleware - Unauthenticated credential write paths are closed', () =>
     expect(loginVerify).toContain('user.isActive')
   })
 
-it('should rate limit /portal/api/auth before the public-path short-circuit', () => {
-    const limiter = proxySrc.indexOf('checkRateLimit')
+  it('should rate limit /portal/api/auth before the public-path short-circuit', () => {
+    // Matched by name pattern rather than by `indexOf('checkRateLimit')`:
+    // the portal limiter moved to the Upstash-backed `rateLimitAsync` (with
+    // the in-memory fallback behind it), and pinning the old function name
+    // made this test fail for a rename while the ordering it exists to guard
+    // stayed correct. The pattern accepts either limiter entry point.
+    const limiter = Math.min(
+      ...[
+        proxySrc.indexOf('rateLimitAsync'),
+        proxySrc.indexOf('checkRateLimit'),
+      ].filter((index) => index >= 0)
+    )
     const publicShortCircuit = proxySrc.indexOf('portalPublicPaths.some(')
     expect(limiter).toBeGreaterThan(-1)
     expect(publicShortCircuit).toBeGreaterThan(-1)

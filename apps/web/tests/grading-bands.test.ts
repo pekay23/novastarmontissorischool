@@ -318,16 +318,19 @@ describe('a custom school scale works with no code change', () => {
 })
 
 describe('the report surface reports percentages and nothing grade-pointed', () => {
+  // ADR-024 merged the portal into `apps/web`: the API routes live under
+  // `app/portal/api/…` and the pages under `app/portal/(portal)/…`. The
+  // pre-merge `app/(portal)/…` and `app/api/…` paths no longer exist.
   const routeSrc = readFileSync(
-    join(PORTAL, 'app', 'api', 'reports', 'academic', '[studentId]', 'route.ts'),
+    join(PORTAL, 'app', 'portal', 'api', 'reports', 'academic', '[studentId]', 'route.ts'),
     'utf-8',
   )
   const studentPageSrc = readFileSync(
-    join(PORTAL, 'app', '(portal)', 'reports', '[studentId]', 'page.tsx'),
+    join(PORTAL, 'app', 'portal', '(portal)', 'reports', '[studentId]', 'page.tsx'),
     'utf-8',
   )
   const listPageSrc = readFileSync(
-    join(PORTAL, 'app', '(portal)', 'reports', 'page.tsx'),
+    join(PORTAL, 'app', 'portal', '(portal)', 'reports', 'page.tsx'),
     'utf-8',
   )
   const bandBadgeSrc = readFileSync(
@@ -358,10 +361,13 @@ describe('the report surface reports percentages and nothing grade-pointed', () 
     join(REPO, 'packages', 'shared-types', 'config-schema.ts'),
     join(REPO, 'packages', 'ghana-education', 'index.ts'),
     join(REPO, 'tools', 'seed', 'index.ts'),
-    join(PORTAL, 'app', 'api', 'reports', 'academic', '[studentId]', 'route.ts'),
-    join(PORTAL, 'app', '(portal)', 'reports', '[studentId]', 'page.tsx'),
-    join(PORTAL, 'app', '(portal)', 'reports', 'page.tsx'),
-    join(PORTAL, 'app', 'api', 'assessments', 'route.ts'),
+    // ADR-024 merged the portal into `apps/web`, so these live under
+    // `app/portal/...` — the pre-merge `app/api/...` and `app/(portal)/...`
+    // paths were deleted with the legacy apps.
+    join(PORTAL, 'app', 'portal', 'api', 'reports', 'academic', '[studentId]', 'route.ts'),
+    join(PORTAL, 'app', 'portal', '(portal)', 'reports', '[studentId]', 'page.tsx'),
+    join(PORTAL, 'app', 'portal', '(portal)', 'reports', 'page.tsx'),
+    join(PORTAL, 'app', 'portal', 'api', 'assessments', 'route.ts'),
   ] as const
 
   it('has no gpa and no point in the payload or on either page', () => {

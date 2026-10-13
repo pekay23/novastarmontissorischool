@@ -1,4 +1,5 @@
 import 'server-only'
+import { logError } from '@/lib/logger'
 import { cookies } from 'next/headers'
 import { prisma } from '@/lib/prisma'
 import { resolveSchool } from '@/lib/auth/school-lookup'
@@ -225,10 +226,7 @@ export async function ssoSignIn({ account, profile }: SsoSignInParams): Promise<
   }
 
   if (!resolution.allowed) {
-    console.error('[auth] SSO sign-in refused', {
-      provider: account.provider,
-      reason: resolution.reason,
-    })
+    logError('[auth]', new Error('SSO sign-in refused'), { provider: account.provider, reason: resolution.reason })
 
     const context = resolution.context
     if (context?.userId) {
@@ -240,7 +238,7 @@ export async function ssoSignIn({ account, profile }: SsoSignInParams): Promise<
         entity: 'users',
         entityId: context.userId,
         description: `Single sign-in refused (${account.provider}): ${resolution.reason}`,
-      }).catch((err) => console.error('[auth] Failed to log SSO refusal:', err))
+      }).catch((err) => logError('[auth]', err, { detail: 'Failed to log SSO refusal' }))
     }
 
     return refusalRedirect(resolution.reason, account.provider)
@@ -266,7 +264,7 @@ export async function ssoSignIn({ account, profile }: SsoSignInParams): Promise<
     entityId: resolution.userId,
     description: `Signed in with ${account.provider} single sign-on`,
     tenantId: resolution.tenantId,
-  }).catch((err) => console.error('[auth] Failed to log SSO sign-in:', err))
+    }).catch((err) => logError('[auth]', err, { detail: 'Failed to log SSO sign-in' }))
 
   // The identity is bound now, and the binding is what lets the next visit be a
   // lookup. Recorded once per account rather than on every sign-in, and it is a
@@ -280,7 +278,7 @@ export async function ssoSignIn({ account, profile }: SsoSignInParams): Promise<
       entityId: resolution.userId,
       description: `Linked the account to ${account.provider} single sign-on`,
       tenantId: resolution.tenantId,
-    }).catch((err) => console.error('[auth] Failed to log SSO link:', err))
+    }).catch((err) => logError('[auth]', err, { detail: 'Failed to log SSO link' }))
   }
 
   return true

@@ -52,7 +52,7 @@ Rules:
   (`test:packages`); it does not go in `test`.
 - **`proxy.ts`, not `middleware.ts`.** Next.js 16.3.3 deprecates
   `middleware.ts`; the portal's request-level auth lives in
-  `apps/portal/proxy.ts`. Both files cannot coexist — having both fails the
+  `apps/web/proxy.ts`. Both files cannot coexist — having both fails the
   build. See `docs/audit-reports/CONSOLIDATED-AUDIT-REPORT.md` (SEC-01).
 - Every workspace leaf extends `tsconfig.base.json`. Do not duplicate
   `compilerOptions` across `tsconfig.json` files, and keep `paths` per-leaf
@@ -60,13 +60,22 @@ Rules:
 - Internal cross-package dependencies use `workspace:*`. External React/React
   DOM peers stay in `peerDependencies`; internal edges belong in
   `dependencies`.
-- **Those five directories are built, not placeholders.** An earlier revision of
-  this file described `apps/super-admin/`, `packages/testing/`,
-  `tools/migrate/`, `tools/sync-cli/` and `tools/tenant-cli/` as "intentional
-  empty placeholders". As of 2026-10-03 that is false and following it would
-  delete working code: `apps/super-admin` is a full app with its own auth and
-  cross-tenant console, and the other four are implemented workspace members
-  with source and test suites. The build plans under `docs/technical/` repeat
-  the same stale claim. `tools/seed/` is the only one of the six still lacking
-  a `package.json`, so no `typecheck` task reaches it.
+- **`apps/web` is the only app.** ADR-024 merged the public site, the portal
+  (`/portal/*`) and the admin console (`/admin/*`) into it. The legacy
+  `apps/portal`, `apps/super-admin` and `apps/public-site` were deleted on
+  2026-10-12 after the merge was verified; their routes live in `apps/web`.
+  Every root `turbo run` therefore builds, lints, typechecks and tests one app
+  and the packages. See `docs/adr/ADR-024` and
+  `docs/audit-reports/2026-10-12-codebase-audit-council.md`.
+- **One deploy path.** `.github/workflows/ci.yml` deploys the `apps/web` Vercel
+  project; `scripts/ci/deploy-vercel.ts` (the TeamCity `ci:deploy:*` entry) and
+  `Dockerfile.web` build the same app. There is no second, unreleased app to
+  reason about.
+- **Those four tools directories are built, not placeholders.** An earlier
+  revision of this file described `packages/testing/`, `tools/migrate/`,
+  `tools/sync-cli/` and `tools/tenant-cli/` as "intentional empty
+  placeholders". As of 2026-10-03 that is false and following it would delete
+  working code: they are implemented workspace members with source and test
+  suites. `tools/db-mirror/` and `tools/seed/` carry no `package.json`, so no
+  `typecheck` task reaches them.
 

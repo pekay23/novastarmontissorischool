@@ -7,14 +7,14 @@ import { CreateTenantUserSchema } from '@/types/admin'
 import { InviteError } from '@novastar/auth/invite'
 
 /**
- * `POST /api/tenants/:tenantId/users` — create a school-level account in this tenant.
+ * `POST /api/tenants/:tenantId/users` â€” create a school-level account in this tenant.
  *
  * THE GAPS THIS CLOSES
  * --------------------
  * Until this route existed the only user creation anywhere was a side effect of
  * provisioning, which makes exactly one administrator and then stops. A tenant with
  * three schools and one account could not get a second one from the console, so
- * account creation had to go through the portal — which an operator has no account
+ * account creation had to go through the portal â€” which an operator has no account
  * in. The console could read a directory it had no lawful way to change.
  *
  * WHAT THIS ROUTE IS NOT
@@ -29,7 +29,7 @@ import { InviteError } from '@novastar/auth/invite'
  * --------------------------------
  * `tenant:user:read` is read-only and stays that way. This route requires
  * `tenant:user:create`, which is not implied by it and not implied by
- * `tenant:provision` — a console that could provision a tenant but not add a teacher
+ * `tenant:provision` â€” a console that could provision a tenant but not add a teacher
  * to a tenant that already exists would have a strange hole, and one that could add a
  * teacher could not on a day the tenant was already live. Deny-by-default is the
  * point: an operator who holds neither never reaches the first query.
@@ -41,7 +41,7 @@ import { InviteError } from '@novastar/auth/invite'
  * ignored, for the same reason `PATCH /api/tenants/:id` refuses one: silently dropping
  * it would let an operator believe they had created an account in one school while
  * creating it in another. The `schoolId` the body does carry is looked up with
- * `{ id, tenantId }` — both predicates, not one — so a school in another tenant is a
+ * `{ id, tenantId }` â€” both predicates, not one â€” so a school in another tenant is a
  * 404 and the role it would have resolved is never even read.
  *
  * And there is no `roleId`. The body names a role by *name*, which
@@ -55,8 +55,8 @@ export async function POST(
   { params }: { params: Promise<{ tenantId: string }> },
 ): Promise<Response> {
   try {
-    const context = await requireCapability('tenant:user:create')
-    const { tenantId } = await params
+        const context = await requireCapability('tenant:user:create')
+      const { tenantId } = await params
     const body = await readBody(request)
 
     // Body checks before the database. None of these answers depends on whether the
@@ -86,11 +86,11 @@ export async function POST(
       )
     }
 
-    const tenant = await requireTenantScope(tenantId)
-
+      const tenant = await requireTenantScope(tenantId)
+  
     let outcome: Awaited<ReturnType<typeof inviteTenantUser>>
     try {
-      outcome = await inviteTenantUser(
+          outcome = await inviteTenantUser(
         {
           tenantId: tenant.id,
           schoolId: parsed.data.schoolId,
@@ -100,7 +100,7 @@ export async function POST(
         },
         mutationContext(context, request),
       )
-    } catch (error) {
+        } catch (error) {
       if (error instanceof InviteError) {
         throw inviteFailure(error)
       }
@@ -108,8 +108,8 @@ export async function POST(
     }
 
     if (!outcome.delivered) {
-      // 502, and the body says what happened. The account exists — it is in the
-      // directory and in the audit entry — so this is not a retry of the create; it
+      // 502, and the body says what happened. The account exists â€” it is in the
+      // directory and in the audit entry â€” so this is not a retry of the create; it
       // is a report that the one thing the recipient needs never arrived. Answering
       // 201 here is the failure mode this exists to prevent: an operator told "invited"
       // has no reason to chase the person who never got the link.
@@ -118,7 +118,8 @@ export async function POST(
 
     return json(outcome.user, 201)
   } catch (error) {
-    return toErrorResponse(error)
+      const response = toErrorResponse(error)
+      return response
   }
 }
 
@@ -129,7 +130,7 @@ export async function POST(
  * can tell three different mistakes apart from the body alone: 400 for a request that
  * names something that does not exist, 409 for one that names something that already
  * does, 403 for one naming a role this operator's authority does not cover. A platform
- * operator is never refused the third — see `mayGrantRole` — and the branch exists so
+ * operator is never refused the third â€” see `mayGrantRole` â€” and the branch exists so
  * that if the ceiling ever changes, the refusal is a stated decision rather than a
  * crash.
  */

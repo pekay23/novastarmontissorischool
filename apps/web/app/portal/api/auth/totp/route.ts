@@ -11,7 +11,9 @@
  * a user id could reset another person's second factor to a secret of their own
  * choosing. A `userId` in the body is now ignored.
  */
+import 'server-only'
 import { NextResponse } from 'next/server'
+import { logError } from '@/lib/logger'
 import { prisma } from '@/lib/prisma'
 import { getCachedSessionAndTenant } from '@/lib/auth/session-context'
 import { generateTOTPSecret } from '@/lib/auth/totp'
@@ -52,7 +54,7 @@ export async function POST(_req: Request) {
     if (error instanceof Error && error.name === 'UnauthorizedError') {
       return new NextResponse('Unauthorized', { status: 401 })
     }
-    console.error('[TOTP_SETUP]', error)
+    logError('[TOTP_SETUP]', error)
     return new NextResponse('Internal Error', { status: 500 })
   }
 }

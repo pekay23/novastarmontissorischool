@@ -7,6 +7,7 @@ import { prisma } from '@/lib/prisma'
 import { Prisma } from '@prisma/client'
 import { getCachedSessionAndTenant } from '@/lib/auth/session-context'
 import { isUserSecurityAdmin } from '@/lib/constants/platform-roles'
+import { logError } from '@/lib/logger'
 
 export async function GET(req: NextRequest) {
   try {
@@ -52,7 +53,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ logs, total, limit, offset })
   } catch (error) {
-    console.error('[AUDIT_LOGS_API]', error)
+    logError('[AUDIT_LOGS_API]', error)
     return new NextResponse('Internal Error', { status: 500 })
   }
 }

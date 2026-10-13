@@ -1,11 +1,11 @@
 // Throwaway harness: run the Tailwind v4 PostCSS plugin over an app's
 // globals.css and report which utilities actually got generated.
-// Usage: node tools/check-css.mjs apps/portal
+// Usage: node tools/check-css.mjs apps/web
 import fs from 'node:fs'
 import path from 'node:path'
 import { createRequire } from 'node:module'
 
-const appDir = path.resolve(process.argv[2] ?? 'apps/portal')
+const appDir = path.resolve(process.argv[2] ?? 'apps/web')
 const appRequire = createRequire(path.join(appDir, 'package.json'))
 
 const postcss = appRequire('postcss')

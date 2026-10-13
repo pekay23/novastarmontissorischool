@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { clientIdentifier, rateLimitByIPAsync } from '@/lib/rate-limit'
+import { logError } from '@/lib/logger'
 
 /**
  * `POST /api/newsletter/subscribe` — the public sign-up form in the site footer.
@@ -64,42 +65,53 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Check if already subscribed
-    const existing = await prisma.newsletterSubscription.findUnique({
-      where: { email }
-    })
+    // Decide and write in one transaction. The read-then-write on its own is
+    // not atomic — two concurrent submits can both miss the read — so the
+    // unique index on `email` remains the arbiter and its rejection is mapped
+    // to 409 below. The transaction is what makes the outcome *coherent*: no
+    // caller can observe a reactivation half-applied, and no reactivation can
+    // interleave with the create it raced.
+    const outcome = await prisma.$transaction(async (tx) => {
+      const existing = await tx.newsletterSubscription.findUnique({
+        where: { email }
+      })
 
-    if (existing) {
-      if (existing.isActive) {
-        return NextResponse.json(
-          { error: 'This email is already subscribed' },
-          { status: 409 }
-        )
+      if (existing) {
+        if (existing.isActive) return 'already-subscribed' as const
+        // Reactivate if previously unsubscribed. An empty or omitted `name`/`source`
+        // keeps what is stored: the footer submits the whole form, so silence is
+        // "I left that blank", never "erase what you have".
+        await tx.newsletterSubscription.update({
+          where: { email },
+          data: {
+            isActive: true,
+            name: name || existing.name,
+            source: source || existing.source,
+            unsubscribedAt: null,
+          }
+        })
+        return 'reactivated' as const
       }
-      // Reactivate if previously unsubscribed. An empty or omitted `name`/`source`
-      // keeps what is stored: the footer submits the whole form, so silence is
-      // "I left that blank", never "erase what you have".
-      await prisma.newsletterSubscription.update({
-        where: { email },
+
+      await tx.newsletterSubscription.create({
         data: {
-          isActive: true,
-          name: name || existing.name,
-          source: source || existing.source,
-          unsubscribedAt: null,
+          email,
+          name: name || null,
+          source: source || 'website',
         }
       })
-      return NextResponse.json({ message: 'Subscription reactivated' })
-    }
-
-    // Create new subscription
-    await prisma.newsletterSubscription.create({
-      data: {
-        email,
-        name: name || null,
-        source: source || 'website',
-      }
+      return 'created' as const
     })
 
+    if (outcome === 'already-subscribed') {
+      return NextResponse.json(
+        { error: 'This email is already subscribed' },
+        { status: 409 }
+      )
+    }
+    if (outcome === 'reactivated') {
+      return NextResponse.json({ message: 'Subscription reactivated' })
+    }
     return NextResponse.json({ message: 'Successfully subscribed' })
   } catch (error) {
     // The read above can lose a race, so the unique index rejecting a duplicate
@@ -113,7 +125,7 @@ export async function POST(request: NextRequest) {
 
     // The message only: an unhandled driver error can carry a connection
     // fragment, and this endpoint answers an anonymous caller.
-    console.error('Newsletter subscription error:', error instanceof Error ? error.message : error)
+    logError('Newsletter subscription', error instanceof Error ? error.message : error)
     return NextResponse.json(
       { error: 'Failed to subscribe. Please try again.' },
       { status: 500 }

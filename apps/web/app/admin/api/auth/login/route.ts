@@ -13,9 +13,10 @@ import {
 import { AdminAuditAction, auditPlatformAction } from '@/lib/audit'
 import { toErrorResponse } from '@/lib/errors'
 import { clientAddressOf } from '@/lib/http'
+import { logError } from '@/lib/logger'
 
 /**
- * `POST /api/auth/login` — exchange an operator's username (or email) and password
+ * `POST /api/auth/login` ”— exchange an operator's username (or email) and password
  * for a signed session cookie.
  *
  * Stands in for the plan's `app/api/auth/[...nextauth]/route.ts`, which cannot be
@@ -34,7 +35,7 @@ import { clientAddressOf } from '@/lib/http'
  * 3. Only after a success is a cookie minted. There is no path here that issues a
  *    token to an unverified caller.
  *
- * The body carries `identifier` and `password` — not `email` — because the login
+ * The body carries `identifier` and `password` ”— not `email` ”— because the login
  * accepts either a username or an address. The old field names are not accepted as
  * aliases: keeping `email` working would mean two spellings of one request for no
  * benefit, and this console has exactly one client.
@@ -69,7 +70,7 @@ export async function POST(request: NextRequest): Promise<Response> {
       recordLoginFailure(clientId)
       // Best effort, and deliberately so: an audit table that is unreachable must
       // not stop an operator signing in to fix the thing that made it unreachable.
-      // Tenant mutations do not get this leniency — see `lib/queries.ts`.
+      // Tenant mutations do not get this leniency ”— see `lib/queries.ts`.
       //
       // `operatorId` is absent here and that is not an oversight: a refused attempt
       // may not have named a real operator, and inventing one would attribute a
@@ -82,7 +83,7 @@ export async function POST(request: NextRequest): Promise<Response> {
         ipAddress: clientId,
         userAgent: request.headers.get('user-agent'),
       }).catch((error: unknown) => {
-        console.error('[super-admin] Could not record a failed sign-in:', error)
+        logError('[super-admin] Could not record a failed sign-in', error)
       })
       return NextResponse.json({ error: LOGIN_FAILURE }, { status: 401 })
     }
@@ -105,7 +106,7 @@ export async function POST(request: NextRequest): Promise<Response> {
         userAgent: request.headers.get('user-agent'),
       })
     } catch (error) {
-      console.error('[super-admin] Refusing sign-in: could not record the audit entry:', error)
+      logError('[super-admin] Refusing sign-in: could not record the audit entry', error)
       return NextResponse.json(
         { error: 'Sign-in cannot be completed: the audit log is unavailable.' },
         { status: 503 },

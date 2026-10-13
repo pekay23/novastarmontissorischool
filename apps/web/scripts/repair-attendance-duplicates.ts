@@ -31,10 +31,10 @@
  * Requires DATABASE_URL, as every other portal script does.
  *
  * Run (dry run — prints the plan, changes nothing):
- *   cd apps/portal && bun run scripts/repair-attendance-duplicates.ts
+ *   cd apps/web && bun run scripts/repair-attendance-duplicates.ts
  *
  * Apply (deletes the duplicate rows, one transaction per group):
- *   cd apps/portal && bun run scripts/repair-attendance-duplicates.ts --apply
+ *   cd apps/web && bun run scripts/repair-attendance-duplicates.ts --apply
  *
  * `--apply` against anything that is not a loopback database additionally
  * requires `--allow-production`, and then a typed confirmation naming the exact

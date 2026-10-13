@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { generateAuthenticationOptions } from '@simplewebauthn/server'
+import { logError } from '@/lib/logger'
 import { prisma } from '@/lib/prisma'
 import { rpConfig } from '@/lib/auth/passkey-config'
 import { checkRateLimit, clientIdentifier } from '@/lib/rate-limit'
@@ -85,7 +86,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ options })
   } catch (error) {
-    console.error('[PASSKEY_LOGIN_OPTIONS]', error)
+    logError('[PASSKEY_LOGIN_OPTIONS]', error)
     return new NextResponse('Internal Error', { status: 500 })
   }
 }

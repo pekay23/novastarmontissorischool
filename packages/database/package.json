@@ -11,7 +11,7 @@
     "db:seed": "bun run ../../tools/seed/index.ts",
     "db:generate": "prisma generate",
     "lint": "eslint . --ext .ts",
-    "test": "bun test",
+    "test": "bun test --timeout 30000",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

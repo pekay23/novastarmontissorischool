@@ -1,4 +1,5 @@
 'use client'
+import { logError } from '@/lib/logger'
 
 import { useState, useEffect, useCallback } from 'react'
 import {
@@ -73,9 +74,9 @@ function issueLines(issues: unknown, prefix = ''): string[] {
  * The server's own words for why a write failed, as one line a teacher can act on.
  *
  * This exists because nothing used to read them. `handleFormSubmit` closed the
- * dialog only on `res.ok` and said nothing otherwise, so a refusal — a rejected
+ * dialog only on `res.ok` and said nothing otherwise, so a refusal ”— a rejected
  * `defaultWeight`, or the 500 every grading-scale GET, PATCH and DELETE used to
- * return — left the dialog sitting open looking like it was still saving.
+ * return ”— left the dialog sitting open looking like it was still saving.
  */
 async function describeFailure(res: Response): Promise<string> {
   let payload: { error?: unknown; issues?: unknown } | null = null
@@ -135,7 +136,7 @@ export function EntityList({ entityType }: EntityListProps) {
         setError(await describeFailure(res))
       }
     } catch (caught) {
-      console.error('Fetch error:', caught)
+      logError('Entity list: fetch failed', caught)
       setError('Could not reach the server. Check your connection and try again.')
     } finally {
       setLoading(false)
@@ -195,7 +196,7 @@ export function EntityList({ entityType }: EntityListProps) {
         setError(await describeFailure(res))
       }
     } catch (caught) {
-      console.error('Delete error:', caught)
+      logError('Entity list: delete failed', caught)
       setError('Could not reach the server. Check your connection and try again.')
     }
   }
@@ -244,7 +245,7 @@ export function EntityList({ entityType }: EntityListProps) {
         setError(await describeFailure(res))
       }
     } catch (caught) {
-      console.error('Submit error:', caught)
+      logError('Entity list: submit failed', caught)
       setError('Could not reach the server. Check your connection and try again.')
     }
   }
@@ -350,7 +351,7 @@ export function EntityList({ entityType }: EntityListProps) {
                         ) : field.type === 'date' ? (
                           formatDate(item[field.key] as string)
                         ) : (
-                          String(item[field.key] ?? '—')
+                          String(item[field.key] ?? '”—')
                         )}
                       </TableCell>
                     ))}

@@ -2,6 +2,7 @@ import 'server-only'
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
+import { logError } from '@/lib/logger'
 import { getCachedSessionAndTenant } from '@/lib/auth/session-context'
 import { isUserSecurityAdmin } from '@/lib/constants/platform-roles'
 import { portalOrigin } from '@/lib/auth/school-lookup'
@@ -210,7 +211,7 @@ export async function POST(req: Request) {
       // as a distinct status rather than a success, because "invited" with no
       // email is the state the previous swallowing `sendEmail` hid: the operator
       // had no signal that the person would never receive it.
-      console.error('[auth] invitation email was not delivered:', error)
+      logError('[auth]', error, { detail: 'invitation email was not delivered' })
       return NextResponse.json(
         { status: 'created-not-delivered', userId: invite.userId },
         { status: 502 },
@@ -225,7 +226,7 @@ export async function POST(req: Request) {
       description: `Invited ${invite.email} as ${invite.roleName}`,
       tenantId,
       schoolId,
-    }).catch((err) => console.error('[auth] Failed to log event:', err))
+    }).catch((err) => logError('[auth]', err))
 
     return NextResponse.json({ status: 'invited', userId: invite.userId }, { status: 201 })
   } catch (error) {
@@ -237,7 +238,7 @@ export async function POST(req: Request) {
       // exists in this school.
       return duplicateResponse('An account with that email address already exists.')
     }
-    console.error('[AUTH_INVITE]', error)
+    logError('[AUTH_INVITE]', error)
     return new NextResponse('Internal Error', { status: 500 })
   }
 }

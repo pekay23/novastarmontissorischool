@@ -3,17 +3,19 @@
 # ============================================================================
 # Novastar Montessori - merged web image (ADR-024)
 #
-# Single Next.js app serving:
-#   - public site at / (static export via output: 'export')
-#   - portal at /portal/* (standalone server)
-#   - admin console at /admin/* (standalone server)
+# One image, one app: the public site (/), the portal (/portal/*) and the admin
+# console (/admin/*) are all served by `apps/web` as a single SSR deployment.
 #
-# The merged app apps/web uses a single next.config.ts with:
-#   - root pages (public) → static export
-#   - app/portal/* → standalone server (output: 'standalone')
-#   - app/admin/*  → standalone server (output: 'standalone')
+# Why NOT `output: 'standalone'`: `apps/web/next.config.ts` deliberately leaves
+# the output mode unset - the workspace packages are consumed as TypeScript
+# source (ADR-016), so `next build` follows symlinks out of `apps/web` into
+# `packages/*` and a standalone bundle would still need the whole source tree to
+# run. That decision belongs to the app, so this Dockerfile adopts its shape
+# rather than fighting it: the builder's workdir (source + node_modules + the
+# built `.next`) is copied whole, and the app runs under `next start`.
 #
-# This image builds both the static public site and the portal/admin server.
+# The cost is image size - roughly double a standalone image. The benefit is
+# that the image cannot drift from how the app actually builds and runs.
 # ============================================================================
 
 ARG NODE_VERSION=22
@@ -69,7 +71,14 @@ FROM deps AS builder
 
 ARG NEXT_PUBLIC_ORIGIN
 ARG NEXT_PUBLIC_DOMAIN
+ARG NEXTAUTH_SECRET
+ARG NEXTAUTH_URL
+ARG DATABASE_URL
 
+# NEXT_PUBLIC_* are inlined at build time; NEXTAUTH_SECRET/URL and DATABASE_URL
+# are read at build time by next-auth's config resolution. All of them are also
+# supplied at RUN time by the deployer's environment - these values only keep
+# the build from failing, and the placeholder is never a real secret.
 ENV NEXT_PUBLIC_ORIGIN=$NEXT_PUBLIC_ORIGIN \
     NEXT_PUBLIC_DOMAIN=$NEXT_PUBLIC_DOMAIN \
     DATABASE_URL=$DATABASE_URL \
@@ -84,7 +93,7 @@ RUN bun run --cwd packages/database db:generate
 RUN bun run build --filter=web
 
 # ----------------------------------------------------------------------------
-# runner: standalone output for portal/admin + static export for public
+# runner: the built workdir, run under next start
 # ----------------------------------------------------------------------------
 FROM base AS runner
 
@@ -97,21 +106,19 @@ RUN addgroup --gid 1001 --system nodejs \
 
 WORKDIR /app
 
-# Copy standalone server for portal/admin
-COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/standalone ./
-
-# Copy static assets for public site (exported to /out)
-COPY --from=builder --chown=nextjs:nodejs /app/apps/web/out ./out
-
-# Next does NOT include static assets in standalone; both must be copied
-COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/static ./apps/web/.next/static
-COPY --from=builder --chown=nextjs:nodejs /app/apps/web/public ./apps/web/public
+# The whole builder workdir: source (the workspace packages are consumed as
+# TypeScript source, so their sources are runtime dependencies), node_modules
+# (bun symlinks the workspace packages into it), and the built `.next`.
+COPY --from=builder --chown=nextjs:nodejs /app ./
 
 USER nextjs
 
 EXPOSE 3000
 
+# Probe a page that exists in every deployment and redirects rather than 404s:
+# `/login` 307-redirects to `/portal/login`, so `--redirect: manual` and a
+# 2xx/3xx answer is healthy; anything else (including a 404) fails the check.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-  CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||3000)+'/login',{redirect:'manual'}).then(r=>process.exit(r.status<500?0:1)).catch(()=>process.exit(1))"
+  CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||3000)+'/portal/login',{redirect:'manual'}).then(r=>process.exit(r.status>=200&&r.status<400?0:1)).catch(()=>process.exit(1))"
 
-CMD ["node", "apps/web/server.js"]
+CMD ["bun", "run", "--cwd", "apps/web", "start"]

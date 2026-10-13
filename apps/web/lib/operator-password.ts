@@ -1,4 +1,5 @@
 import 'server-only'
+import { logError } from '@/lib/logger'
 import { argon2id, hash as argon2Hash, verify as argon2Verify } from 'argon2'
 import {
   MIN_OPERATOR_PASSWORD_LENGTH,
@@ -106,7 +107,7 @@ export async function verifyOperatorPassword(password: string, passwordHash: str
   } catch (error) {
     // Logged, not returned: the sign-in path needs a boolean, and a malformed hash
     // is an operational fact an operator must be able to find.
-    console.error('[super-admin] Operator password verification failed:', error)
+    logError('[super-admin]', error)
     return false
   }
 }

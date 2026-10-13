@@ -1,7 +1,8 @@
 import 'server-only'
-import crypto from 'crypto'
-import { Prisma } from '@prisma/client'
+import { Prisma } from '@novastar/database'
+import { logError } from '@/lib/logger'
 import { prisma } from '@/lib/prisma'
+import { appendAuditChain } from '@novastar/auth'
 
 /**
  * Audit logging with hash chain — each entry's hash includes the previous
@@ -60,98 +61,34 @@ interface AuditLogParams {
   schoolId?: string
 }
 
-function computeHash(
-  previousHash: string | null,
-  tenantId: string,
-  action: string,
-  entityId: string | undefined,
-  changes: Prisma.InputJsonValue,
-  timestamp: Date
-): string {
-  const data = [
-    previousHash || '',
-    tenantId,
-    action,
-    entityId || '',
-    JSON.stringify(changes || {}),
-    timestamp.toISOString(),
-  ].join('|')
-  return crypto.createHash('sha256').update(data).digest('hex')
-}
-
 /**
  * Logs a system or user action to the audit_logs table.
  * Implements hash chain: each entry's hash includes the previous entry's hash.
+ *
+ * Delegates to the shared `appendAuditChain` in `@novastar/auth`, which resolves
+ * tenant/school from the user, reads the previous entry's hash scoped to this
+ * tenant, and computes the new hash. The `client` (transaction-aware) parameter
+ * is passed through so writes inside a transaction participate in the chain.
  */
 export async function logAuditEvent(params: AuditLogParams, tx?: Prisma.TransactionClient) {
   const client = tx || prisma
   try {
-    const timestamp = new Date()
-
-    // Resolve tenantId/schoolId from user if not explicitly provided. This runs
-    // BEFORE the chain lookup because the chain is scoped by tenant — the previous
-    // order asked for the previous hash first, which is what forced it to be global.
-    let tenantId: string | undefined = params.tenantId
-    let schoolId: string | undefined = params.schoolId
-    if (!tenantId && params.userId) {
-      const user = await prisma.user.findUnique({
-        where: { id: params.userId },
-        select: { tenantId: true, schoolId: true },
-      })
-      if (user) {
-        tenantId = tenantId ?? user.tenantId
-        schoolId = schoolId ?? user.schoolId ?? undefined
-      }
-    }
-
-    // Fallback for system-level logs
-    tenantId = tenantId ?? 'system'
-    schoolId = schoolId ?? 'system'
-
-    // Chain continuity is scoped to this tenant. The previous implementation asked
-    // for the globally most recent entry, so every tenant's chain was threaded
-    // through every other tenant's writes: a school could not verify its own log
-    // without entries it has no right to see, and one tenant's audit write silently
-    // became a link in another tenant's chain.
-    const lastEntry = await prisma.auditLog.findFirst({
-      where: { tenantId },
-      orderBy: { createdAt: 'desc' },
-      select: { id: true, hash: true },
-    })
-
-    const previousHash = lastEntry?.hash ?? null
-    const hash = computeHash(
-      previousHash,
-      tenantId,
-      params.action,
-      params.entityId,
-      params.changes ?? params.details ?? {},
-      timestamp
-    )
-
-    const data: Prisma.AuditLogUncheckedCreateInput = {
+    const chainData = await appendAuditChain(client, {
+      tenantId: params.tenantId,
+      schoolId: params.schoolId,
+      userId: params.userId,
       action: params.action,
-      entity: params.entity ?? 'system',
-      tenantId,
-      schoolId,
-      previousHash: previousHash || undefined,
-      hash,
-    }
-
-    if (params.userId) data.userId = params.userId
-    if (params.entityId) data.entityId = params.entityId
-    if (params.description) data.description = params.description
-    else if (params.details) data.description = JSON.stringify(params.details)
-
-    const changesData = params.changes || params.details || {}
-    if (changesData) data.newData = changesData as Prisma.InputJsonValue
-    if (params.ipAddress) data.ipAddress = params.ipAddress
-    if (params.userAgent) data.userAgent = params.userAgent
-
-    return await client.auditLog.create({ data })
+      entity: params.entity,
+      entityId: params.entityId,
+      changes: params.changes,
+      details: params.details,
+      description: params.description,
+      ipAddress: params.ipAddress,
+      userAgent: params.userAgent,
+    })
+    return await client.auditLog.create({ data: chainData })
   } catch (error) {
-    // We don't want to crash the main process if logging fails
-    console.error('[AUDIT_LOG_ERROR]', error)
+    logError('[AUDIT_LOG_ERROR]', error)
     return null
   }
 }

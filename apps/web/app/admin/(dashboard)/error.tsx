@@ -1,4 +1,5 @@
 'use client'
+import { logError } from '@/lib/logger'
 
 import { useEffect } from 'react'
 
@@ -9,9 +10,8 @@ import { useEffect } from 'react'
  * renders a fixed message and never the error's own text: an unhandled fault in a
  * cross-tenant console is frequently a Prisma error carrying a connection string
  * fragment, and an operator reading it on a screen is exactly the disclosure the
- * console exists to prevent. The detail goes to the server log via the
- * `console.error` the boundary already emits, correlated by the request id in the
- * header.
+ * console exists to prevent. The detail goes to the server log via `logError`
+ * below, correlated by the request id in the header.
  */
 export default function DashboardError({
   error,
@@ -21,7 +21,7 @@ export default function DashboardError({
   reset: () => void
 }) {
   useEffect(() => {
-    console.error('[super-admin] Unhandled page error', error)
+    logError('[super-admin] Unhandled page error', error)
   }, [error])
 
   return (

@@ -5,11 +5,12 @@ import { SCHOOL_INFO } from '@/lib/metadata'
 import { reachableNavigation } from '@/lib/portal-sections'
 import { PortalShell } from './PortalShell'
 import type { ReactNode } from 'react'
+import { logError } from '@/lib/logger'
 
 /**
  * The portal's authenticated shell.
  *
- * The navigation list is plain data — `{ name, href }` and nothing
+ * The navigation list is plain data ”— `{ name, href }` and nothing
  * else. `PortalShell` is a client component, and React serializes
  * only plain values across the server-to-client boundary: an icon
  * component (a `forwardRef` object carrying `$$typeof` and `render`)
@@ -69,7 +70,7 @@ export default async function PortalLayout({ children }: { children: ReactNode }
         select: { name: true },
       })
     } catch (error) {
-      console.error('Failed to fetch school name:', error)
+      logError('Portal layout: failed to fetch school name', error)
     }
   }
 

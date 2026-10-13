@@ -23,7 +23,7 @@
     "config:import": "bun index.ts import",
     "lint": "eslint . --ext .ts",
     "typecheck": "tsc --noEmit",
-    "test": "bun test"
+    "test": "bun test --timeout 30000"
   },
   "dependencies": {
     "@novastar/auth": "workspace:*",

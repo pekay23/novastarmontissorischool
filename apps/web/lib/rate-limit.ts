@@ -184,14 +184,33 @@ export async function rateLimitByIPAsync(ip: string, limit: number = 20, windowM
 // IP extraction (preserved from Novastar)
 // ---------------------------------------------------------------------------
 
-const TRUSTED_PROXY_HOPS = Math.max(0, Number.parseInt(process.env.TRUSTED_PROXY_HOPS ?? '1', 10) || 0)
+/**
+ * How many proxy hops to trust, read per call rather than frozen at import.
+ *
+ * Frozen-at-import made the setting untestable — a test that set the variable
+ * changed nothing — and made it impossible to change without a restart in a
+ * long-lived process. The memo keeps it cheap: the parse runs only when the raw
+ * value actually differs from the last one seen.
+ */
+let cachedHopsRaw: string | undefined
+let cachedHops = 0
+
+function trustedProxyHops(): number {
+  const raw = process.env.TRUSTED_PROXY_HOPS
+  if (raw !== cachedHopsRaw) {
+    cachedHopsRaw = raw
+    cachedHops = Math.max(0, Number.parseInt(raw ?? '0', 10) || 0)
+  }
+  return cachedHops
+}
 
 export function clientIdentifier(request: Request): string {
   // When the app is not behind a trusted proxy, the client can set
   // x-real-ip and x-forwarded-for arbitrarily, so trusting them would let an
   // attacker rotate IPs to bypass per-address rate limits. Refuse all
   // proxy-derived identity in that configuration and fall back to 'unknown'.
-  if (TRUSTED_PROXY_HOPS === 0) {
+  const hops = trustedProxyHops()
+  if (hops === 0) {
     return 'unknown'
   }
 
@@ -202,9 +221,9 @@ export function clientIdentifier(request: Request): string {
 
   const forwarded = request.headers.get('x-forwarded-for')
   if (forwarded) {
-    const hops = forwarded.split(',').map((s) => s.trim()).filter(Boolean)
-    if (hops.length > TRUSTED_PROXY_HOPS) {
-      return hops[hops.length - 1 - TRUSTED_PROXY_HOPS]!
+    const chain = forwarded.split(',').map((s) => s.trim()).filter(Boolean)
+    if (chain.length > hops) {
+      return chain[chain.length - 1 - hops]!
     }
   }
 

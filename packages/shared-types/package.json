@@ -3,11 +3,11 @@
   "version": "0.0.0",
   "private": true,
   "main": "index.ts",
-  "types": "index.ts",
+  "types": "types.ts",
   "scripts": {
     "lint": "eslint . --ext .ts",
     "typecheck": "tsc --noEmit",
-    "test": "bun test"
+    "test": "bun test --timeout 30000"
   },
   "devDependencies": {
     "@types/bun": "^1.4.2",

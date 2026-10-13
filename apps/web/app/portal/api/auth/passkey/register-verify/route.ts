@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { verifyRegistrationResponse } from '@simplewebauthn/server'
+import { logError } from '@/lib/logger'
 import { prisma } from '@/lib/prisma'
 import { getCachedSessionAndTenant } from '@/lib/auth/session-context'
 import { rpConfig } from '@/lib/auth/passkey-config'
@@ -82,7 +83,7 @@ export async function POST(req: Request) {
     if (error instanceof Error && error.name === 'UnauthorizedError') {
       return new NextResponse('Unauthorized', { status: 401 })
     }
-    console.error('[PASSKEY_REGISTER_VERIFY]', error)
+    logError('[PASSKEY_REGISTER_VERIFY]', error)
     return new NextResponse('Internal Error', { status: 500 })
   }
 }

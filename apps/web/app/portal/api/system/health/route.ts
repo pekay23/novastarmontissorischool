@@ -1,3 +1,4 @@
+import 'server-only'
 /**
  * System health monitoring API for HEADMASTER role.
  *

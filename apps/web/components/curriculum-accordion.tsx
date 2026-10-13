@@ -134,9 +134,20 @@ export function CurriculumAccordion({
   divided = true,
   collapsible = true,
 }: CurriculumAccordionProps) {
-  // Type assertion needed because Radix Accordion uses discriminated union
-  // that TypeScript can't narrow when `type` is a union variable
-  const AccordionComponent = Accordion as any
+  // Radix's `Accordion` is a discriminated union — `type: 'single'` takes
+  // `value: string`, `type: 'multiple'` takes `value: string[]` — and this
+  // wrapper's own `type` is a union prop, so TypeScript cannot narrow it at the
+  // call. The cast states the exact shape this wrapper accepts instead of
+  // reaching for `any`, which would also silence a genuine miscall.
+  type AccordionLikeProps = Omit<
+    React.ComponentProps<typeof Accordion>,
+    'type' | 'value' | 'defaultValue'
+  > & {
+    type: 'single' | 'multiple'
+    value?: string | string[]
+    defaultValue?: string | string[]
+  }
+  const AccordionComponent = Accordion as unknown as React.ComponentType<AccordionLikeProps>
   return (
     <AccordionComponent
       type={type}

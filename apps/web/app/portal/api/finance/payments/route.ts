@@ -79,7 +79,7 @@ export async function POST(req: NextRequest) {
     if (!parseResult.success) {
       return NextResponse.json({ error: 'Invalid input', details: parseResult.error.issues }, { status: 400 })
     }
-    const { invoiceId, amount, methodCode, reference, momoPhone, notes } = parseResult.data
+    const { invoiceId, amount, methodCode, reference, momoPhone, notes, transactionId } = parseResult.data
 
     // Delegate to the FinanceService domain service
     const finance = new FinanceService(ctx)
@@ -88,6 +88,11 @@ export async function POST(req: NextRequest) {
       amount,
       methodCode,
       reference,
+      // The provider reference the collection call was issued under. Without
+      // it the status API has nothing to query, so a mobile money payment
+      // recorded without one can never be verified — persist what the caller
+      // was given by the provider.
+      transactionId,
       momoPhone,
       notes,
     })

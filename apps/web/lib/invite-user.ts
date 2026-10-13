@@ -1,4 +1,5 @@
 import { sendEmail, setPasswordTemplate, EmailDeliveryError } from '@novastar/notifications'
+import { logError } from '@/lib/logger'
 import {
   createInvitedUser,
   INVITE_TOKEN_TTL_HOURS,
@@ -219,10 +220,7 @@ async function deliverSetupLink(
     return { status: 'sent', reason: null }
   } catch (error) {
     const reason = error instanceof EmailDeliveryError ? error.reason : 'unknown'
-    console.error(
-      '[super-admin] account created but its setup email was not delivered:',
-      error instanceof Error ? error.message : error,
-    )
+    logError('[super-admin]', error, { detail: 'account created but its setup email was not delivered' })
     return { status: 'failed', reason }
   }
 }

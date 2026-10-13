@@ -93,6 +93,21 @@ mock.module('server-only', () => ({
 
 // ---------------------------------------------------------------------------
 // Database
+
+/**
+ * The Prisma error class route handlers narrow with (error instanceof
+ * Prisma.PrismaClientKnownRequestError). A bare Prisma: {} mock makes every
+ * P2002/P2025 branch a TypeError, so the class is part of the mock surface,
+ * not an optional extra.
+ */
+class PrismaClientKnownRequestError extends Error {
+  readonly code: string
+  constructor(message: string, options: { code?: string; clientVersion?: string } = {}) {
+    super(message)
+    this.name = 'PrismaClientKnownRequestError'
+    this.code = options.code ?? 'P2002'
+  }
+}
 // ---------------------------------------------------------------------------
 
 export interface WhereArg {
@@ -224,6 +239,41 @@ const ROOT = {
   $transaction,
 }
 
+/**
+ * The complete client, exported so a test file that registers its own
+ * `@/lib/prisma` double can build a SUPERSET of it rather than a subset.
+ *
+ * This is the fix for a whole class of order-dependent failures: module
+ * bindings are captured at first import, and `bun test` evaluates files in an
+ * order that is not alphabetical, so a file registering a one-model client can
+ * be the registration a *later* file's route captures. A superset — every model
+ * present, the file's own models overlaid — makes the order irrelevant.
+ */
+export const rootPrisma = ROOT
+
+/**
+ * Re-assert the complete client immediately before a test file imports a route
+ * module.
+ *
+ * Module bindings are captured at first import, and `bun test` evaluates files
+ * in filesystem order, not alphabetical order — so the `@/lib/prisma`
+ * registration that is live when THIS file's route module resolves is whichever
+ * file happened to load before it and registered last. Several files register a
+ * deliberately partial client (only the models their own route touches), and a
+ * route loaded after one of those used to die with `prisma.platformOperator
+ * .findUnique is undefined` in a file that never touches that route.
+ *
+ * Call this directly before the `await import('@/app/...')` of the route under
+ * test. It is idempotent and cheap; what it buys is that the capture is decided
+ * by this file rather than by load order.
+ */
+export function captureCompletePrismaClient(): void {
+  mock.module('@/lib/prisma', () => ({
+    prisma: ROOT,
+    adminDatabaseSource: () => 'SUPER_ADMIN_DATABASE_URL' as const,
+  }))
+}
+
 mock.module('@/lib/prisma', () => ({
   prisma: ROOT,
   adminDatabaseSource: () => 'SUPER_ADMIN_DATABASE_URL' as const,
@@ -237,7 +287,7 @@ mock.module('@/lib/prisma', () => ({
 mock.module('@novastar/database', () => ({
   prisma: ROOT,
   PrismaClient: class PrismaClient {},
-  Prisma: {},
+  Prisma: { PrismaClientKnownRequestError },
   DB_QUERY_TIMEOUT_MS: 30000,
   DbTimeoutError: class DbTimeoutError extends Error {},
   isDbTimeout: (e: unknown) => e instanceof Error && e.name === 'DbTimeoutError',
@@ -250,10 +300,23 @@ mock.module('@novastar/database', () => ({
 // ---------------------------------------------------------------------------
 
 /**
+ * The real notifications module, captured before any mock below replaces it.
+ *
+ * The mock spreads this and overrides only the transport. That matters for the
+ * templates: a stub `setPasswordTemplate` that renders its own subject line is
+ * visible to every assertion in the suite through whichever module first loaded
+ * `lib/invite-user` -- a file asserting on the real subject ("Novastar
+ * Montessori School") fails with "Set your Novastar password" for reasons
+ * unrelated to the file under test. Real templates keep those assertions
+ * honest; the transport is the only thing a test needs to control.
+ */
+const realNotifications = await import('@novastar/notifications')
+
+/**
  * The emails the console sent, and whether the next send should fail.
  *
  * `sendEmail` throws `EmailDeliveryError` rather than returning null, so a test that
- * wants the undelivered case has to make the throw happen — there is no way to
+ * wants the undelivered case has to make the throw happen — there is no way to
  * observe "it was swallowed" any more, which is the point of the change that made
  * delivery failures loud.
  *
@@ -307,33 +370,15 @@ export const sendEmail = mock(async (options: {
   return { id: 'email-1' }
 })
 
-/** A rendered template, distinguishable per call without depending on real copy. */
-function authTemplate(input: { actionUrl: string }): {
-  subject: string
-  html: string
-  text: string
-} {
-  return {
-    subject: 'Set your Novastar password',
-    html: `<a href="${input.actionUrl}">Set my password</a>`,
-    text: `Set your password: ${input.actionUrl}`,
-  }
-}
-
 mock.module('@novastar/notifications', () => ({
+  // The real module's surface first — templates, notification helpers, the
+  // template table — so the rendering any assertion sees is the rendering a
+  // recipient gets. Only the transport is replaced.
+  ...realNotifications,
   sendEmail,
+  // The class the mock's `sendEmail` throws, kept local so the thrown instance
+  // and the class `lib/invite-user.ts` narrows with are the same object.
   EmailDeliveryError,
-  setPasswordTemplate: authTemplate,
-  // The rest of the package's surface, for the reason in the docstring above: a
-  // factory that omits an export another loaded module imports takes down a test
-  // file that has nothing to do with email.
-  verifyEmailTemplate: authTemplate,
-  passwordResetTemplate: authTemplate,
-  createNotification: async () => {},
-  savePushSubscription: async () => {},
-  sendBulkNotifications: async () => {},
-  fillTemplate: (template: string) => template,
-  NOTIFICATION_TEMPLATES: {},
 }))
 
 // ---------------------------------------------------------------------------
@@ -721,14 +766,14 @@ export function lastProvisionInput(): DelegatedProvisionInput | undefined {
  * full `prisma` surface including `platformOperator`, `auditLog.create`, etc.
  */
 beforeEach(() => {
-  mock.module('@/lib/prisma', () => ({
+mock.module('@/lib/prisma', () => ({
     prisma: ROOT,
     adminDatabaseSource: () => 'SUPER_ADMIN_DATABASE_URL' as const,
   }))
   mock.module('@novastar/database', () => ({
     prisma: ROOT,
     PrismaClient: class PrismaClient {},
-    Prisma: {},
+    Prisma: { PrismaClientKnownRequestError },
     DB_QUERY_TIMEOUT_MS: 30000,
     DbTimeoutError: class DbTimeoutError extends Error {},
     isDbTimeout: (e: unknown) => e instanceof Error && e.name === 'DbTimeoutError',

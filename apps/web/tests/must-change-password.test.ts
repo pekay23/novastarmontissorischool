@@ -143,15 +143,39 @@ const previousNamespaces = new Map<string, Record<string, unknown>>()
 previousNamespaces.set('@/lib/prisma', { ...(await import('@/lib/prisma')) })
 previousNamespaces.set('@novastar/database', { ...(await import('@novastar/database')) })
 previousNamespaces.set('@/lib/audit/logger', { ...(await import('@/lib/audit/logger')) })
+// `authorize()` calls `cookies()` to read the session, and next/headers throws
+// "called outside a request scope" without a mock. Relying on another file's
+// registration made this file pass only when it happened to run second.
+previousNamespaces.set('next/headers', { ...(await import('next/headers')) })
 
 const base = (specifier: string): Record<string, unknown> =>
   previousNamespaces.get(specifier) ?? {}
+
+const cookieJar = new Map<string, string>()
 
 const FAKES = [
   { specifier: '@/lib/prisma', factory: () => ({ ...base('@/lib/prisma'), prisma, default: prisma }) },
   {
     specifier: '@novastar/database',
     factory: () => ({ ...base('@novastar/database'), prisma, default: prisma }),
+  },
+  {
+    specifier: 'next/headers',
+    factory: () => ({
+      ...base('next/headers'),
+      cookies: async () => ({
+        get: (name: string) => (cookieJar.has(name) ? { name, value: cookieJar.get(name)! } : undefined),
+        set: (name: string, value: string) => {
+          cookieJar.set(name, value)
+        },
+        delete: (name: string) => {
+          cookieJar.delete(name)
+        },
+        getAll: () => [...cookieJar].map(([name, value]) => ({ name, value })),
+      }),
+      headers: async () => new Headers(),
+      draftMode: async () => ({ isEnabled: false, enable() {}, disable() {} }),
+    }),
   },
   {
     specifier: '@/lib/audit/logger',

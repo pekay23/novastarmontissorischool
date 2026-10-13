@@ -1,3 +1,4 @@
+import 'server-only'
 /**
  * Platform feature flag management API.
  *

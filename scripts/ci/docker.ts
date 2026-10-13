@@ -1,9 +1,15 @@
 /**
- * CI: build the two container images.
+ * CI: build the merged web container image.
  *
- * Speed comes from two independent caches:
+ * One image, one app: ADR-024 folded the portal, the admin console and the
+ * public site into `apps/web`, so `Dockerfile.web` is the only Dockerfile this
+ * repo builds and this script builds only it. (The portal image this script
+ * used to build was a standalone-output image; the merged app deliberately
+ * does not use `output: 'standalone'` — see `Dockerfile.web`'s header.)
  *
- *   - Docker layer cache. The `deps` stage in each Dockerfile copies only
+ * Speed comes from one cache:
+ *
+ *   - Docker layer cache. The `deps` stage in `Dockerfile.web` copies only
  *     package.json manifests before `bun install`, so editing a source file does
  *     not re-run the install. Layer reuse is what actually makes the second
  *     build fast.
@@ -30,11 +36,11 @@
  * `--cache-to type=local` is OFF by default. It sounds useful but is a poor fit
  * for a developer machine:
  *
- *   - `mode=max` exported every intermediate layer of the 342 MB portal image and
- *     took 29 minutes. `mode=min` is seconds, but on Docker Desktop both hit gRPC
- *     transport errors partway through ("error writing layer blob: ... EOF"),
- *     which fails the whole build even though the image itself was already
- *     written and is perfectly usable.
+ *   - `mode=max` exported every intermediate layer of the old 342 MB portal
+ *     image and took 29 minutes. `mode=min` is seconds, but on Docker Desktop
+ *     both hit gRPC transport errors partway through ("error writing layer
+ *     blob: ... EOF"), which fails the whole build even though the image itself
+ *     was already written and is perfectly usable.
  *
  * Docker Desktop already keeps layer data between builds, so a local rebuild
  * gets the reuse it needs without the export. The place a persistent cache
@@ -106,22 +112,16 @@ const cacheMode = process.env.DOCKER_CACHE_MODE
 
 const images: ImageSpec[] = [
   {
-    name: 'portal',
-    dockerfile: 'Dockerfile',
+    // The merged app: ADR-024 folded the portal, the admin console and the
+    // public site into `apps/web`, and its Dockerfile is the only one left.
+    name: 'web',
+    dockerfile: 'Dockerfile.web',
     // Placeholders, deliberately not read from .env. See the header.
     args: {
       NEXTAUTH_SECRET: 'build-only-placeholder-not-a-real-secret',
       NEXTAUTH_URL: 'https://portal.example.com',
       NEXT_PUBLIC_ORIGIN: 'https://portal.example.com',
       NEXT_PUBLIC_DOMAIN: 'portal.example.com',
-    },
-  },
-  {
-    name: 'public-site',
-    dockerfile: 'Dockerfile.public-site',
-    args: {
-      NEXT_PUBLIC_ORIGIN: 'https://example.com',
-      NEXT_PUBLIC_DOMAIN: 'example.com',
     },
   },
 ]

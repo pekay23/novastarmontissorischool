@@ -2,6 +2,8 @@ import Credentials from 'next-auth/providers/credentials'
 import { PrismaAdapter } from '@auth/prisma-adapter'
 import type { NextAuthOptions, Session } from 'next-auth'
 import type { JWT } from 'next-auth/jwt'
+import { cookies } from 'next/headers'
+import { logError } from '@/lib/logger'
 import { prisma } from '@/lib/prisma'
 import { verifyPassword } from '@/lib/password'
 import { createAuditLog, AuditLogAction } from '@/lib/audit/logger'
@@ -252,7 +254,7 @@ export const authOptions: NextAuthOptions = {
         entity: 'users',
         entityId: extendedUser.id,
         description: `User logged in: ${extendedUser.email ?? 'unknown'}`,
-      }).catch((err) => console.error('[auth] Failed to log event:', err))
+      }).catch((err) => logError('[auth]', err))
     },
     async signOut(message) {
       const userId = (message as { token?: { id?: string } })?.token?.id
@@ -263,7 +265,7 @@ export const authOptions: NextAuthOptions = {
           entity: 'users',
           entityId: userId,
           description: 'User logged out',
-        }).catch((err) => console.error('[auth] Failed to log event:', err))
+        }).catch((err) => logError('[auth]', err))
       }
     },
   },
@@ -281,9 +283,13 @@ export const authOptions: NextAuthOptions = {
       },
       async authorize(credentials) {
         // --- Handle passkey bridge token login (Aerojet Academy pattern) ---
-        if (credentials?.token && credentials.token.startsWith('pk_')) {
+        // The bridge token is delivered as an HttpOnly cookie by login-verify,
+        // never in the JSON body. Read it from the request cookie rather than
+        // trusting a client-submitted credential field.
+        const bridgeToken = await extractPasskeyBridgeToken(credentials?.token)
+        if (bridgeToken && bridgeToken.startsWith('pk_')) {
           const user = await prisma.user.findUnique({
-            where: { passkeyBridgeToken: credentials.token },
+            where: { passkeyBridgeToken: bridgeToken },
             include: { role: { select: { name: true } }, school: { select: { name: true } }, tenant: { select: { isActive: true } } },
           })
 
@@ -558,7 +564,7 @@ export const authOptions: NextAuthOptions = {
           entityId: user.id,
           description: `User logged in: ${user.email}`,
           ipAddress: credentials.ipAddress,
-        }).catch((err) => console.error('[auth] Failed to log event:', err))
+        }).catch((err) => logError('[auth]', err))
 
         return {
           id: user.id,
@@ -588,4 +594,14 @@ export const authOptions: NextAuthOptions = {
      */
     ...buildSsoProviders(),
   ],
+}
+
+/**
+ * Reads the one-time passkey bridge token from the HttpOnly cookie set by
+ * login-verify. Falls back to `credentials.token` for any caller that has not
+ * migrated to the cookie path, but the primary channel is the cookie a browser
+ * script cannot read.
+ */
+async function extractPasskeyBridgeToken(fallback?: string): Promise<string | undefined> {
+  return (await cookies()).get('passkey_bridge_token')?.value ?? fallback
 }

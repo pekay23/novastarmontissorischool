@@ -936,8 +936,10 @@ describe("the prompt is reachable at all", () => {
    * page rather than by executing it. The link it relies on is the ordinary
    * `section.entities?.map(...)` the page has always used, asserted below.
    */
+  // The merged app serves the portal under `app/portal/…`; the pre-ADR-024
+  // layout (`app/(portal)/…`) is what this path used to name.
   const settingsSource = readFileSync(
-    join(PORTAL, "app", "(portal)", "settings", "page.tsx"),
+    join(PORTAL, "app", "portal", "(portal)", "settings", "page.tsx"),
     "utf-8",
   );
   /** The entity names every settings section declares, in declaration order. */

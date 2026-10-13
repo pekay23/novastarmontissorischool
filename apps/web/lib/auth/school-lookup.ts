@@ -1,4 +1,5 @@
 import 'server-only'
+import { logError } from '@/lib/logger'
 import { PORTAL_BASE_PATH } from '@novastar/shared-types'
 import { prisma } from '@/lib/prisma'
 
@@ -28,7 +29,7 @@ export async function resolveSchool(schoolCode?: string | null) {
 
   const fallbackCode = process.env.DEFAULT_SCHOOL_CODE
   if (!fallbackCode) {
-    console.error('[auth] No schoolCode supplied and DEFAULT_SCHOOL_CODE is not set')
+    logError('[auth]', new Error('No schoolCode supplied and DEFAULT_SCHOOL_CODE is not set'))
     return null
   }
 

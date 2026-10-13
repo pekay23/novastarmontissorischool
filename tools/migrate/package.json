@@ -20,7 +20,7 @@
     "db:migrate:deploy": "bun index.ts deploy",
     "lint": "eslint . --ext .ts",
     "typecheck": "tsc --noEmit",
-    "test": "bun test"
+    "test": "bun test --timeout 30000"
   },
   "dependencies": {
     "@novastar/db-mirror": "workspace:*",

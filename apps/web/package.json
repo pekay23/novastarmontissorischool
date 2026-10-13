@@ -8,9 +8,9 @@
     "start": "next start --port 3000",
     "lint": "eslint . --ext .ts,.tsx",
     "typecheck": "tsc --noEmit",
-    "test": "bun test tests",
+    "test": "node tests/run-files.mjs",
     "test:ui": "bun test --ui tests",
-    "test:e2e": "playwright test -c playwright.config.ts"
+    "test:e2e": "cd ../.. && bunx playwright test -c playwright.config.ts"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.3",
@@ -22,6 +22,7 @@
     "@novastar/domain": "workspace:*",
     "@novastar/ghana-education": "workspace:*",
     "@novastar/notifications": "workspace:*",
+    "@novastar/payments": "workspace:*",
     "@novastar/shared-types": "workspace:*",
     "@novastar/shared-ui": "workspace:*",
     "@novastar/shared-utils": "workspace:*",
@@ -65,3 +66,4 @@
   "packageManager": "bun@1.4.0",
   "postinstall": "ln -sfn ../../packages/* node_modules/@novastar/ 2>/dev/null || echo done"
 }
+

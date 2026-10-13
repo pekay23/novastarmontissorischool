@@ -1,4 +1,5 @@
 'use client'
+import { logError } from '@/lib/logger'
 
 import { useState, useEffect } from 'react'
 import {
@@ -84,7 +85,7 @@ export default function EntityDefinitionsPage() {
         ))
       }
     } catch (error) {
-      console.error('Save error:', error)
+      logError('Settings entities: save failed', error)
     } finally {
       setSaving(s => ({ ...s, [type]: false }))
     }
@@ -107,7 +108,7 @@ export default function EntityDefinitionsPage() {
         ))
       }
     } catch (error) {
-      console.error('Delete error:', error)
+      logError('Settings entities: delete failed', error)
     } finally {
       setSaving(s => ({ ...s, [type]: false }))
     }

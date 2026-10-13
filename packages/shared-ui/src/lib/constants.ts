@@ -1,9 +1,8 @@
-import { type ClassValue, clsx } from 'clsx'
-import { twMerge } from 'tailwind-merge'
-
-export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs))
-}
+// `cn` lives in `./utils`, which is the single definition the barrel exports.
+// The duplicate that used to sit here (same body, different file) was the kind
+// of copy that drifts: one of the two gains a feature, the other does not, and
+// nothing fails because both still compile.
+export { cn } from './utils'
 
 export const TENANCY_COLORS = {
   primary: '#059669',      // emerald-600

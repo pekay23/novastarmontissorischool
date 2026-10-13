@@ -1,7 +1,7 @@
 /**
- * CI: deploy every Vercel-hosted app.
+ * CI: deploy the merged Vercel-hosted app (apps/web).
  *
- * Flow is pull -> build -> deploy --prebuilt for each app.
+ * Flow is pull -> build -> deploy --prebuilt for the single merged app.
  *
  *   `vercel pull` fetches the project's environment variables from Vercel into
  *   .vercel/. That is why application secrets are NOT passed through CI: the
@@ -12,7 +12,7 @@
  *   letting Vercel rebuild from source, so the thing that ships is the thing CI
  *   gated on.
  *
- * VERCEL_ORG_ID + VERCEL_PROJECT_ID_* target a project without a committed
+ * VERCEL_ORG_ID + VERCEL_PROJECT_ID_WEB target a project without a committed
  * .vercel/ directory, which is what makes this work from a clean checkout.
  *
  * Set VERCEL_TARGET=preview to deploy a preview instead of production.
@@ -37,24 +37,10 @@ interface DeployTarget {
   readonly name: string
   readonly dir: string
   readonly projectIdEnv: string
-  /**
-   * Skip this app instead of aborting when its project id is unset.
-   *
-   * See the comment at the skip site. Required for an app whose project id is
-   * not declared in every caller of this script.
-   */
-  readonly optIn?: true
 }
 
 const apps = [
-  { name: 'portal', dir: 'apps/portal', projectIdEnv: 'VERCEL_PROJECT_ID_PORTAL' },
-  { name: 'public-site', dir: 'apps/public-site', projectIdEnv: 'VERCEL_PROJECT_ID_PUBLIC' },
-  {
-    name: 'super-admin',
-    dir: 'apps/super-admin',
-    projectIdEnv: 'VERCEL_PROJECT_ID_SUPER_ADMIN',
-    optIn: true,
-  },
+  { name: 'web', dir: 'apps/web', projectIdEnv: 'VERCEL_PROJECT_ID_WEB' },
 ] satisfies readonly DeployTarget[]
 
 const skippedApps: string[] = []
@@ -62,19 +48,6 @@ const skippedApps: string[] = []
 async function main() {
   for (const app of apps) {
     const projectId = process.env[app.projectIdEnv]
-
-    // Not a soft default, and not an oversight: this script is called by
-    // `.teamcity/settings.kts` (DeployVercelPreview and DeployVercelProduction),
-    // which declares parameters for the first two project ids only. A required
-    // check here would abort the whole run -- including the two apps that do have
-    // a project -- until that file is edited to declare the third. Skipping keeps
-    // today's behaviour byte-identical for an operator who has not created a
-    // super-admin Vercel project yet, and deploys it the moment they have.
-    if (app.optIn === true && !projectId) {
-      log(step, `${app.name}: SKIPPED - ${app.projectIdEnv} is unset (opt-in app)`)
-      skippedApps.push(app.name)
-      continue
-    }
 
     requireEnv(app.projectIdEnv)
 
@@ -105,12 +78,7 @@ async function main() {
     log(step, `${app.name}: deployed`)
   }
 
-  log(
-    step,
-    skippedApps.length === 0
-      ? 'All apps deployed'
-      : `All apps deployed except: ${skippedApps.join(', ')} (no Vercel project configured)`,
-  )
+  log(step, 'All apps deployed')
 }
 
 main().catch((e) => {

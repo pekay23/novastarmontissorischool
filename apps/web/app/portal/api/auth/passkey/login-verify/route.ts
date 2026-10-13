@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { verifyAuthenticationResponse } from '@simplewebauthn/server'
+import { logError } from '@/lib/logger'
 import { prisma } from '@/lib/prisma'
 import { rpConfig } from '@/lib/auth/passkey-config'
 import crypto from 'crypto'
@@ -145,11 +146,20 @@ export async function POST(req: Request) {
       entity: 'users',
       entityId: passkey.user.id,
       description: `Logged in via passkey: ${passkey.name || 'Unknown'}`,
-    }).catch((err) => console.error('[auth] Failed to log event:', err))
+    }).catch((err) => logError('[auth]', err))
 
-    return NextResponse.json({ success: true, token: bridgeToken })
+    const isProduction = process.env.NODE_ENV === 'production'
+    const res = NextResponse.json({ success: true })
+    res.cookies.set('passkey_bridge_token', bridgeToken, {
+      httpOnly: true,
+      secure: isProduction,
+      sameSite: 'lax',
+      path: '/portal/api/auth',
+      maxAge: 60,
+    })
+    return res
   } catch (error) {
-    console.error('[PASSKEY_LOGIN_VERIFY]', error)
+    logError('[PASSKEY_LOGIN_VERIFY]', error)
     return new NextResponse('Internal Error', { status: 500 })
   }
 }

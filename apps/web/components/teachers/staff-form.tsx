@@ -7,6 +7,7 @@ import {
   SelectItem, SelectTrigger, SelectValue, Alert, AlertTitle,
   AlertDescription, useToast,
 } from '@novastar/shared-ui'
+import { Gender } from '@novastar/database'
 import { Check, X, Mail, MailWarning } from 'lucide-react'
 
 /**
@@ -73,7 +74,7 @@ interface StaffFormState {
   email: string
   hireDate: string
   employeeId: string
-  gender: 'MALE' | 'FEMALE' | 'OTHER'
+  gender: Gender | ''
   roleName: string
 }
 
@@ -85,7 +86,7 @@ const EMPTY: StaffFormState = {
   email: '',
   hireDate: '',
   employeeId: '',
-  gender: 'OTHER',
+  gender: '',
   roleName: '',
 }
 
@@ -119,7 +120,7 @@ export function StaffForm({
             // Not editable here. `PATCH /api/teachers/[id]` accepts the contact
             // fields only, so a control that appeared to write them would be a lie.
             employeeId: staff.employeeId || '',
-            gender: (staff.gender ?? 'OTHER') as StaffFormState['gender'],
+            gender: (staff.gender ?? '') as Gender | '',
             roleName: '',
           })
         }
@@ -137,6 +138,12 @@ export function StaffForm({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+
+    if (!isEditing && !form.gender) {
+      toast.error({ title: 'Error', description: 'Please select a gender.' })
+      return
+    }
+
     setLoading(true)
     try {
       if (isEditing) {
@@ -340,10 +347,10 @@ export function StaffForm({
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label htmlFor="gender">Gender *</Label>
-                  <Select
-                    value={form.gender}
-                    onValueChange={(v) => handleChange('gender', v)}
-                  >
+                   <Select
+                     value={form.gender || undefined}
+                     onValueChange={(v) => handleChange('gender', v)}
+                   >
                     <SelectTrigger id="gender">
                       <SelectValue placeholder="Select a gender" />
                     </SelectTrigger>

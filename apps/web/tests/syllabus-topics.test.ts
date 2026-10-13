@@ -39,7 +39,9 @@ import { TopicEditor } from '../app/portal/(portal)/syllabus/topic-editor'
  * `openedTopicsFor`.
  */
 
-const PAGE = join(import.meta.dir, '..', 'app', '(portal)', 'syllabus', 'page.tsx')
+// ADR-024 merged the portal into `apps/web`, so the page lives under
+// `app/portal/(portal)/…` — the pre-merge `app/(portal)/…` path no longer exists.
+const PAGE = join(import.meta.dir, '..', 'app', 'portal', '(portal)', 'syllabus', 'page.tsx')
 
 /**
  * The topic list the page's edit handler builds for a stored syllabus.

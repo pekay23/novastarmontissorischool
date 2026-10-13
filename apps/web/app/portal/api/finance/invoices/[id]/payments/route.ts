@@ -98,7 +98,7 @@ export async function POST(
     if (!parseResult.success) {
       return NextResponse.json({ error: 'Invalid input', details: parseResult.error.issues }, { status: 400 })
     }
-    const { amount, methodCode, reference, notes, momoPhone } = parseResult.data
+    const { amount, methodCode, reference, notes, momoPhone, transactionId } = parseResult.data
 
     // Delegate to the FinanceService domain service
     const finance = new FinanceService(ctx)
@@ -107,6 +107,9 @@ export async function POST(
       amount,
       methodCode,
       reference,
+      // The provider reference the collection call was issued under — the only
+      // thing the status API can be asked about later.
+      transactionId,
       momoPhone,
       notes,
     })

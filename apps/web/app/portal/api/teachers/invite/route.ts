@@ -16,6 +16,7 @@ import { sendEmail, setPasswordTemplate } from '@novastar/notifications'
 import { checkRateLimit, clientIdentifier } from '@/lib/rate-limit'
 import { duplicateResponse, isUniqueConstraintViolation } from '@/lib/prisma-conflict'
 import { createAuditLog, AuditLogAction } from '@/lib/audit/logger'
+import { logError } from '@/lib/logger'
 
 /**
  * Creates a staff member WITH a login, in one transaction.
@@ -26,7 +27,7 @@ import { createAuditLog, AuditLogAction } from '@/lib/audit/logger'
  * `StaffSchema` demands a `userId` that must already exist. `POST
  * /api/auth/invite` writes the `User` and nothing else. Neither is usable on its
  * own: the first asks a human to supply an identifier nobody can create, the
- * second leaves a login with no staff profile — which cannot sign in usefully,
+ * second leaves a login with no staff profile ”— which cannot sign in usefully,
  * because a sign-in with no `Staff` row has no workspace to land in.
  *
  * Calling the two in sequence from the browser does not fix that. Between the two
@@ -38,7 +39,7 @@ import { createAuditLog, AuditLogAction } from '@/lib/audit/logger'
  *
  * ONE DEFINITION OF THE INVITED STATE
  * -----------------------------------
- * The account is created by `createInvitedUser` in `@novastar/auth/invite` — the
+ * The account is created by `createInvitedUser` in `@novastar/auth/invite` ”— the
  * same function `POST /api/auth/invite` and the platform console call. It owns the
  * invited state (`passwordHash: null`, `mustChangePassword: true`, unverified), the
  * token format, and the privilege ceiling. This route does not restate any of it.
@@ -48,8 +49,8 @@ import { createAuditLog, AuditLogAction } from '@/lib/audit/logger'
  * The recipient sets their own password through the one-time link. There is no
  * `password` field in the schema below, and `.strict()` refuses a body carrying one,
  * so a password cannot be smuggled in even by a caller who tries. Nothing is
- * generated and nothing is emailed: the link is the credential, and a mailbox —
- * including one under a forwarding rule — holds nothing that needs rotating.
+ * generated and nothing is emailed: the link is the credential, and a mailbox ”—
+ * including one under a forwarding rule ”— holds nothing that needs rotating.
  *
  * GATE: `teacher:create`, THE KEY THIS PAGE ALREADY GUARDS
  * --------------------------------------------------------
@@ -58,15 +59,15 @@ import { createAuditLog, AuditLogAction } from '@/lib/audit/logger'
  * `isUserSecurityAdmin`, which is what `POST /api/auth/invite` uses: that set
  * includes `ADMIN_STAFF`, who does not hold `teacher:create`, so reusing it here
  * would WIDEN the set of people who can create a staff record, and would leave a
- * second role list in charge of the same page. One key, one meaning — create a
- * staff member — and the privilege ceiling below decides what that account may be.
+ * second role list in charge of the same page. One key, one meaning ”— create a
+ * staff member ”— and the privilege ceiling below decides what that account may be.
  *
  * WHAT IS AND IS NOT DERIVED FROM THE CALLER
  * ------------------------------------------
  * `tenantId`, `schoolId` and `userId` come from the session and from nowhere else;
  * the body cannot carry them, because `.strict()` rejects unknown keys rather than
  * stripping them. The role is a NAME, narrowed through `PLATFORM_ROLE_NAMES` and
- * resolved inside `{ tenantId, schoolId, name }` by the shared function — never a
+ * resolved inside `{ tenantId, schoolId, name }` by the shared function ”— never a
  * `roleId`, which would name a row in another school. The ceiling is
  * `mayGrantRole` / `ROLE_GRANT_RANK`, evaluated inside `createInvitedUser` before
  * the role lookup, so an escalation attempt cannot be used to enumerate a school's
@@ -77,7 +78,7 @@ import { createAuditLog, AuditLogAction } from '@/lib/audit/logger'
  * The audit (`tests/audit-limited-scope-gates.test.ts`) flags any mutation handler
  * that gates on a key some seeded role holds at a scope narrower than `all` without
  * resolving visibility of its own. No seeded role holds `teacher:create` below
- * `all` — `ROLE_GRANT_RULES` grants it only to HEADMASTER (`() => true`) and
+ * `all` ”— `ROLE_GRANT_RULES` grants it only to HEADMASTER (`() => true`) and
  * ASSISTANT_HEAD (`category !== 'system'`), both school-wide. There is no class or
  * department dimension to narrow: the account being created is new, so there is no
  * existing row whose visibility could be consulted.
@@ -86,7 +87,7 @@ import { createAuditLog, AuditLogAction } from '@/lib/audit/logger'
  * -----------------------------
  * `logAuditEvent` takes the transaction client and writes through it, so a rolled
  * back creation leaves no trace of having been attempted. Its own chain read is
- * still made through the module client — that is pre-existing behaviour of the
+ * still made through the module client ”— that is pre-existing behaviour of the
  * shared helper, unchanged here.
  *
  * DELIVERY IS NOT DELIVERED
@@ -94,7 +95,7 @@ import { createAuditLog, AuditLogAction } from '@/lib/audit/logger'
  * `sendEmail` rejects, so a missing `RESEND_API_KEY` is visible rather than silent.
  * The email is sent AFTER the commit: sending inside the transaction would leave a
  * link alive for an account that then rolled back. A rejection is reported as
- * `502 created-not-delivered` with the ids, never as a 201 — the account exists
+ * `502 created-not-delivered` with the ids, never as a 201 ”— the account exists
  * either way, and the operator has to be able to tell "invited" from "invited and
  * the email actually went out".
  */
@@ -147,7 +148,7 @@ const StaffAccountSchema = z
  * roles that will be accepted.
  *
  * `false` rather than a 403 when the key is missing: this is a capability probe,
- * and the page needs an answer for a caller who cannot use the form at all — the
+ * and the page needs an answer for a caller who cannot use the form at all ”— the
  * same arrangement as `GET /api/promotions` returning `canPromote: false`.
  *
  * `grantableRoleNames` is computed from `ROLE_GRANT_RANK` through `mayGrantRole`,
@@ -177,7 +178,7 @@ export async function GET() {
     if (error instanceof Error && error.name === 'UnauthorizedError') {
       return new NextResponse('Unauthorized', { status: 401 })
     }
-    console.error('[TEACHERS_INVITE_CAPABILITIES]', error)
+    logError('[TEACHERS_INVITE_CAPABILITIES]', error)
     return new NextResponse('Internal Error', { status: 500 })
   }
 }
@@ -352,7 +353,7 @@ export async function POST(req: Request) {
         }
         return NextResponse.json({ error: 'Provide a valid email address.' }, { status: 400 })
       }
-      // `Staff @@unique([tenantId, schoolId, employeeId])` — the employee number is
+      // `Staff @@unique([tenantId, schoolId, employeeId])` ”— the employee number is
       // already in use in this school. This is the refusal that proves the
       // transaction: the `User` created a statement earlier is rolled back with it.
       if (isUniqueConstraintViolation(error)) {
@@ -386,7 +387,7 @@ export async function POST(req: Request) {
       // link is what they need, and it did not arrive. Reported as its own status so
       // the UI can say so, rather than swallowed into a success the operator would
       // read as "they have been told".
-      console.error('[TEACHERS_INVITE] account created but the setup email was not delivered:', error)
+      logError('[TEACHERS_INVITE] account created but the setup email was not delivered', error)
       return NextResponse.json(
         {
           status: 'created-not-delivered',
@@ -415,7 +416,7 @@ export async function POST(req: Request) {
     if (isUniqueConstraintViolation(error)) {
       return duplicateResponse('That staff member already exists.')
     }
-    console.error('[TEACHERS_INVITE]', error)
+    logError('[TEACHERS_INVITE]', error)
     return new NextResponse('Internal Error', { status: 500 })
   }
 }

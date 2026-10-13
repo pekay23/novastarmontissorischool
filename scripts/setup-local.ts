@@ -28,7 +28,7 @@ function commandExists(cmd: string): boolean {
 }
 
 /**
- * Merge .env and .env.local the same way apps/portal/next.config.ts does:
+ * Merge .env and .env.local the same way apps/web/next.config.ts does:
  * .env first, then .env.local overriding it. Checking only one of the two
  * reports false gaps for a config that is actually complete.
  */
@@ -111,7 +111,7 @@ const scripts: Record<string, string> = {
   'ci:install': 'install deps + generate Prisma client',
   'ci:verify': 'lint + typecheck + unit tests',
   'ci:e2e': 'Playwright (chromium, firefox, webkit)',
-  'ci:docker': 'build both images with layer caching',
+  'ci:docker': 'build image with layer caching',
   'ci:deploy': 'Vercel pull/build/deploy (needs VERCEL_*)',
 }
 const pkg = JSON.parse(readFileSync(resolve(repoRoot, 'package.json'), 'utf8')) as {
@@ -127,8 +127,7 @@ console.log('  These cannot be generated locally. Where each one goes:\n')
 console.log('  GitHub Actions (repo -> Settings -> Secrets and variables -> Actions)')
 console.log('    VERCEL_TOKEN              Vercel -> Account Settings -> Tokens')
 console.log('    VERCEL_ORG_ID             Vercel -> your team -> Settings -> General')
-console.log('    VERCEL_PROJECT_ID_PORTAL  Vercel -> portal project -> Settings -> General')
-console.log('    VERCEL_PROJECT_ID_PUBLIC  Vercel -> public-site project -> Settings -> General')
+console.log('    VERCEL_PROJECT_ID_WEB     Vercel -> web project -> Settings -> General')
 console.log('    TURBO_TOKEN, TURBO_TEAM   Vercel -> Account Settings -> Tokens -> Turbo')
 console.log('    DOCKER_USERNAME, DOCKER_PASSWORD  GitHub PAT with packages:write')
 console.log('  repository variables (non-secret)')
@@ -145,5 +144,4 @@ console.log('  everything secret marked as a password parameter.\n')
 console.log('Next:')
 console.log('  bun run ci:install && bun run ci:verify')
 console.log('  docker compose up -d --wait')
-console.log('  portal     http://localhost:3000')
-console.log('  public site http://localhost:8080\n')
+console.log('  web app    http://localhost:3000 (portal at /portal, admin at /admin, public at /)')

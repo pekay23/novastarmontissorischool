@@ -119,7 +119,33 @@ describe('Rate Limiter', () => {
   })
 
   describe('clientIdentifier', () => {
-    it('should prefer x-real-ip when present (trusted proxy)', () => {
+    // `clientIdentifier` trusts the last N hops of x-forwarded-for, where N is
+    // TRUSTED_PROXY_HOPS. The default is 0 — no hop is trusted — so these tests
+    // set the value they mean instead of inheriting whatever the previous file
+    // in the process happened to leave behind.
+    const originalHops = process.env.TRUSTED_PROXY_HOPS
+
+    afterEach(() => {
+      if (originalHops === undefined) {
+        delete process.env.TRUSTED_PROXY_HOPS
+      } else {
+        process.env.TRUSTED_PROXY_HOPS = originalHops
+      }
+    })
+
+    it('should distrust every x-forwarded-for hop when no proxy is configured', () => {
+      // The default, pinned here because a default that delegates is a bucket
+      // key an attacker picks: with an unset variable the header is data, not
+      // evidence, and the answer is 'unknown' rather than a guess.
+      delete process.env.TRUSTED_PROXY_HOPS
+      const request = new Request('http://localhost', {
+        headers: { 'x-forwarded-for': '203.0.113.5, 70.41.3.18, 150.172.238.178' },
+      })
+      expect(clientIdentifier(request)).toBe('unknown')
+    })
+
+    it('should prefer x-real-ip over the forwarded chain', () => {
+      process.env.TRUSTED_PROXY_HOPS = '1'
       const request = new Request('http://localhost', {
         headers: {
           'x-forwarded-for': '203.0.113.5, 70.41.3.18, 150.172.238.178',
@@ -130,7 +156,7 @@ describe('Rate Limiter', () => {
     })
 
     it('should use hop at index (length-1-TRUSTED_PROXY_HOPS) for multi-hop XFF', () => {
-      // Default TRUSTED_PROXY_HOPS=1: client is at index hops.length-2
+      process.env.TRUSTED_PROXY_HOPS = '1'
       const request = new Request('http://localhost', {
         headers: { 'x-forwarded-for': '203.0.113.5, 70.41.3.18, 150.172.238.178' },
       })
@@ -139,6 +165,7 @@ describe('Rate Limiter', () => {
     })
 
     it('should discard single-hop x-forwarded-for as untrusted (need > 1 hop for 1 trusted proxy)', () => {
+      process.env.TRUSTED_PROXY_HOPS = '1'
       const request = new Request('http://localhost', {
         headers: { 'x-forwarded-for': '203.0.113.5' },
       })
@@ -146,6 +173,7 @@ describe('Rate Limiter', () => {
     })
 
     it('should fall back to x-real-ip when x-forwarded-for has insufficient hops', () => {
+      process.env.TRUSTED_PROXY_HOPS = '1'
       const request = new Request('http://localhost', {
         headers: {
           'x-forwarded-for': '203.0.113.5',
@@ -156,11 +184,13 @@ describe('Rate Limiter', () => {
     })
 
     it('should return unknown when no IP headers present', () => {
+      process.env.TRUSTED_PROXY_HOPS = '1'
       const request = new Request('http://localhost')
       expect(clientIdentifier(request)).toBe('unknown')
     })
 
     it('should trim whitespace and ignore empty hops in multi-hop x-forwarded-for', () => {
+      process.env.TRUSTED_PROXY_HOPS = '1'
       const request = new Request('http://localhost', {
         headers: { 'x-forwarded-for': '  203.0.113.5  , 70.41.3.18,  , 150.172.238.178' },
       })
@@ -170,6 +200,7 @@ describe('Rate Limiter', () => {
     })
 
     it('should use two-hop x-forwarded-for with 1 trusted proxy', () => {
+      process.env.TRUSTED_PROXY_HOPS = '1'
       const request = new Request('http://localhost', {
         headers: { 'x-forwarded-for': '203.0.113.5, 70.41.3.18' },
       })
@@ -178,6 +209,7 @@ describe('Rate Limiter', () => {
     })
 
     it('should return unknown when only the trusted proxy hop is present', () => {
+      process.env.TRUSTED_PROXY_HOPS = '1'
       // Only 1 hop = just the proxy, no client visible
       const request = new Request('http://localhost', {
         headers: { 'x-forwarded-for': '70.41.3.18' },

@@ -56,10 +56,12 @@ REVOKE CREATE ON SCHEMA public FROM novastar_app;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO novastar_app;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO novastar_app;
 
--- The migration ledger is history, not data: the app never writes it, and a
--- SQL-injection foothold that can DELETE it could erase the record of what
--- schema the database is actually in. Read-only to the application role.
+-- The two append-only ledgers are the exception: the app writes them and never
+-- edits them. A SQL-injection foothold that can UPDATE a hash-chained audit row
+-- or DELETE the migration ledger could erase the record of what this database
+-- actually is, so both are revoked back to append-only.
 REVOKE INSERT, UPDATE, DELETE ON TABLE _prisma_migrations FROM novastar_app;
+REVOKE UPDATE, DELETE ON TABLE "AuditLog" FROM novastar_app;
 
 ALTER DEFAULT PRIVILEGES IN SCHEMA public
   GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO novastar_app;

@@ -9,7 +9,7 @@
     "verify-admin": "bun verify-admin.ts",
     "lint": "eslint . --ext .ts",
     "typecheck": "tsc --noEmit",
-    "test": "bun test"
+    "test": "bun test --timeout 30000"
   },
   "dependencies": {
     "@novastar/shared-types": "workspace:*",

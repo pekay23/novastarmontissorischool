@@ -1,6 +1,7 @@
 import 'server-only'
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
+import { logError } from '@/lib/logger'
 import { checkRateLimit, clientIdentifier } from '@/lib/rate-limit'
 import { consumeEmailToken, lookupEmailToken } from '@/lib/auth/email-verification'
 import { createAuditLog, AuditLogAction } from '@/lib/audit/logger'
@@ -92,7 +93,7 @@ export async function POST(req: Request) {
     entity: 'users',
     entityId: lookup.userId,
     description: 'Email address verified via emailed link',
-  }).catch((err) => console.error('[auth] Failed to log event:', err))
+  }).catch((err) => logError('[auth]', err))
 
   return NextResponse.json({ status: 'verified' }, { status: 200 })
 }

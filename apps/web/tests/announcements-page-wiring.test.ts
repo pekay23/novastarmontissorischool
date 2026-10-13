@@ -32,7 +32,7 @@ const ID_ROUTE = join(
 // ---------------------------------------------------------------------------
 // The request bodies the page builds, evaluated
 // ---------------------------------------------------------------------------
-/** * `handleSubmit`'s `body` object literal, evaluated. * * Read out of the page and run, so a change to what the page SENDS is caught. * Restating the body here would leave the page free to send `audience: * [targetAudience]` —— the original defect —— with every test still green. * * `editingAnnouncement` is a parameter rather than a captured binding because the * two schemas accept different `publishedAt` shapes and the whole point of * defect 3 is which body goes to which route. */
+/** * `handleSubmit`'s `body` object literal, evaluated. * * Read out of the page and run, so a change to what the page SENDS is caught. * Restating the body here would leave the page free to send `audience: * [targetAudience]` ”—”— the original defect ”—”— with every test still green. * * `editingAnnouncement` is a parameter rather than a captured binding because the * two schemas accept different `publishedAt` shapes and the whole point of * defect 3 is which body goes to which route. */
 function evaluatedBody(
   form: {
     title: string;
@@ -93,7 +93,7 @@ function evaluatedBody(
 
   // `targetAudience` is computed one line above the literal in the real handler.
 
-  // It is supplied here the same way, trimmed —— so the literal under test is
+  // It is supplied here the same way, trimmed ”—”— so the literal under test is
 
   // evaluated with exactly the value the page would have given it.
   const targetAudience = form.targetAudience.trim();
@@ -104,7 +104,7 @@ function evaluatedBody(
     options.editing ? { id: "announcement-1" } : null,
   );
 }
-/** * `handleEdit`'s `targetAudience` expression, evaluated against a stored row. * * The read half of the audience round trip. The defect this replaces read * `a.audience?.[0] ?? ''`, which is a perfectly reasonable line on its own and * loses a second role only in combination with the write half —— so it has to be * asserted against real rows, not described. */
+/** * `handleEdit`'s `targetAudience` expression, evaluated against a stored row. * * The read half of the audience round trip. The defect this replaces read * `a.audience?.[0] ?? ''`, which is a perfectly reasonable line on its own and * loses a second role only in combination with the write half ”—”— so it has to be * asserted against real rows, not described. */
 function evaluatedTargetAudience(audience: string[] | undefined): string {
   const start = pageSource.indexOf("const handleEdit");
 
@@ -175,7 +175,7 @@ describe("a multi-role audience survives a read-write round trip", () => {
 
     // alone. Reopening a notice and saving it unchanged must leave the audience
 
-    // identical —— which is exactly what the original `audience?.[0]` defect broke.
+    // identical ”—”— which is exactly what the original `audience?.[0]` defect broke.
     const stored = ["CLASSROOM_TEACHER", "HEAD_TEACHER"];
     const shown = evaluatedTargetAudience(stored);
 
@@ -383,7 +383,7 @@ describe("write controls are offered only to roles the routes will accept", () =
 
     // a REAL platform role that simply is not a `PlatformRoleName`, so this asserts
 
-    // the lookup is a total function over strings —— an unrecognised name yields
+    // the lookup is a total function over strings ”—”— an unrecognised name yields
 
     // nothing rather than throwing or returning everything. An invented string like
 
@@ -437,8 +437,8 @@ describe("the gated controls are actually gated at the render site", () => {
   it("still reads, for every role that reaches the page", () => {
     // `announcement:read` is granted to ADMIN_STAFF and PARENT, so the GET must
 
-    // not be gated —— otherwise the notices a parent is entitled to would vanish.
-    expect(pageSource).toContain("await fetch('/api/announcements')");
+    // not be gated ”—”— otherwise the notices a parent is entitled to would vanish.
+    expect(pageSource).toContain("await fetch('/portal/api/announcements')");
 
     expect(pageSource).toContain("setAnnouncements(data.data || [])");
   });
@@ -458,7 +458,7 @@ describe("the page reads the response shapes its routes actually return", () => 
   const idRoute = readFileSync(ID_ROUTE, "utf-8");
 
   it("reads the list from the envelope the GET returns", () => {
-    // `GET /api/announcements` answers `{ data: announcements }`. A page reading
+    // `GET /portal/api/announcements` answers (the merged app serves the portal under `/portal`) `{ data: announcements }`. A page reading
 
     // a bare array would render nothing forever and no error would show.
     expect(route).toContain("NextResponse.json({ data: announcements })");
@@ -515,14 +515,14 @@ describe("the whole surface is reached, reads and writes alike", () => {
     // The four verbs the two routes expose. A missing one is a button that does
 
     // nothing, and this file exists to prove nothing is missing.
-    expect(pageSource).toContain("await fetch('/api/announcements')");
+    expect(pageSource).toContain("await fetch('/portal/api/announcements')");
 
-    expect(pageSource).toContain("await fetch('/api/announcements', {");
+    expect(pageSource).toContain("await fetch('/portal/api/announcements', {");
 
     expect(pageSource).toContain("method: 'POST'");
 
     expect(pageSource).toContain(
-      "`/api/announcements/${editingAnnouncement.id}`",
+      "`/portal/api/announcements/${editingAnnouncement.id}`",
     );
 
     expect(pageSource).toContain("method: 'PATCH'");
@@ -545,7 +545,7 @@ describe("the whole surface is reached, reads and writes alike", () => {
 
     expect(branch[0]).toContain("method: 'PATCH'");
 
-    expect(branch[0]).toContain("/api/announcements/${editingAnnouncement.id}");
+    expect(branch[0]).toContain("/portal/api/announcements/${editingAnnouncement.id}");
 
     expect(pageSource).toContain("method: 'POST'");
   });

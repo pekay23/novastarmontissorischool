@@ -2,6 +2,7 @@
 // Data fetching for public site - reads from database at build time
 
 import { prisma } from '@novastar/database'
+import { logWarn } from '@/lib/logger'
 import { Branding, News, Event, ClassLevel, Subject, PaymentMethodConfig } from '@prisma/client'
 import { SCHOOL_INFO } from './metadata'
 import { ADMISSIONS_OPEN_FLAG_KEY } from '@novastar/shared-types'
@@ -15,7 +16,7 @@ async function safeFetch<T>(fn: () => Promise<T>, fallback: T): Promise<T> {
     }
     return await fn()
   } catch (error) {
-    console.warn(`Data fetch failed, using fallback:`, error)
+    logWarn('data', 'Data fetch failed, using fallback', { error: String(error) })
     return fallback
   }
 }

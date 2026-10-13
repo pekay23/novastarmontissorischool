@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'bun:test'
+import { describe, it, expect, beforeEach, afterEach } from 'bun:test'
 
 /**
  * The credential endpoints are rate limited.
@@ -80,6 +80,16 @@ function callProxy(path: string, ip: string) {
 
 beforeEach(() => {
   resetRateLimit()
+  // These tests key the limiters on the caller's address, so the proxy has to
+  // read one. With TRUSTED_PROXY_HOPS unset the default is 0 — no hop is
+  // trusted, every caller is 'unknown', and they all share one bucket, which is
+  // the safe production default and the wrong fixture for this file. Set it
+  // explicitly rather than inheriting whatever a neighbouring file left.
+  process.env.TRUSTED_PROXY_HOPS = '1'
+})
+
+afterEach(() => {
+  delete process.env.TRUSTED_PROXY_HOPS
 })
 
 describe('the credential surface is actually rate limited', () => {

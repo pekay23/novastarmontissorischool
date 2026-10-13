@@ -113,6 +113,15 @@ async function main() {
   await client.query(
     `GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO ${qi(ROLE)}`
   );
+  // The two append-only ledgers are the exception: the app writes them and
+  // never edits them. A SQL-injection foothold that can UPDATE a hash-chained
+  // audit row or DELETE the migration ledger could erase the record of what
+  // this database actually is, so both are revoked back to append-only.
+  for (const table of ["_prisma_migrations", "AuditLog"]) {
+    await client.query(
+      `REVOKE UPDATE, DELETE ON TABLE ${qi(table)} FROM ${qi(ROLE)}`
+    );
+  }
   await client.query(
     `GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO ${qi(ROLE)}`
   );

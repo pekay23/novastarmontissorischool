@@ -1,3 +1,4 @@
+import 'server-only'
 /**
  * PATCH  /api/system/config/:key   — update or reset a feature flag
  *
