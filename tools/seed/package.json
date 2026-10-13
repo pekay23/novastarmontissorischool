@@ -6,7 +6,6 @@
   "types": "index.ts",
   "scripts": {
     "seed": "bun index.ts",
-    "verify-admin": "bun verify-admin.ts",
     "lint": "eslint . --ext .ts",
     "typecheck": "tsc --noEmit",
     "test": "bun test --timeout 30000"

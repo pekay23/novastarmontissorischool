@@ -1,20 +1,32 @@
 #!/usr/bin/env bun
-// Seed script — Populates database with Ghana/NaCCA baseline data
+// Seed script -- Populates database with Ghana/NaCCA baseline data
 //
 // Run with: bun run db:seed (or: bun run seed/index.ts)
 // Requires, in the environment:
-//   DATABASE_URL             — connection string, refused without it
-//   SEED_HEADMASTER_PASSWORD — refused without it; there is no default
-//   SEED_PORTAL_ADMIN_PASSWORD — refused without it; there is no default
+//   DATABASE_URL             - connection string, refused without it
 // Optional: SEED_SKIP_DOTENV=1 ignores the repo root .env (as MIGRATE_SKIP_DOTENV
-// does for tools/migrate), and SEED_ALLOW_DEFAULT_PASSWORDS=1 opts into the
-// committed fallbacks against a LOCAL database only — a pair of locks that cannot
-// currently both open, because this Prisma client speaks SQL-over-HTTP and no local
-// PostgreSQL server can serve it. Both variables are listed in turbo.json's
-// globalEnv, because turbo filters every other variable out of a task's
-// environment and a seed that silently reads a published fallback instead of the
-// value you exported is worse than no seed.
-// See ./credentials.ts for the refusal and why the fallbacks are unreachable.
+// does for tools/migrate).
+//
+// ## Accounts are not seeded, and that is the point
+//
+// The seed used to provision headmaster@nms.com, admin@nms.com and the sp@dev.com
+// platform operator from password variables, which put a credential for an
+// all-permissions account into the environment of whatever ran the seed. It no
+// longer creates accounts at all. What it seeds is data: tenant, school, roles,
+// grading scales, subjects, terms, the NaCCA baseline.
+//
+// Accounts are created once, by a person who chooses the password, through the
+// tenant CLI:
+//
+//   bun run tenant -- user --email headmaster@nms.com --tenant-code novastar
+//   bun run tenant -- operator --email sp@dev.com
+//
+// Both read the password from a masked prompt (or TENANT_ADMIN_PASSWORD /
+// PLATFORM_OPERATOR_PASSWORD), hash it with argon2id and store only the hash;
+// nothing is echoed and nothing lands in the environment of a shared run. Either
+// account is then resettable by its owner, two ways: --rotate on the same
+// command, or the /forgot-password page, which emails a reset link once
+// RESEND_API_KEY and a verified sending domain are configured.
 
 import { PrismaClient } from '@prisma/client'
 import { PrismaNeon } from '@prisma/adapter-neon'
@@ -31,13 +43,9 @@ import { NACCA_6_LEVEL } from '../../packages/ghana-education'
 // Settings that the seed would have refused. Imported by relative path for the
 // same reason as above — `tools/seed` resolves against the repo root.
 import { assertBandsCoverZeroToHundred } from '../../packages/shared-utils'
-import { Phase, SubjectCategory, TermStatus, Gender, StaffStatus, UserStatus, ContentStatus } from '@prisma/client'
+import { Phase, SubjectCategory, TermStatus, Gender, StaffStatus, ContentStatus } from '@prisma/client'
 import * as fs from 'fs'
 import * as path from 'path'
-// Credential resolution, and the refusal that guards it, live in `./credentials`
-// so they can be tested with no database and no Prisma client. This file keeps
-// only the call, at the top of main(), for the reason spelled out there.
-import { resolveSeedCredentials, SeedCredentialsError } from './credentials'
 
 // Load .env from project root.
 //
@@ -220,41 +228,14 @@ async function upsertGradingScale(params: {
   })
 }
 
-async function hashPassword(password: string): Promise<string> {
-  return await Bun.password.hash(password, { algorithm: 'argon2id' })
-}
-
 async function main() {
-  // ============ CREDENTIALS (refused before anything is written) ============
-  // This is the first statement in main() on purpose, and it has to stay first.
-  // A refusal is only worth having if it is complete: the tenant and school
-  // upserts that follow are writes, so a check placed after them would refuse a
-  // run that had already left a Tenant, a School, academic years, terms, class
-  // levels and 19 subjects behind on a database the operator was told had not
-  // been touched. There is no transaction spanning the seed, so "nothing was
-  // written" has to be true by ordering, not by rollback.
-  //
-  // Resolving here also means the two hashes below are known before the first
-  // query, so the refusal costs one property read and zero network traffic.
-  //
-  // Thrown, not `process.exit`-ed here, so the handler at the bottom of the file
-  // owns the message and the exit code in one place — the same shape as every
-  // other refusal in the seed (the band-coverage check, the weight-sum check),
-  // all of which throw out of main().
-  const seedCredentials = resolveSeedCredentials()
-
-  if (seedCredentials.usingCommittedDefaults) {
-    console.warn(
-      '⚠️  WARNING: provisioning a COMMITTED FALLBACK password. These literals are ' +
-        'published in this repository; they are only accepted against a local ' +
-        'database, and any of these accounts must be re-credentialed before that ' +
-        'database is reachable by anyone else.',
-    )
-  } else {
-    console.log(
-      `🔐 Portal credentials taken from ${seedCredentials.headmasterSource} / ${seedCredentials.portalAdminSource}`,
-    )
-  }
+  // ============ CREDENTIALS ============
+  // None. The seed reads no password and creates no account: a seed that
+  // provisions an all-permissions login puts that credential wherever the seed
+  // ran. Accounts are created once by their owner through the tenant CLI --
+  // `bun run tenant -- user --email ... --tenant-code novastar` for the portal,
+  // `bun run tenant -- operator --email ...` for the platform console -- which
+  // prompts for the password, hashes it and stores only the hash.
 
   console.log('🌱 Starting database seed...')
 
@@ -924,152 +905,38 @@ async function main() {
     },
   })
 
-  // Both passwords were resolved at the top of main(), where a missing variable
-  // refuses the whole seed. There is no inline fallback left to reach for, which
-  // is the point: the one place a password could become a committed literal is
-  // the one place that no longer reads `process.env`.
-  const passwordHash = await hashPassword(seedCredentials.headmasterPassword)
-
-  // ============ THE TWO PORTAL ACCOUNTS: PROVISION ONCE, NEVER RE-CREDENTIAL ============
-  // One rule, applied identically to both accounts below. The asymmetry was the
-  // defect: the headmaster upsert had `update: {}` while the admin upsert
-  // reassigned `passwordHash` on every run, so a single re-seed silently rotated
-  // the password of whichever of the two somebody was most likely to have open in
-  // a browser — with nothing in the output to say so. `roleId` and `isActive` stay
-  // in the admin's update branch, because those are not credentials and letting
-  // them go stale when a role is renamed or an account is suspended is its own
-  // bug; but nothing in an update branch may touch a credential.
+  // ============ NO ACCOUNTS ============
+  // Accounts are not seeded. A seed that provisions an all-permissions login
+  // puts that credential wherever the seed ran, and a rotation in a shell
+  // history is not a credential anyone chose. The CLI creates them instead:
   //
-  // WHY `mustChangePassword` IS NOT SET HERE, EVEN THOUGH EVERY OTHER WRITER SETS IT
-  // `tools/tenant-cli/commands/user.ts:75,113`, `commands/operator.ts:208,236` and
-  // `packages/auth/invite.ts:449` all set it, and the seed is the outlier. It is
-  // deferred rather than rejected, because the flag is only safe on an account
-  // that can finish the change it forces — and today it cannot:
+  //   bun run tenant -- user --email headmaster@nms.com --tenant-code novastar
+  //   bun run tenant -- operator --email sp@dev.com
   //
-  //   * `apps/portal/proxy.ts:182-184` redirects every flagged session to
-  //     `/set-password`. With no `token` in the query string that form renders
-  //     "This page needs a setup link" and disables its submit button
-  //     (`app/(auth)/set-password/set-password-form.tsx:119-126`).
-  //   * `POST /api/auth/set-password` refuses to overwrite, so an invitation link
-  //     would not rescue it either: an account that already holds a password gets
-  //     409 `already-has-password` (`app/api/auth/set-password/route.ts:87-95`).
-  //   * The documented way out is `/forgot-password`, which needs `RESEND_API_KEY`
-  //     (unset; `.env.example:105`). That route catches the send failure and
-  //     still answers 200 with "a reset link is on its way", so the operator is
-  //     told the recovery worked while nothing was delivered.
+  // Both prompt for the password and store only the argon2id hash. An existing
+  // account is never touched by this seed either: re-running it against a
+  // database that already has its accounts leaves those credentials exactly
+  // where their owners left them.
   //
-  // Seeding the flag now would therefore produce an account that can sign in,
-  // cannot reach one page of the portal, and cannot recover — strictly worse than
-  // the silent rotation it would fix, and harder to undo because the fix is a
-  // direct column write. The dependency to watch is email delivery: once
-  // `RESEND_API_KEY` and a verified sending domain exist, `/forgot-password` can
-  // close the loop and this seed should set the flag on create, like the other
-  // four writers. `tests/credentials.test.ts` fails if it is added before then.
-  //
-  // The re-credential path named in both log lines below is `novastar-tenant user
-  // --rotate`. Worth knowing before using it on a deployment without email: that
-  // flag also sets `mustChangePassword` (`commands/user.ts:75`), which lands the
-  // account in exactly the state described above. With `RESEND_API_KEY` set the
-  // flow completes normally; without it, the rotation leaves an account that can
-  // sign in and then hits the redirect. The seed logs the command because it is
-  // the sanctioned way to change a credential — not because the seed can enforce
-  // the flag it needs, which is why the flag is absent here.
-
-  // Only set password on create, never on update (re-seed should not reset credentials)
-  const adminUser = await prisma.user.upsert({
-    where: { tenantId_email: { tenantId: tenant.id, email: 'headmaster@nms.com' } },
-    update: {},
-    create: {
-      tenantId: tenant.id,
-      schoolId: school.id,
-      email: 'headmaster@nms.com',
-      passwordHash,
-      name: 'School Headmaster',
-      roleId: headmasterRole.id,
-      isActive: true,
-    },
+  // A Staff row must belong to a User (Staff.userId is required and unique), so
+  // the staff row below resolves the headmaster by email and is skipped when the
+  // account does not exist yet -- on a fresh database the account comes first.
+  const headmasterUser = await prisma.user.findFirst({
+    where: { tenantId: tenant.id, schoolId: school.id, email: 'headmaster@nms.com' },
+    select: { id: true },
   })
 
-  // ============ PORTAL ADMIN USER ============
-  const adminPasswordHash = await hashPassword(seedCredentials.portalAdminPassword)
-  await prisma.user.upsert({
-    where: { tenantId_email: { tenantId: tenant.id, email: 'admin@nms.com' } },
-    // Credentials on create only, exactly as the headmaster above. This branch
-    // used to set `passwordHash: adminPasswordHash`, so every re-seed silently
-    // rotated the portal administrator's password back to the seeded value —
-    // locking out whoever had changed it, and quietly undoing a real credential
-    // change on a live environment.
-    update: {
-      roleId: headmasterRole.id,
-      isActive: true,
-    },
-    create: {
-      tenantId: tenant.id,
-      schoolId: school.id,
-      email: 'admin@nms.com',
-      passwordHash: adminPasswordHash,
-      name: 'Portal Administrator',
-      roleId: headmasterRole.id,
-      isActive: true,
-    },
-  })
-  
-  console.log(
-    `✅ Portal admin user upserted (admin@nms.com) | ` +
-      `password from ${seedCredentials.portalAdminSource}. This account's upsert does not apply password on update — ` +
-      'where the account already existed the password above was NOT applied — only provisioning uses ' +
-      'it. Re-credential this account with: ' +
-      'novastar-tenant user --email admin@nms.com --rotate',
-  )
-
-  // ============ SUPER ADMIN OPERATOR ============
-  // Create the super admin operator account for the platform console
-  // Using a secure method: resolve from environment variables or fail
-  const operatorPassword = process.env.PLATFORM_OPERATOR_PASSWORD
-  if (!operatorPassword) {
-    throw new Error(
-      'Missing PLATFORM_OPERATOR_PASSWORD for super admin operator. ' +
-      'Set this environment variable to create the sp@dev.com account for the platform console.',
+  if (!headmasterUser) {
+    console.log(
+      'Skipped the HM001 staff row: no headmaster account on this tenant yet. ' +
+        'Create it first: bun run tenant -- user --email headmaster@nms.com --tenant-code novastar',
     )
   }
-  const operatorPasswordHash = await hashPassword(operatorPassword)
-  
-  await prisma.platformOperator.upsert({
-    where: { email: 'sp@dev.com' },
-    // Deliberately empty update: re-seeding must never rotate this credential.
-    // The operator's password is created once from the CLI and held by a person
-    // who already has the platform; silently changing it on every seed would
-    // invalidate the one credential an operator depends on to reach the console.
-    // Intentional rotation goes through `novastar-tenant operator --rotate`.
-    update: {},
-    create: {
-      email: 'sp@dev.com',
-      passwordHash: operatorPasswordHash,
-      username: 'sp',
-      name: 'Super Admin',
-      capabilities: [
-        'platform:read',
-        'platform:audit', 
-        'tenant:read',
-        'tenant:update',
-        'tenant:provision',
-        'tenant:config',
-        'tenant:user:read',
-        'tenant:user:create',
-      ],
-      status: UserStatus.ACTIVE,
-    },
-  })
-  
-  console.log(
-    `✅ Super Admin operator upserted (sp@dev.com) | ` +
-      `password from PLATFORM_OPERATOR_PASSWORD. This account's upsert updates password if exists — ` +
-      'creating the platform console super admin credential. Re-credential with: ' +
-      'novastar-tenant operator --email sp@dev.com --rotate',
-  )
 
   // Use transaction to ensure role FK is visible
   await prisma.$transaction(async (tx) => {
+    if (!headmasterUser) return
+
     const existingStaff = await tx.staff.findFirst({
       where: { tenantId: tenant.id, schoolId: school.id, employeeId: 'HM001' }
     })
@@ -1080,7 +947,7 @@ async function main() {
         data: {
           tenantId: tenant.id,
           schoolId: school.id,
-          userId: adminUser.id,
+          userId: headmasterUser.id,
           employeeId: 'HM001',
           firstName: 'School',
           lastName: 'Headmaster',
@@ -1097,7 +964,7 @@ async function main() {
         data: {
           tenantId: tenant.id,
           schoolId: school.id,
-          userId: adminUser.id,
+          userId: headmasterUser.id,
           employeeId: 'HM001',
           firstName: 'School',
           lastName: 'Headmaster',
@@ -1111,14 +978,6 @@ async function main() {
       })
     }
   })
-
-  console.log(
-    `✅ Headmaster user upserted (headmaster@nms.com) | ` +
-      `password from ${seedCredentials.headmasterSource}. This account's upsert has update: {}, so ` +
-      'where the account already existed the password above was NOT applied — only provisioning uses ' +
-      'it. Re-credential this account with: ' +
-      'novastar-tenant user --email headmaster@nms.com --rotate',
-  )
 
   // ============ SAMPLE CLASSES ============
   const classData = [
@@ -1196,25 +1055,36 @@ async function main() {
   console.log('✅ Departments created')
 
   // ============ SAMPLE NEWS & EVENTS ============
-  await prisma.news.upsert({
-    where: { tenantId_schoolId_slug: { tenantId: tenant.id, schoolId: school.id, slug: 'welcome-2026-2027' } },
-    update: {},
-    create: {
-      tenantId: tenant.id,
-      schoolId: school.id,
-      title: 'Welcome to the 2026/2027 Academic Year',
-      slug: 'welcome-2026-2027',
-      bodyEn: 'We are delighted to welcome all our students, parents, and staff to the new academic year. Term 1 begins on September 1st, 2026. Our Montessori programs continue to provide authentic child-centered education combined with Ghana Education Service standards.',
-      bodyTw: 'Yɛnhyia mo paaara ma 2026/2027 kurasu no. Term 1 bɛda September 1, 2026. Yɛ Montessori adwumayɛ no nso yɛda wɔ ho.',
-      excerptEn: 'Welcome to the new academic year at Novastar Montessori School.',
-      category: 'Announcement',
-      featuredImage: '/images/welcome-2026.jpg',
-      audience: ['parents', 'staff', 'students'],
-      status: ContentStatus.PUBLISHED,
-      publishedAt: new Date('2026-08-15'),
-      authorId: adminUser.id,
-    },
-  })
+  // `News.authorId` is a required User, and the seed creates no account, so the
+  // sample news item is only seeded once an account exists to author it — the
+  // same rule as the staff row. On a database the account owner has already
+  // provisioned (the live one), nothing changes.
+  if (headmasterUser) {
+    await prisma.news.upsert({
+      where: { tenantId_schoolId_slug: { tenantId: tenant.id, schoolId: school.id, slug: 'welcome-2026-2027' } },
+      update: {},
+      create: {
+        tenantId: tenant.id,
+        schoolId: school.id,
+        title: 'Welcome to the 2026/2027 Academic Year',
+        slug: 'welcome-2026-2027',
+        bodyEn: 'We are delighted to welcome all our students, parents, and staff to the new academic year. Term 1 begins on September 1st, 2026. Our Montessori programs continue to provide authentic child-centered education combined with Ghana Education Service standards.',
+        bodyTw: 'Yɛnhyia mo paaara ma 2026/2027 kurasu no. Term 1 bɛda September 1, 2026. Yɛ Montessori adwumayɛ no nso yɛda wɔ ho.',
+        excerptEn: 'Welcome to the new academic year at Novastar Montessori School.',
+        category: 'Announcement',
+        featuredImage: '/images/welcome-2026.jpg',
+        audience: ['parents', 'staff', 'students'],
+        status: ContentStatus.PUBLISHED,
+        publishedAt: new Date('2026-08-15'),
+        authorId: headmasterUser.id,
+      },
+    })
+  } else {
+    console.log(
+      '⏭️  No headmaster account on this tenant, so the sample news item was not created. ' +
+        'News needs an author, and the author is an account the seed does not create.',
+    )
+  }
 
   // Open Day event
   const existingOpenDay = await prisma.event.findFirst({
@@ -1306,13 +1176,19 @@ async function main() {
   console.log('  • 7 Assessment Types (SBA, exams, coursework) — relative weights summing to 1.00')
   console.log('  • 9 Fee Categories + 6 Payment Methods (MoMo, Bank, Cash)')
   console.log('  • 5 Fee Structures')
-  console.log('  • 7 Roles + 28 Permissions')
-  console.log('  • 1 Branding config')
-  console.log('  • 1 SystemConfig override (admissions_open = true — 2026/27 intake; the registry default is closed)')
-  console.log('  • 1 Admin User (headmaster@nms.com)')
-  console.log('  • 14 Classes')
+console.log('  • 7 Roles + 28 Permissions')
+console.log('  • 1 Branding config')
+console.log('  • 1 SystemConfig override (admissions_open = true — 2026/27 intake; the registry default is closed)')
+console.log('  • 14 Classes')
   console.log('  • 4 Houses + 5 Departments')
   console.log('  • Sample News & Events')
+  console.log(
+    '\n🔑 No accounts were seeded. Create the two privileged ones once, by hand:\n' +
+      '    bun run tenant -- user --email headmaster@nms.com --tenant-code novastar\n' +
+      '    bun run tenant -- operator --email sp@dev.com\n' +
+      'Each prompts for a password and stores only its hash. /forgot-password is\n' +
+      'the owner-side reset once RESEND_API_KEY and a verified sending domain are set.',
+  )
 }
 
 main()
@@ -1321,11 +1197,7 @@ main()
     // would append the stack, and the message already says which variable is
     // missing and how to set it — a stack trace under an actionable sentence
     // only buries it.
-    if (e instanceof SeedCredentialsError) {
-      console.error(e.message)
-    } else {
-      console.error('❌ Seed failed:', e)
-    }
+    console.error(e.message)
     // `exitCode`, not `exit`, so `.finally` still runs and the Prisma adapter is
     // disconnected. A caller checking the status sees a failure either way, which
     // is the half that matters: a refused seed that reported success would leave

@@ -70,12 +70,7 @@
       "persistent": true
     },
     "db:seed": {
-      "cache": false,
-      "env": [
-        "SEED_HEADMASTER_PASSWORD",
-        "SEED_PORTAL_ADMIN_PASSWORD",
-        "SEED_ALLOW_DEFAULT_PASSWORDS"
-      ]
+      "cache": false
     },
     "db:mirror": {
       "cache": false
@@ -121,8 +116,6 @@
     "SYNC_API_URL",
     "SYNC_API_TOKEN",
     "SYNC_CONFLICT_STRATEGY",
-    "SEED_HEADMASTER_PASSWORD",
-    "SEED_PORTAL_ADMIN_PASSWORD",
     "PLATFORM_OPERATOR_PASSWORD",
     "UPSTASH_REDIS_REST_URL",
     "UPSTASH_REDIS_REST_TOKEN",

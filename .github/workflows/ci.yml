@@ -296,7 +296,7 @@ jobs:
       # inside each Dockerfile mean this cache only invalidates when a
       # dependency actually changes.
       - name: Cache builder deps layer
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.bun/install/cache
           key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
@@ -363,7 +363,7 @@ jobs:
       # Same cache path the Docker build uses, so the two runners do not
       # duplicate download work across separate caches.
       - name: Cache bun download cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.bun/install/cache
           key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
