@@ -42,6 +42,13 @@ RUN apk add --no-cache libc6-compat python3 make g++ \
 
 COPY package.json bun.lock turbo.json tsconfig.base.json biome.json ./
 
+# The root postinstall runs `bun run --cwd packages/database db:generate`, and
+# `prisma generate` needs schema.prisma (and prisma.config.ts) to exist at
+# install time or the whole install fails. Copying the schema here is also the
+# right cache boundary: the deps layer invalidates when the schema changes,
+# which is exactly when the generated client must change.
+COPY packages/database/prisma ./packages/database/prisma/
+
 # --- workspace manifests (keep in sync with package.json "workspaces") ---
 COPY apps/web/package.json          ./apps/web/
 COPY packages/auth/package.json       ./packages/auth/
@@ -71,8 +78,12 @@ FROM deps AS builder
 
 ARG NEXT_PUBLIC_ORIGIN
 ARG NEXT_PUBLIC_DOMAIN
-ARG NEXTAUTH_SECRET
-ARG NEXTAUTH_URL
+# Defaults, because the build must not depend on the invoker remembering to
+# pass these. `next-auth/react` reads NEXTAUTH_URL at module evaluation and
+# `new URL('')` throws, which fails the prerender of every page that mounts
+# the session provider -- a build with no --build-arg failed exactly there.
+ARG NEXTAUTH_URL=https://portal.example.com
+ARG NEXTAUTH_SECRET=build-only-placeholder-not-a-real-secret
 ARG DATABASE_URL
 
 # NEXT_PUBLIC_* are inlined at build time; NEXTAUTH_SECRET/URL and DATABASE_URL
@@ -106,6 +117,12 @@ RUN addgroup --gid 1001 --system nodejs \
 
 WORKDIR /app
 
+# bun is a single binary installed in the builder; copy it rather than
+# installing it twice. The runner needs it to run the app's `start` script --
+# `next start` alone would work, but the script is where the port and host
+# flags live.
+COPY --from=builder /usr/local/bin/bun /usr/local/bin/bun
+
 # The whole builder workdir: source (the workspace packages are consumed as
 # TypeScript source, so their sources are runtime dependencies), node_modules
 # (bun symlinks the workspace packages into it), and the built `.next`.
@@ -121,4 +138,7 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||3000)+'/portal/login',{redirect:'manual'}).then(r=>process.exit(r.status>=200&&r.status<400?0:1)).catch(()=>process.exit(1))"
 
-CMD ["bun", "run", "--cwd", "apps/web", "start"]
+# The absolute path, because Docker's exec form does not search PATH: `["bun",
+# ...]` tried to exec a file named `bun` in the workdir and the container never
+# started at all.
+CMD ["/usr/local/bin/bun", "run", "--cwd", "apps/web", "start"]
