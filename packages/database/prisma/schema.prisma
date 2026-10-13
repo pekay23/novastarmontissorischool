@@ -1195,9 +1195,16 @@ model Message {
   updatedAt       DateTime       @updatedAt
 
   // Recipient-scoped reads ("messages for user X") filter on array membership,
-  // which is a sequential scan without a GIN index. Prisma cannot express the
-  // operator class in the schema DSL, hence the raw() escape.
-  @@index([recipientIds(ops: raw("array_ops"))], type: Gin)
+  // which is a sequential scan without a GIN index. No `raw()` escape is needed:
+  // array_ops is the DEFAULT GIN operator class for an array column, so a plain
+  // `type: Gin` index gets it. It was declared with `ops: raw("array_ops")` until
+  // 20261012233313, which named the same operator class explicitly but made the
+  // index un-introspectable — `prisma migrate diff` cannot read an operator class
+  // it was never told in DDL terms, so `migrate verify` reported this index as
+  // drift on every run and `deploy` (which chains deploy then verify) failed
+  // forever after. An index that cannot be verified is worse than one written
+  // slightly more verbosely.
+  @@index([recipientIds], type: Gin)
 }
 
 enum MessageChannel {
