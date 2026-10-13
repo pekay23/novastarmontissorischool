@@ -376,9 +376,14 @@ jobs:
         run: bun run --cwd packages/database db:generate
 
       # Single merged web app deploy
+      # From the repo root, NOT `working-directory: apps/web`. The project's
+      # Root Directory is `apps/web`, and the CLI resolves that against the
+      # working directory: run from `apps/web` and it looks for
+      # `apps/web/apps/web` and fails. From the root, the CLI cds into the root
+      # directory itself for the build command (which is why vercel.json's
+      # `cd ../..` is right) and finds the prebuilt output in `.vercel/output`.
       - name: Deploy web app
         id: web
-        working-directory: apps/web
         env:
           # The Vercel CLI reads the literal names VERCEL_PROJECT_ID and
           # VERCEL_ORG_ID. The secrets keep the workflow's `_WEB` suffix from
