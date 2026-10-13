@@ -7,19 +7,51 @@
 
 import { Ratelimit } from '@upstash/ratelimit'
 import { Redis } from '@upstash/redis'
+import { logWarn } from '@/lib/logger'
 
 // ---------------------------------------------------------------------------
 // Redis-backed rate limiter (production) with in-memory fallback (dev/CI)
 // ---------------------------------------------------------------------------
 
-const hasRedis = !!(process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN)
+/**
+ * The Upstash credentials, or null when they cannot be used.
+ *
+ * Presence is not enough: this module used to check only that both variables
+ * existed, and the Vercel project carries 13-character placeholders in both.
+ * `new Redis({ url })` throws on a value that is not a URL, and because the
+ * client is constructed at module scope, that throw surfaced as
+ * "Failed to collect configuration for /api/newsletter/subscribe" and failed
+ * the whole deployment build. Parsing here keeps a misconfigured limiter from
+ * taking the app down: the documented in-memory fallback applies, and the
+ * misconfiguration is logged rather than crashing the boot.
+ */
+function upstashCredentials(): { url: string; token: string } | null {
+  const url = process.env.UPSTASH_REDIS_REST_URL
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN
+  if (!url || !token) return null
 
-const redis = hasRedis
-  ? new Redis({
-      url: process.env.UPSTASH_REDIS_REST_URL!,
-      token: process.env.UPSTASH_REDIS_REST_TOKEN!,
-    })
-  : null
+  try {
+    const parsed = new URL(url)
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+      throw new Error(`unsupported protocol ${parsed.protocol}`)
+    }
+  } catch {
+    logWarn(
+      '[rate-limit] UPSTASH_REDIS_REST_URL is not a URL; falling back to the in-memory limiter',
+      'upstash-url-invalid',
+    )
+    return null
+  }
+
+  return { url, token }
+}
+
+const hasRedis = upstashCredentials() !== null
+
+const redis = (() => {
+  const credentials = upstashCredentials()
+  return credentials ? new Redis(credentials) : null
+})()
 
 // Pre-configured limiters for common auth operations
 const AUTH_LIMITS = {
