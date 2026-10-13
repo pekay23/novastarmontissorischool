@@ -379,6 +379,13 @@ jobs:
       - name: Deploy web app
         id: web
         working-directory: apps/web
+        env:
+          # The Vercel CLI reads the literal names VERCEL_PROJECT_ID and
+          # VERCEL_ORG_ID. The secrets keep the workflow's `_WEB` suffix from
+          # the three-project era, so map it here — without it the CLI refuses
+          # with "You specified VERCEL_ORG_ID but you forgot to specify
+          # VERCEL_PROJECT_ID".
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID_WEB }}
         run: |
           npx --yes vercel@latest pull --yes --environment=production --token="$VERCEL_TOKEN"
           npx --yes vercel@latest build --prod --token="$VERCEL_TOKEN"
