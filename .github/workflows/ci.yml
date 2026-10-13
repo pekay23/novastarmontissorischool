@@ -11,7 +11,7 @@ env:
   TURBO_TEAM: ${{ secrets.TURBO_TEAM }}
   DATABASE_URL: ${{ secrets.DATABASE_URL }}
   # The repository has no NEXTAUTH_SECRET configured, so this renders as an
-  # EMPTY string unless a fallback is given — and an empty value is worse than
+  # EMPTY string unless a fallback is given -- and an empty value is worse than
   # an absent one: next-auth answers every session check with
   # `error=Configuration`, and the app's AES-256-GCM layer refuses to derive a
   # key at all, which 500s the TOTP enrolment route. CI only ever needs a
@@ -24,18 +24,36 @@ env:
   # See the gated step in the build job.
   MIGRATE_ON_PUSH: ${{ vars.MIGRATE_ON_PUSH }}
 
+# ============================================================================
+# Jobs
+#
+# Three runner conventions, each deliberate:
+#
+#   runs-on: ubuntu-24.04 -- pinned, not `ubuntu-latest`. GitHub migrates
+#     `ubuntu-latest` to Ubuntu 26 on 2026-10-19, which would change the
+#     toolchain under a pipeline nobody touched. Pin it and move it on purpose.
+#
+#   actions/checkout@v7 and oven-sh/setup-bun@v2 -- the v4/v1 versions target
+#     Node.js 20, which GitHub deprecates on 2025-09-19 and now forces onto
+#     Node 24 with a per-job warning. Newer majors target the supported runtime.
+#
+#   actions/cache is used only by the two opt-in jobs (docker, deploy). The
+#     "Failed to save/restore: Cache service responded with 400" warnings come
+#     from GitHub's cache service during its own outages and are attached to
+#     every check run in the workflow, not to these jobs' steps.
+# ============================================================================
 jobs:
   lint-and-typecheck:
     name: Lint & Typecheck
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 2
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v1
+        uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.0
 
@@ -65,13 +83,13 @@ jobs:
 
   test:
     name: Tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v1
+        uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.0
 
@@ -92,16 +110,16 @@ jobs:
 
   build:
     name: Build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: [lint-and-typecheck]
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 2
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v1
+        uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.0
 
@@ -168,7 +186,7 @@ jobs:
 
   test-e2e:
     name: E2E Tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: [build]
     # A hung suite should burn minutes, not hours. playwright.config.ts sets
     # retries: 0 and a 20s per-test timeout, so the suite is designed to
@@ -193,10 +211,10 @@ jobs:
       NEXTAUTH_URL: http://localhost:3100/portal/api/auth
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v1
+        uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.0
 
@@ -248,7 +266,7 @@ jobs:
 # ============================================================================
   docker:
     name: Docker Build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: [lint-and-typecheck, test, build]
     if: github.ref == 'refs/heads/main' && vars.DOCKER_BUILD_ENABLED == 'true'
 
@@ -262,7 +280,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Log in to GHCR
         uses: docker/login-action@v3
@@ -319,7 +337,7 @@ jobs:
 # ============================================================================
   deploy:
     name: Deploy to Vercel
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: [lint-and-typecheck, test, build, test-e2e]
     # Production deploys happen only from main, only after every gate passed,
     # and only when explicitly enabled.
@@ -335,10 +353,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v1
+        uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.0
 
