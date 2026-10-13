@@ -1,4 +1,18 @@
 import { describe, it, expect, mock, beforeEach } from 'bun:test'
+import { fileURLToPath } from 'node:url'
+
+/**
+ * The script under test, as a filesystem path.
+ *
+ * 
+ew URL(..., import.meta.url).pathname is NOT portable: on Windows it is
+ * /C:/... and needs its leading slash stripped, and on Linux it is
+ * /home/... where stripping the slash produces a relative path that does not
+ * exist. ileURLToPath is the conversion that is correct on both.
+ */
+const SCRIPT_PATH = fileURLToPath(
+  new URL('../scripts/repair-attendance-duplicates.ts', import.meta.url),
+)
 
 /**
  * Guards on `scripts/repair-attendance-duplicates.ts --apply`.
@@ -193,10 +207,7 @@ describe('the confirmation names the exact number of rows about to go', () => {
 describe('the dry run is still the default', () => {
   it('only deletes on an explicit --apply, whatever the target is', async () => {
     const src = await Bun.file(
-      new URL('../scripts/repair-attendance-duplicates.ts', import.meta.url).pathname.replace(
-        /^\//,
-        '',
-      ),
+      SCRIPT_PATH
     ).text()
 
     // The flag must still gate the delete, not merely the extra production
@@ -214,10 +225,7 @@ describe('the dry run is still the default', () => {
 describe('the guards fail closed by ordering, not just by existing', () => {
   it('refuses a production --apply before it queries the database', async () => {
     const src = await Bun.file(
-      new URL('../scripts/repair-attendance-duplicates.ts', import.meta.url).pathname.replace(
-        /^\//,
-        '',
-      ),
+      SCRIPT_PATH
     ).text()
 
     // Order is the whole claim. A refusal placed after `buildPlan` still reads
@@ -232,10 +240,7 @@ describe('the guards fail closed by ordering, not just by existing', () => {
 
   it('reports the target it refused, so the refusal is actionable', async () => {
     const src = await Bun.file(
-      new URL('../scripts/repair-attendance-duplicates.ts', import.meta.url).pathname.replace(
-        /^\//,
-        '',
-      ),
+      SCRIPT_PATH
     ).text()
 
     const guard = src.slice(
@@ -251,10 +256,7 @@ describe('the guards fail closed by ordering, not just by existing', () => {
 
   it('never runs main() on import', async () => {
     const src = await Bun.file(
-      new URL('../scripts/repair-attendance-duplicates.ts', import.meta.url).pathname.replace(
-        /^\//,
-        '',
-      ),
+      SCRIPT_PATH
     ).text()
 
     // This file imported the script above, so an unconditional `main()` would
@@ -264,10 +266,7 @@ describe('the guards fail closed by ordering, not just by existing', () => {
 
   it('refuses to confirm without a terminal, before it reads a reply', async () => {
     const src = await Bun.file(
-      new URL('../scripts/repair-attendance-duplicates.ts', import.meta.url).pathname.replace(
-        /^\//,
-        '',
-      ),
+      SCRIPT_PATH
     ).text()
 
     // Piped or redirected stdin reads as absent, so a prompt answered by a pipe
@@ -285,10 +284,7 @@ describe('the guards fail closed by ordering, not just by existing', () => {
 
   it('compares the typed reply rather than accepting any input', async () => {
     const src = await Bun.file(
-      new URL('../scripts/repair-attendance-duplicates.ts', import.meta.url).pathname.replace(
-        /^\//,
-        '',
-      ),
+      SCRIPT_PATH
     ).text()
 
     // `.trim() === expected` rather than a truthiness check: an empty answer, a

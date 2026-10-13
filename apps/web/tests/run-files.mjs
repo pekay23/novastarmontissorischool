@@ -57,9 +57,17 @@ for (const file of files) {
   pass += filePass
   fail += fileFail
 
-  const detail = fileMatch(output, file)
   if (result.status !== 0 || fileFail > 0) {
-    failures.push(`${file}${detail ? `\n${detail}` : ''}`)
+    // The filename alone is not diagnosable: a file can exit non-zero with
+    // zero reported failures (an import-time error, an ENOENT, a hang), and
+    // the reason is the tail of its own output. Include it.
+    const tail = output
+      .split('\n')
+      .filter((line) => line.trim() !== '')
+      .slice(-14)
+      .map((line) => `    ${line}`)
+      .join('\n')
+    failures.push(`${file} (exit=${result.status ?? 'signal'}, ${fileFail} failing)\n${tail}`)
   }
 }
 
@@ -69,11 +77,3 @@ for (const failure of failures) {
 
 console.log(`\nrun-files: ${pass} pass, ${fail} fail across ${files.length} files`)
 process.exit(failures.length > 0 ? 1 : 0)
-
-/** The first `(fail)` line of a file's output, so a failure names its test. */
-function fileMatch(output, file) {
-  for (const line of output.split('\n')) {
-    if (line.includes(': (fail)')) return line.trim()
-  }
-  return ''
-}
