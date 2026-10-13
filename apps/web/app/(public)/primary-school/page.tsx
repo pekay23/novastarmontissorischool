@@ -16,7 +16,6 @@ import {
   SectionTitle,
 } from '@/components/marketing'
 import { ArrowLink, MarketingButton, whatsappHref } from '@/components/marketing-button'
-import { SubjectCard } from '@/components/subject-card'
 import { ProgressionPath, type ProgressionStep } from '@/components/progression-path'
 import { CurriculumAccordion, CurriculumSubjectList } from '@/components/curriculum-accordion'
 import { ScrollableCardGrid } from '@/components/horizontal-scroll'

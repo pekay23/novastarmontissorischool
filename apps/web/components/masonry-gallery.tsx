@@ -32,6 +32,7 @@ return (
               style={{ animationDelay: `${0.1 + i * 0.15}s`, animationFillMode: 'forwards' }}
             >
             <div className="absolute inset-0 bg-primary/20 opacity-0 group-hover:opacity-100 mix-blend-overlay transition-opacity duration-500 z-10 pointer-events-none" />
+            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={image.src}
               alt={image.alt}

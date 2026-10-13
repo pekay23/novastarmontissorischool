@@ -11,7 +11,7 @@ import {
 } from '@/components/marketing'
 import { ArrowLink, MarketingButton } from '@/components/marketing-button'
 import { Photo } from '@/components/photo'
-import { PreparedEnvironments, type EnvironmentPanel } from '@/components/prepared-environments'
+import { type EnvironmentPanel } from '@/components/prepared-environments'
 import { ProgressionPath } from '@/components/progression-path'
 import { CurriculumAccordion, CurriculumFocusList } from '@/components/curriculum-accordion'
 import { getAcademicPrograms, getAdmissionsStatus } from '@/lib/data'

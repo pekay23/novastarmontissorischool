@@ -298,7 +298,7 @@ export function CurriculumFocusList({ items, className }: CurriculumFocusListPro
 }
 
 /**
- * CurriculumSubjectCard — for rendering subject chips/lists inside accordion
+ * CurriculumSubjectList — for rendering subject chips/lists inside accordion
  * content (e.g., Primary School subjects with descriptions).
  */
 export interface CurriculumSubjectItem {

@@ -113,10 +113,12 @@ const whatsapp = whatsappHref(
       {/* Full-Bleed Animated Hero */}
       <section className="relative w-full h-[85vh] min-h-[600px] overflow-hidden flex items-end">
         <div className="absolute inset-0 z-0">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src="/images/photo_3_2026-10-05_11-06-55%20for%20primary%20school.jpg"
             alt="Novastar Students"
             className="h-full w-full object-cover object-center animate-ken-burns"
+            loading="eager"
           />
           {/* Dark gradient overlay only at bottom for text readability */}
           <div className="absolute inset-0 bg-gradient-to-t from-background/95 via-background/30 to-transparent pointer-events-none" />

@@ -46,8 +46,8 @@ export function ImageHero({
           className="h-full w-full object-cover object-center"
           // We load the hero image eagerly because it's LCP
           loading="eager"
-          // next/image would add layout thrashing if we don't know the exact dimensions, 
-          // and a standard img tag with object-cover is usually sufficient for these hero backgrounds
+          // next/image is disabled site-wide (next.config.ts: images.unoptimized = true),
+          // so <img> with object-cover is the correct choice for full-bleed heroes.
         />
         {/* Overlay for text legibility */}
         <div className={cn('absolute inset-0', overlayMap[overlayDarkness])} />
