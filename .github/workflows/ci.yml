@@ -317,7 +317,7 @@ jobs:
     env:
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
       VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID_WEB: ${{ secrets.VERCEL_PROJECT_ID_WEB }}
+      VERCEL_PROJECT_ID_WEB: ${{ secrets.VERCEL_PROJECT_ID_WEB }}
 
     steps:
       - name: Checkout
