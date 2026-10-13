@@ -1,8 +1,6 @@
-import type { Prisma } from '@novastar/database'
 import type { SchoolSummary } from '@/types/admin'
 import { prisma } from '@/lib/prisma'
 import {
-  SCHOOL_SELECT,
   PLATFORM_AUDIT_SCOPE,
   appendAudit,
   assertTenantIsActive,

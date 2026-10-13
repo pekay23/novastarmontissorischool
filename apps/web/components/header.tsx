@@ -32,7 +32,7 @@ interface HeaderProps {
   }
 }
 
-export default function Header({ navigation, siteName, contact }: HeaderProps) {
+export default function Header({ navigation, siteName: _siteName, contact }: HeaderProps) {
   /*
    * `next.config.ts` sets `trailingSlash: true`, so `usePathname()` returns
    * "/academics/" while the `href` in `navItems` is "/academics". Comparing

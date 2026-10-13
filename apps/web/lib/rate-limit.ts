@@ -46,8 +46,6 @@ function upstashCredentials(): { url: string; token: string } | null {
   return { url, token }
 }
 
-const hasRedis = upstashCredentials() !== null
-
 const redis = (() => {
   const credentials = upstashCredentials()
   return credentials ? new Redis(credentials) : null

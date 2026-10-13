@@ -1,7 +1,6 @@
-import type { Prisma } from '@novastar/database'
 import type { TenantUserSummary } from '@/types/admin'
 import { prisma } from '@/lib/prisma'
-import { TENANT_USER_SELECT, PLATFORM_AUDIT_SCOPE, appendAudit, iso, assertTenantIsActive, type TenantMutationContext } from './tenants'
+import { PLATFORM_AUDIT_SCOPE, appendAudit, iso, type TenantMutationContext } from './tenants'
 
 // ---------------------------------------------------------------------------
 // User mutations within a tenant

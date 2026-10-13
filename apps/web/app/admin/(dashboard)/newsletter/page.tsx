@@ -2,7 +2,6 @@ import { Metadata } from 'next'
 import { prisma } from '@/lib/prisma'
 import { requireOperatorPage } from '@/lib/admin-context'
 import { hasOperatorCapability } from '@/lib/permissions'
-import Link from 'next/link'
 import {
   Card,
   CardContent,
@@ -13,9 +12,7 @@ import {
 import {
   Mail,
   Copy,
-  Check,
   AlertCircle,
-  Loader2,
   Download,
 } from 'lucide-react'
 import { Button } from '@novastar/shared-ui'

@@ -1,4 +1,3 @@
-import type { Prisma } from '@novastar/database'
 import { prisma } from '@/lib/prisma'
 
 // ---------------------------------------------------------------------------
