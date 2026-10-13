@@ -60,11 +60,12 @@ for (const file of files) {
   if (result.status !== 0 || fileFail > 0) {
     // The filename alone is not diagnosable: a file can exit non-zero with
     // zero reported failures (an import-time error, an ENOENT, a hang), and
-    // the reason is the tail of its own output. Include it.
-    const tail = output
-      .split('\n')
-      .filter((line) => line.trim() !== '')
-      .slice(-14)
+    // the reason is its own output. Bun prints each failing test's error block
+    // AFTER the summary, so a short tail loses the reason — capture generously.
+    const lines = output.split('\n').filter((line) => line.trim() !== '')
+    const firstFailure = lines.findIndex((line) => line.includes(': (fail)'))
+    const tail = (firstFailure >= 0 ? lines.slice(firstFailure) : lines.slice(-14))
+      .slice(-40)
       .map((line) => `    ${line}`)
       .join('\n')
     failures.push(`${file} (exit=${result.status ?? 'signal'}, ${fileFail} failing)\n${tail}`)

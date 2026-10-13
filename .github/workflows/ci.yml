@@ -10,7 +10,15 @@ env:
   TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
   TURBO_TEAM: ${{ secrets.TURBO_TEAM }}
   DATABASE_URL: ${{ secrets.DATABASE_URL }}
-  NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET }}
+  # The repository has no NEXTAUTH_SECRET configured, so this renders as an
+  # EMPTY string unless a fallback is given — and an empty value is worse than
+  # an absent one: next-auth answers every session check with
+  # `error=Configuration`, and the app's AES-256-GCM layer refuses to derive a
+  # key at all, which 500s the TOTP enrolment route. CI only ever needs a
+  # working value, never the production one: it runs tests, not real sessions.
+  # Setting the repository secret overrides this; production takes its value
+  # from the Vercel project's own environment (the deploy job pulls it).
+  NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET || 'ci-only-not-a-real-secret' }}
   NEXTAUTH_URL: http://localhost:3000
   # Migration deploy stays off until the Prisma migration history is baselined.
   # See the gated step in the build job.
@@ -176,19 +184,12 @@ jobs:
       E2E_PASSWORD: ${{ vars.E2E_PASSWORD }}
       E2E_SCHOOL_CODE: ${{ vars.E2E_SCHOOL_CODE }}
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
-      # The repo has no NEXTAUTH_SECRET configured, and next-auth answers every
-      # session check with `error=Configuration` when the secret is empty —
-      # which is what made the route-protection specs land on
-      # /api/auth/error instead of the sign-in page. The suite needs a working
-      # secret, never the production one: it asserts redirects, not sessions.
-      # Set the repository secret to override this in CI.
-      NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET || 'e2e-suite-only-not-a-real-secret' }}
       # The suite serves the app on the pinned e2e port (3100 — the default in
-      # scripts/ci/e2e.ts and playwright.config.ts), and the global env's
-      # http://localhost:3000 is the dev server's port, not this one. Next-auth
-      # takes its origin from here when the variable is set, so an unset value
-      # on the suite's port makes the client-side calls aim at a port with
-      # nothing on it. The path part is what the app mounts its auth API under.
+      # scripts/ci/e2e.ts and playwright.config.ts); the global env's
+      # http://localhost:3000 is the dev server's port. Next-auth takes its
+      # origin and its API mount point from this value, so pointing it at the
+      # suite's own port and auth path keeps the client-side calls same-origin.
+      # NEXTAUTH_SECRET is inherited from the job-level fallback above.
       NEXTAUTH_URL: http://localhost:3100/portal/api/auth
     steps:
       - name: Checkout
