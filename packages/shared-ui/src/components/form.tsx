@@ -4,19 +4,30 @@ import * as React from 'react'
 import {
   useFormContext,
   Controller,
+  FormProvider,
   type FieldValues,
   type FieldPath,
   type ControllerProps,
+  type ControllerRenderProps,
+  type ControllerFieldState,
+  type UseFormReturn,
+  type FormState,
 } from 'react-hook-form'
 import { Label } from './label'
 import { cn } from '../lib/utils'
 
 const Form = React.forwardRef<
   HTMLFormElement,
-  React.ComponentPropsWithoutRef<'form'>
->(({ className, ...props }, ref) => (
-  <form ref={ref} className={cn('space-y-4', className)} {...props} />
-))
+  React.ComponentPropsWithoutRef<'form'> & { form: UseFormReturn<FieldValues> }
+>(({ className, form: rhfForm, children, onSubmit, ...props }, ref) => {
+  return (
+    <FormProvider {...rhfForm}>
+      <form ref={ref} className={cn('space-y-4', className)} onSubmit={onSubmit} {...props}>
+        {children}
+      </form>
+    </FormProvider>
+  )
+})
 Form.displayName = 'Form'
 
 type FormFieldProps<
@@ -28,27 +39,28 @@ type FormFieldProps<
     fieldState,
     formState,
   }: {
-    field: Record<string, unknown>
-    fieldState: Record<string, unknown>
-    formState: Record<string, unknown>
+    field: ControllerRenderProps<TFieldValues, TName>
+    fieldState: ControllerFieldState
+    formState: FormState<TFieldValues>
   }) => React.ReactNode
 }
 
-const FormField = React.forwardRef<
-  HTMLFormElement,
-  FormFieldProps<FieldValues, FieldPath<FieldValues>>
->(({ ...props }, _ref) => {
-  const { control } = useFormContext()
+const FormField = ({ control, ...props }: FormFieldProps<FieldValues, FieldPath<FieldValues>>) => {
+  const { control: contextControl } = useFormContext()
+  const effectiveControl = control ?? contextControl
+  if (!effectiveControl) {
+    throw new Error('FormField must be used within a FormProvider or given an explicit control prop')
+  }
   return (
     <Controller
-      control={control}
+      control={effectiveControl}
       {...props}
       render={({ field, fieldState, formState }) =>
         <>{props.render({ field, fieldState, formState })}</>
       }
     />
   )
-})
+}
 FormField.displayName = 'FormField'
 
 const FormItem = React.forwardRef<

@@ -80,10 +80,10 @@ export default function TeacherWorkspacePage() {
   // date it renders no roster, so the link carries today.
   const attendanceHref = (classId: string) => {
     const today = new Date().toISOString().split('T')[0]
-    return `/attendance/mark?class=${classId}&date=${today}`
+    return `/portal/attendance/mark?class=${classId}&date=${today}`
   }
   const timetableHref = (classId: string) =>
-    currentTermId ? `/timetable?class=${classId}&term=${currentTermId}` : null
+    currentTermId ? `/portal/timetable?class=${classId}&term=${currentTermId}` : null
 
   return (
     <div className="space-y-4">

@@ -93,13 +93,13 @@ export function HorizontalScroll({
     <div className={cn('relative', className)}>
       {showShadows && showLeftShadow && (
         <div
-          className="absolute left-0 top-0 bottom-0 w-12 bg-gradient-to-r from-background to-transparent pointer-events-none z-10"
+          className="absolute left-0 top-0 bottom-0 w-12 bg-linear-to-r from-background to-transparent pointer-events-none z-10"
           aria-hidden="true"
         />
       )}
       {showShadows && showRightShadow && (
         <div
-          className="absolute right-0 top-0 bottom-0 w-12 bg-gradient-to-l from-background to-transparent pointer-events-none z-10"
+          className="absolute right-0 top-0 bottom-0 w-12 bg-linear-to-l from-background to-transparent pointer-events-none z-10"
           aria-hidden="true"
         />
       )}
@@ -198,7 +198,7 @@ interface ScrollableCardGridProps {
 export function ScrollableCardGrid({
   children,
   className,
-  minCardWidth = 'min-w-[300px] sm:min-w-[340px]',
+  minCardWidth = 'min-w-75 sm:min-w-85',
   gap = 'gap-6',
   padding = 'px-4',
 }: ScrollableCardGridProps) {

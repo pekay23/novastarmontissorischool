@@ -1,6 +1,6 @@
 export default function PromotionsLoading() {
   return (
-    <div className="space-y-6 p-6">
+    <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div className="space-y-2">
           <div className="h-8 w-48 rounded-md bg-muted" />

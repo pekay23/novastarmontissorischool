@@ -10,6 +10,7 @@ import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
   Input, Textarea, Badge, Label,
 } from '@novastar/shared-ui'
+import { statusBadgeClasses } from '../../_components/status-badge'
 import { Search, Save, Calendar, MoreHorizontal, Clock, Lock, History } from 'lucide-react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
@@ -44,14 +45,6 @@ interface AttendanceRecord {
   /** The reason-gated lock. Non-null means this record has been settled. */
   finalizedAt?: string | null
   finalizedById?: string | null
-}
-
-const statusColors: Record<string, string> = {
-  PRESENT: 'bg-green-100 text-green-800',
-  ABSENT: 'bg-red-100 text-red-800',
-  LATE: 'bg-amber-100 text-amber-800',
-  EXCUSED: 'bg-blue-100 text-blue-800',
-  HALF_DAY: 'bg-purple-100 text-purple-800',
 }
 
 /**
@@ -570,7 +563,7 @@ export default function AttendanceMarkPage() {
                             onChange={(e) => {
                               upsertRecord(student.id, { status: e.target.value as 'PRESENT' | 'ABSENT' | 'LATE' | 'EXCUSED' | 'HALF_DAY' })
                             }}
-                            className={`w-full px-2 py-1 border rounded ${statusColors[student.status]}`}
+                            className={`w-full px-2 py-1 border rounded ${statusBadgeClasses(student.status)}`}
                             aria-label={`Status for ${student.firstName} ${student.lastName}`}
                           >
                             <option value="PRESENT">Present</option>

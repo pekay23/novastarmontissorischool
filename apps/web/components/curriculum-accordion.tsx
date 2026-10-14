@@ -320,7 +320,7 @@ export function CurriculumSubjectList({ items, className }: CurriculumSubjectLis
         <div
           key={subject.name}
           className={cn(
-            'flex flex-col sm:flex-row sm:items-center gap-2 min-w-[200px]',
+            'flex flex-col sm:flex-row sm:items-center gap-2 min-w-50',
             'p-3 rounded-md border border-border/50',
             'bg-surface-container-lowest/80 backdrop-blur-sm',
             'transition-all duration-fast hover:border-border hover:shadow-soft',

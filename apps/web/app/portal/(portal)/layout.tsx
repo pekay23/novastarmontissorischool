@@ -10,7 +10,7 @@ import { logError } from '@/lib/logger'
 /**
  * The portal's authenticated shell.
  *
- * The navigation list is plain data ”— `{ name, href }` and nothing
+ * The navigation list is plain data — `{ name, href }` and nothing
  * else. `PortalShell` is a client component, and React serializes
  * only plain values across the server-to-client boundary: an icon
  * component (a `forwardRef` object carrying `$$typeof` and `render`)
@@ -22,9 +22,8 @@ import { logError } from '@/lib/logger'
  *
  * Order mirrors the section order in the database seed and in
  * `tools/seed/index.ts` (`SECTION_ORDER`): Dashboard, Students,
- * Attendance, Grades, Fees, Payments, Classes, Library, Calendar,
- * Announcements, Teachers, Timetable, Reports, Settings, Admissions,
- * Transport.
+ * Attendance, Grades, Fees, Library, Calendar, Announcements,
+ * Teachers, Timetable, Reports, Settings, Admissions.
  *
  * The sidebar shows only the sections the role may open
  * (`reachableNavigation`), and it mirrors the proxy's own
@@ -37,8 +36,6 @@ const navigation = [
   { name: 'Attendance', href: '/portal/attendance' },
   { name: 'Grades', href: '/portal/grades' },
   { name: 'Fees', href: '/portal/fees' },
-  { name: 'Payments', href: '/portal/payments' },
-  { name: 'Classes', href: '/portal/classes' },
   { name: 'Library', href: '/portal/library' },
   { name: 'Calendar', href: '/portal/calendar' },
   { name: 'Announcements', href: '/portal/announcements' },
@@ -46,8 +43,7 @@ const navigation = [
   { name: 'Timetable', href: '/portal/timetable' },
   { name: 'Reports', href: '/portal/reports' },
   { name: 'Settings', href: '/portal/settings' },
-  { name: 'Admissions', href: '/portal/settings/admissions' },
-  { name: 'Transport', href: '/portal/settings/transport' },
+   { name: 'Admissions', href: '/portal/admissions' },
 ]
 
 export default async function PortalLayout({ children }: { children: ReactNode }) {

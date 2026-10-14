@@ -31,7 +31,7 @@ export function ImageHero({
 }: ImageHeroProps) {
   const overlayMap = {
     light: 'bg-black/20',
-    medium: 'bg-gradient-to-t from-black/80 via-black/40 to-black/10',
+    medium: 'bg-linear-to-t from-black/80 via-black/40 to-black/10',
     dark: 'bg-black/60',
   }
 

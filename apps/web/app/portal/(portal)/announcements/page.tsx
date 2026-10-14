@@ -26,6 +26,10 @@ import {
   SelectTrigger,
   SelectValue,
   Textarea,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+  Checkbox,
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
@@ -35,6 +39,7 @@ import {
 import { useSession } from 'next-auth/react'
 import { AnnouncementStatus } from '@prisma/client'
 import { permissionsForRole, type PlatformRoleName } from '@novastar/shared-types'
+import { PLATFORM_ROLES } from '@/lib/constants/platform-roles'
 import { Plus, Bell, MoreHorizontal, Edit2, Trash2, Save, X } from 'lucide-react'
 
 /**
@@ -62,13 +67,7 @@ interface Announcement {
 interface AnnouncementForm {
   title: string
   body: string
-  /**
-   * Comma-separated role names, because `Announcement.audience` is `string[]` and
-   * a notice can legitimately name several roles at once. A single-value field
-   * cannot round-trip that: opening such a notice and saving it unchanged would
-   * silently drop every audience past the first.
-   */
-  targetAudience: string
+  targetAudience: string[]
   status: AnnouncementStatus
   publishedAt: string
 }
@@ -119,7 +118,7 @@ export default function AnnouncementsPage() {
   const [form, setForm] = useState<AnnouncementForm>({
     title: '',
     body: '',
-    targetAudience: '',
+    targetAudience: [],
     status: 'DRAFT',
     publishedAt: '',
   })
@@ -153,7 +152,7 @@ export default function AnnouncementsPage() {
     setForm({
       title: '',
       body: '',
-      targetAudience: '',
+      targetAudience: [],
       status: 'DRAFT',
       publishedAt: new Date().toISOString().split('T')[0],
     })
@@ -165,7 +164,7 @@ export default function AnnouncementsPage() {
     setForm({
       title: a.title,
       body: a.body || '',
-      targetAudience: (a.audience ?? []).join(', '),
+      targetAudience: a.audience ?? [],
       status: a.status,
       publishedAt: a.publishedAt
         ? new Date(a.publishedAt).toISOString().split('T')[0]
@@ -200,16 +199,14 @@ export default function AnnouncementsPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    const targetAudience = form.targetAudience.trim()
+    const targetAudience = form.targetAudience
     const body: Record<string, unknown> = {
       title: form.title,
       body: form.body,
       // Empty audience means every role in the school, so a blank field is `[]`
       // rather than `['']`, which would name a role that does not exist and
       // target nobody while reading as addressed to someone.
-      audience: targetAudience
-        ? targetAudience.split(',').map((role) => role.trim()).filter(Boolean)
-        : [],
+      audience: targetAudience.length > 0 ? targetAudience : [],
       status: form.status,
       // Sent whenever a date is present, not only when publishing: on an edit the
       // route only fills in a default `publishedAt` when the field is ABSENT, so
@@ -266,6 +263,13 @@ export default function AnnouncementsPage() {
     setDialogOpen(open)
     if (!open) {
       setEditingAnnouncement(null)
+      setForm({
+        title: '',
+        body: '',
+        targetAudience: [],
+        status: 'DRAFT',
+        publishedAt: '',
+      })
     }
   }
 
@@ -409,12 +413,58 @@ export default function AnnouncementsPage() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="targetAudience">Target Audience</Label>
-                <Input
-                  id="targetAudience"
-                  value={form.targetAudience}
-                  onChange={(e) => setForm({ ...form, targetAudience: e.target.value })}
-                  placeholder="Blank = everyone, e.g. CLASSROOM_TEACHER"
-                />
+                <div className="border rounded-md p-2 min-h-[42px] flex flex-wrap gap-1 items-center">
+                  {form.targetAudience.map((role) => (
+                    <Badge key={role} variant="secondary" className="text-xs">
+                      {role}
+                      <button
+                        type="button"
+                        aria-label={`Remove ${role}`}
+                        onClick={() => {
+                          setForm({
+                            ...form,
+                            targetAudience: form.targetAudience.filter((r) => r !== role),
+                          })
+                        }}
+                        className="ml-1"
+                      >
+                        ×
+                      </button>
+                    </Badge>
+                  ))}
+                  <div className="text-muted-foreground text-sm">
+                    {form.targetAudience.length === 0 ? 'Select roles...' : ''}
+                  </div>
+                </div>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button type="button" variant="outline" size="sm" className="w-full">
+                      Select Roles
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-full p-2" align="start">
+                    <div className="space-y-1">
+                      {Object.values(PLATFORM_ROLES).map((role) => (
+                        <label
+                          key={role}
+                          className="flex items-center justify-between rounded-sm px-2 py-1.5 cursor-pointer hover:bg-accent"
+                        >
+                          <span className="text-sm">{role}</span>
+                          <Checkbox
+                            checked={form.targetAudience.includes(role)}
+                            onCheckedChange={(checked) => {
+                              const current = form.targetAudience
+                              const updated = checked
+                                ? [...current, role]
+                                : current.filter((r) => r !== role)
+                              setForm({ ...form, targetAudience: updated })
+                            }}
+                          />
+                        </label>
+                      ))}
+                    </div>
+                  </PopoverContent>
+                </Popover>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="status">Status</Label>

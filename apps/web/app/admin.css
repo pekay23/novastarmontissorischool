@@ -14,6 +14,21 @@
  */
 @theme {
   --animate-shimmer: shimmer 2s linear infinite;
+
+  /*
+   * Component motion tokens — consumed by shared-ui dialog, dropdown, select
+   * and toast. The same block exists in globals.css and portal.css because
+   * @theme is per-stylesheet: without it here, every `animate-dialog-in`
+   * / `animate-toast-in` class in a shared-ui component is silently dropped
+   * on admin pages, and those components appear with no animation at all.
+   */
+  --animate-dialog-in:  dialog-in 200ms cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-dialog-out: dialog-out 150ms cubic-bezier(0.4, 0, 1, 1) forwards;
+  --animate-overlay-in:  overlay-in 150ms ease-out;
+  --animate-overlay-out: overlay-out 150ms ease-in forwards;
+  --animate-dropdown-in: dropdown-in 150ms ease-out;
+  --animate-toast-in:   toast-in 250ms cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-toast-out:  toast-out 200ms ease-in forwards;
 }
 
 /*
@@ -23,6 +38,57 @@
 @keyframes shimmer {
   0% { transform: translateX(-100%); }
   100% { transform: translateX(100%); }
+}
+
+/* Component motion keyframes — paired with the --animate-* tokens above. */
+@keyframes overlay-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes overlay-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes dialog-in {
+  from { opacity: 0; transform: scale(0.96) translateY(12px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@keyframes dialog-out {
+  from { opacity: 1; transform: scale(1) translateY(0); }
+  to { opacity: 0; transform: scale(0.96) translateY(12px); }
+}
+
+@keyframes dropdown-in {
+  from { opacity: 0; transform: scale(0.95) translateY(-4px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateX(120%); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes toast-out {
+  from { opacity: 1; transform: translateX(0); }
+  to { opacity: 0; transform: translateX(120%); }
+}
+
+/*
+ * Reduced motion. Same block as globals.css and portal.css: negative
+ * animation-delay so a staggered entrance snaps to its end state rather
+ * than flashing its from-state, and scroll-behavior flattened.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    animation-delay: -0.01ms !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 /*

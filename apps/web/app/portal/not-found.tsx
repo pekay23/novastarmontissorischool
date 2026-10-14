@@ -1,29 +1,31 @@
+'use client'
+
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+import { NotFound, notFoundActionClasses, Button } from '@novastar/shared-ui'
 
-import { NotFound, notFoundActionClasses } from '@novastar/shared-ui'
-
-export const metadata = {
-  title: 'Page not found',
-  description: 'The page you are looking for could not be found.',
-}
-
-/**
- * Root 404 for the portal, rendered by `app/layout.tsx` when no route matches.
- *
- * The shared `NotFound` supplies the layout and copy; this file supplies the
- * link. The portal runs under `basePath: '/portal'`, so navigation must go
- * through `next/link` — a plain `<a href="/portal/dashboard">` would drop the
- * `/portal` prefix and 404 a second time.
- */
 export default function PortalNotFound() {
+  const router = useRouter()
+  const handleGoBack = () => {
+    if (typeof window !== 'undefined' && window.history.length > 1) {
+      router.back()
+    } else {
+      router.push('/portal/dashboard')
+    }
+  }
   return (
     <NotFound
       label="404"
       description="The page you are looking for could not be found or you do not have permission to view it."
       action={
-        <Link href="/portal/dashboard" className={notFoundActionClasses}>
-          Back to Dashboard
-        </Link>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={handleGoBack}>
+            Go Back
+          </Button>
+          <Link href="/portal/dashboard" className={notFoundActionClasses}>
+            Back to Dashboard
+          </Link>
+        </div>
       }
     />
   )

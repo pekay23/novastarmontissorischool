@@ -23,13 +23,12 @@ import {
 } from '@novastar/shared-ui'
 
 interface FieldComponentProps {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- react-hook-form Controller field
-  field: any
+  field: ControllerRenderProps<FieldValues, string>
   disabled?: boolean
   options?: Array<{ value: string; label: string }>
   placeholder?: string
 }
-import { useForm } from 'react-hook-form'
+import { useForm, type ControllerRenderProps, type FieldValues } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { EntityType, DEFAULT_ENTITY_REGISTRY, EntityField } from '@novastar/shared-types'
@@ -181,9 +180,8 @@ export function EntityForm({
   }
 
   return (
-    <Form {...form}>
-      <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6">
-        <Card>
+    <Form form={form} onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6">
+      <Card>
           <CardContent className="pt-6">
             {registry.fields
               .filter(f => !f.isSystem || !readOnly)
@@ -249,8 +247,7 @@ export function EntityForm({
             </Button>
           )}
         </div>
-      </form>
-    </Form>
+      </Form>
   )
 }
 
@@ -262,7 +259,7 @@ function getFieldComponent(field: EntityField) {
           {...formField}
           disabled={disabled}
           placeholder={field.placeholder}
-          className="min-h-[100px]"
+          className="min-h-25"
         />
       )
       return TextField

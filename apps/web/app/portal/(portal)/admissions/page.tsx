@@ -255,7 +255,7 @@ export default function AdmissionsPage() {
           <DoorOpen className="h-5 w-5" />
           <h1 className="text-3xl font-heading font-bold">Admissions</h1>
         </div>
-        <Skeleton className="h-[240px] w-full" />
+        <Skeleton className="h-60 w-full" />
       </div>
     )
   }
@@ -292,7 +292,7 @@ export default function AdmissionsPage() {
             <h1 className="text-3xl font-heading font-bold">Admissions</h1>
           </div>
         </div>
-        <Skeleton className="h-[240px] w-full" />
+        <Skeleton className="h-60 w-full" />
       </div>
     )
   }
@@ -371,8 +371,8 @@ export default function AdmissionsPage() {
                   <Badge variant="outline">Using the default</Badge>
                 )}
                 {/* Only an override has a row, and only a row has a timestamp —
-                    a switch nobody has touched was never written, so there is no
-                    change to report. */}
+                     a switch nobody has touched was never written, so there is no
+                     change to report. */}
                 {status.isOverridden && status.updatedAt && (
                   <span className="text-xs text-muted-foreground">
                     Last changed {new Date(status.updatedAt).toLocaleString()}
@@ -398,5 +398,3 @@ export default function AdmissionsPage() {
     </div>
   )
 }
-
-

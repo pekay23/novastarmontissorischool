@@ -2,7 +2,7 @@ import './globals.css'
 
 import { baseMetadata } from '@/lib/metadata'
 import { ToastProvider } from '@novastar/shared-ui'
-import { Plus_Jakarta_Sans, Playfair_Display } from 'next/font/google'
+import { Inter, Outfit, Playfair_Display, JetBrains_Mono } from 'next/font/google'
 
 /*
  * Root layout of the merged app (ADR-024): one `<html>` for the
@@ -17,14 +17,20 @@ import { Plus_Jakarta_Sans, Playfair_Display } from 'next/font/google'
  * runtime call to Google.
  *
  * The pairing is the one named by the site's Stitch design system:
- * Playfair Display for display and headline settings and Plus Jakarta
- * Sans for all body, label and UI text.
+ * Playfair Display for display and headline settings, Inter for all
+ * body, label and UI text, Outfit for display utilities, and
+ * JetBrains Mono for code.
  */
-const jakarta = Plus_Jakarta_Sans({
+const inter = Inter({
   subsets: ['latin'],
-  variable: '--font-jakarta',
+  variable: '--font-inter',
   display: 'swap',
-  weight: ['300', '400', '500', '600', '700', '800'],
+})
+
+const outfit = Outfit({
+  subsets: ['latin'],
+  variable: '--font-outfit',
+  display: 'swap',
 })
 
 const playfair = Playfair_Display({
@@ -33,6 +39,12 @@ const playfair = Playfair_Display({
   display: 'swap',
   weight: ['400', '500', '600', '700', '800'],
   style: ['normal', 'italic'],
+})
+
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ['latin'],
+  variable: '--font-jetbrains-mono',
+  display: 'swap',
 })
 
 export const metadata = baseMetadata
@@ -45,7 +57,19 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${jakarta.variable} ${playfair.variable}`}
+      /*
+       * next-themes owns this element after mount: with `attribute="class"`
+       * it adds the resolved theme as a class (`light`/`dark`), and
+       * `enableColorScheme` (on by default) writes `color-scheme` onto it.
+       * Both land after hydration, so the server-rendered attributes differ
+       * from the client's first render — exactly the signature in the
+       * hydration report on /portal/login. next-themes documents
+       * `suppressHydrationWarning` on <html> as the answer; it only excuses
+       * THIS element's attributes, so a real mismatch elsewhere still
+       * reports.
+       */
+      suppressHydrationWarning
+      className={`${inter.variable} ${outfit.variable} ${playfair.variable} ${jetbrainsMono.variable}`}
       /*
        * `globals.css` sets `scroll-behavior: smooth` on this element,
        * and Next.js warned about exactly that combination on every dev

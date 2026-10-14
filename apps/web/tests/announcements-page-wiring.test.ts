@@ -37,7 +37,7 @@ function evaluatedBody(
   form: {
     title: string;
     body: string;
-    targetAudience: string;
+    targetAudience: string[];
     status: "DRAFT" | "PUBLISHED" | "ARCHIVED";
     publishedAt: string;
   },
@@ -87,16 +87,11 @@ function evaluatedBody(
     `return (${objectLiteral})`,
   ) as (
     form: Parameters<typeof evaluatedBody>[0],
-    targetAudience: string,
+    targetAudience: string[],
     editingAnnouncement: { id: string } | null,
   ) => Record<string, unknown>;
 
-  // `targetAudience` is computed one line above the literal in the real handler.
-
-  // It is supplied here the same way, trimmed ”—”— so the literal under test is
-
-  // evaluated with exactly the value the page would have given it.
-  const targetAudience = form.targetAudience.trim();
+  const targetAudience = form.targetAudience;
 
   return evaluate(
     form,
@@ -105,7 +100,7 @@ function evaluatedBody(
   );
 }
 /** * `handleEdit`'s `targetAudience` expression, evaluated against a stored row. * * The read half of the audience round trip. The defect this replaces read * `a.audience?.[0] ?? ''`, which is a perfectly reasonable line on its own and * loses a second role only in combination with the write half ”—”— so it has to be * asserted against real rows, not described. */
-function evaluatedTargetAudience(audience: string[] | undefined): string {
+function evaluatedTargetAudience(audience: string[] | undefined): string[] {
   const start = pageSource.indexOf("const handleEdit");
 
   if (start === -1) throw new Error(`handleEdit not found in ${PAGE}`);
@@ -122,13 +117,13 @@ function evaluatedTargetAudience(audience: string[] | undefined): string {
 
   const evaluate = new Function("a", `return (${property[1]})`) as (a: {
     audience?: string[];
-  }) => string;
+  }) => string[];
   return evaluate({ audience });
 }
 interface FormValues {
   title: string;
   body: string;
-  targetAudience: string;
+  targetAudience: string[];
   status: "DRAFT" | "PUBLISHED" | "ARCHIVED";
   publishedAt: string;
 }
@@ -136,7 +131,7 @@ interface FormValues {
 const edit = (over: Partial<FormValues> = {}): FormValues => ({
   title: "Term 1 closure",
   body: "School closes on Friday.",
-  targetAudience: "CLASSROOM_TEACHER, HEAD_TEACHER",
+  targetAudience: ["CLASSROOM_TEACHER", "HEAD_TEACHER"],
   status: "DRAFT",
   publishedAt: "",
   ...over,
@@ -156,26 +151,19 @@ describe("a multi-role audience survives a read-write round trip", () => {
   });
 
   it("reads a multi-role notice back into the form as every role", () => {
-    // `handleEdit`'s `targetAudience` expression, evaluated. The defect was
-
-    // `a.audience?.[0] ?? ''`, which reads one role and loses the rest.
-    expect(evaluatedTargetAudience(["CLASSROOM_TEACHER", "HEAD_TEACHER"])).toBe(
-      "CLASSROOM_TEACHER, HEAD_TEACHER",
-    );
+    expect(evaluatedTargetAudience(["CLASSROOM_TEACHER", "HEAD_TEACHER"])).toEqual([
+      "CLASSROOM_TEACHER",
+      "HEAD_TEACHER",
+    ]);
   });
 
   it("reads a notice addressed to everyone as a blank field", () => {
-    expect(evaluatedTargetAudience([])).toBe("");
+    expect(evaluatedTargetAudience([])).toEqual([]);
 
-    expect(evaluatedTargetAudience(undefined)).toBe("");
+    expect(evaluatedTargetAudience(undefined)).toEqual([]);
   });
 
   it("round-trips: what the form shows is what the body sends back", () => {
-    // The claim that actually matters, and the one neither half can establish
-
-    // alone. Reopening a notice and saving it unchanged must leave the audience
-
-    // identical ”—”— which is exactly what the original `audience?.[0]` defect broke.
     const stored = ["CLASSROOM_TEACHER", "HEAD_TEACHER"];
     const shown = evaluatedTargetAudience(stored);
 
@@ -187,7 +175,7 @@ describe("a multi-role audience survives a read-write round trip", () => {
   it("round-trips a notice addressed to nobody as nobody", () => {
     const shown = evaluatedTargetAudience([]);
 
-    expect(shown).toBe("");
+    expect(shown).toEqual([]);
 
     expect(
       evaluatedBody({ ...edit(), targetAudience: shown }, ON_EDIT).audience,
@@ -195,37 +183,20 @@ describe("a multi-role audience survives a read-write round trip", () => {
   });
 
   it("sends an empty list for a blank audience, not a list naming nobody", () => {
-    // The migration is explicit: no DEFAULT, because `{}` would silently mean
-
-    // "nobody" and a notice would be written that reaches no one. Empty means
-
-    // every role in the school.
     expect(
-      evaluatedBody(edit({ targetAudience: "" }), ON_EDIT).audience,
-    ).toEqual([]);
-
-    expect(
-      evaluatedBody(edit({ targetAudience: "   " }), ON_EDIT).audience,
+      evaluatedBody(edit({ targetAudience: [] }), ON_EDIT).audience,
     ).toEqual([]);
   });
 
-  it("never sends an empty string as a role name", () => {
-    // `'A,,B'` split without filtering yields `['', '']`, and an empty role name
-
-    // is a role that does not exist.
+  it("sends every role the page holds, including all entries for a multi-role notice", () => {
+    // The page sends `targetAudience` as the array it holds — no lossy
+    // `[targetAudience]` wrapping that would send only the first role.
     expect(
       evaluatedBody(
-        edit({ targetAudience: "CLASSROOM_TEACHER, ,HEAD_TEACHER" }),
+        edit({ targetAudience: ["CLASSROOM_TEACHER", "HEAD_TEACHER"] }),
         ON_EDIT,
       ).audience,
     ).toEqual(["CLASSROOM_TEACHER", "HEAD_TEACHER"]);
-  });
-
-  it("trims each role, so a stray space does not create a second role", () => {
-    expect(
-      evaluatedBody(edit({ targetAudience: " CLASSROOM_TEACHER " }), ON_EDIT)
-        .audience,
-    ).toEqual(["CLASSROOM_TEACHER"]);
   });
 });
 // ---------------------------------------------------------------------------

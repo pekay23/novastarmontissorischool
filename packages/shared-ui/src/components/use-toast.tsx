@@ -3,18 +3,15 @@
 import * as React from 'react'
 import { cva, type VariantProps } from 'class-variance-authority'
 import { X } from 'lucide-react'
+import { cn } from '../lib/utils'
 
 /*
- * No enter/exit animation classes here on purpose.
- *
- * This string used to carry `data-[state=open]:animate-in`,
- * `data-[state=closed]:animate-out` and the matching `fade-*` utilities. They
- * named two different things that do not exist: those utilities ship with the
- * `tailwindcss-animate` plugin, which is not a dependency of this repo, and
- * `ToastItem` below renders no `data-state` attribute, so the variants could
- * never match even with the plugin installed. Both facts were confirmed before
- * the classes were removed: the class names reached the DOM and Tailwind
- * silently emitted no rule for them.
+ * Enter and exit animation come from this repo's own motion tokens
+ * (`animate-toast-in` / `animate-toast-out`), declared in the `@theme`
+ * block of apps/web/app/globals.css and apps/web/app/portal.css. The
+ * utilities `tailwindcss-animate` used to provide are not a dependency
+ * here, and the toast items render no Radix `data-state`, so animation
+ * is driven by mount/exit classes the component controls itself.
  */
 export const toastVariants = cva(
   'group pointer-events-auto flex w-full max-w-sm cursor-pointer gap-3 overflow-hidden rounded-md border p-4 shadow-lg transition-all',
@@ -88,6 +85,21 @@ export function useToast(): { toast: ToastFn } {
 
 export function PortalToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = React.useState<ToastData[]>([])
+  /*
+   * Pending auto-dismiss timers, so an unmount can clear them. Leaving them
+   * armed lets a timer fire at an unmounted provider — a setState on a
+   * component that no longer exists, which React warns about in dev for no
+   * reason a user could ever see.
+   */
+  const timers = React.useRef<Set<ReturnType<typeof setTimeout>>>(new Set())
+
+  React.useEffect(() => {
+    const pending = timers.current
+    return () => {
+      pending.forEach((id) => clearTimeout(id))
+      pending.clear()
+    }
+  }, [])
 
   const addToast = React.useCallback((t: Omit<ToastData, 'id'>) => {
     const id = Math.random().toString(36).slice(2, 11)
@@ -96,9 +108,11 @@ export function PortalToastProvider({ children }: { children: React.ReactNode })
 
     const duration = t.duration ?? 5000
     if (duration > 0) {
-      setTimeout(() => {
+      const timer = setTimeout(() => {
+        timers.current.delete(timer)
         setToasts((prev) => prev.filter((item) => item.id !== id))
       }, duration)
+      timers.current.add(timer)
     }
   }, [])
 
@@ -154,11 +168,14 @@ function Toaster({
   removeToast: (id: string) => void
 }) {
   return (
+    // Above dialog overlays on purpose: a confirm dialog deleting a record
+    // raises the toast that reports the outcome while the overlay is still
+    // up, and a toast that renders behind it is a report nobody sees.
     <div
       role="status"
       aria-live="polite"
       aria-atomic="false"
-      className="fixed top-4 right-4 z-50 flex flex-col gap-2"
+      className="fixed top-4 right-4 z-[9999] flex flex-col gap-2"
     >
       {toasts.map((t) => (
         <ToastItem
@@ -171,6 +188,14 @@ function Toaster({
   )
 }
 
+/*
+ * How long the exit animation takes before the toast actually leaves the
+ * list. Matches the `animate-toast-out` keyframe's 200ms so the slide-out is
+ * not cut short by the removal. Exported so the tests advance their fake
+ * timers past the real delay instead of a copy of it.
+ */
+export const TOAST_EXIT_MS = 200
+
 function ToastItem({
   toast,
   onRemove,
@@ -179,13 +204,44 @@ function ToastItem({
   onRemove: (id: string) => void
 }) {
   // `destructive` is the only variant that reports a failure, so it is the only
-  // one that gets its own assertive region; everything else is announced by the
-  // polite region this item lands in.
+  // one that gets its own assertive region; everything else is announced by
+  // the polite region this item lands in.
   const urgent = toast.variant === 'destructive'
+  const [closing, setClosing] = React.useState(false)
+  const exitTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  React.useEffect(
+    () => () => {
+      if (exitTimer.current) clearTimeout(exitTimer.current)
+    },
+    []
+  )
+
+  /*
+   * Auto-dismiss is timed by the provider. Start the exit animation
+   * `TOAST_EXIT_MS` earlier so the slide-out has finished by the time the
+   * provider removes the toast; a persistent toast (`duration <= 0`) only
+   * leaves through `dismiss`, which runs the same animation first.
+   */
+  const duration = toast.duration ?? 5000
+  React.useEffect(() => {
+    if (duration <= 0) return
+    const id = setTimeout(() => setClosing(true), Math.max(0, duration - TOAST_EXIT_MS))
+    return () => clearTimeout(id)
+  }, [duration])
+
+  function dismiss() {
+    if (closing) return
+    setClosing(true)
+    exitTimer.current = setTimeout(() => onRemove(toast.id), TOAST_EXIT_MS)
+  }
 
   return (
     <div
-      className={toastVariants({ variant: toast.variant })}
+      className={cn(
+        toastVariants({ variant: toast.variant }),
+        closing ? 'animate-toast-out' : 'animate-toast-in'
+      )}
       role={urgent ? 'alert' : undefined}
       aria-live={urgent ? 'assertive' : undefined}
       aria-atomic={urgent ? 'true' : undefined}
@@ -204,7 +260,7 @@ function ToastItem({
           onClick={(e) => {
             e.stopPropagation()
             toast.action!.onClick()
-            onRemove(toast.id)
+            dismiss()
           }}
         >
           {toast.action.label}
@@ -220,7 +276,7 @@ function ToastItem({
         // screen reader is cycling the tab order through a stack of toasts.
         aria-label={toast.title ? `Dismiss ${toast.title}` : "Dismiss notification"}
         className="shrink-0 rounded p-1 hover:bg-black/10"
-        onClick={() => onRemove(toast.id)}
+        onClick={dismiss}
       >
         {/* The button is named by aria-label above; announcing the glyph too
             would double it up. */}

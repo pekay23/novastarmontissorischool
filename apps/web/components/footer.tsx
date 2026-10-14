@@ -42,7 +42,7 @@ export async function Footer() {
   const currentYear = new Date().getFullYear()
 
   return (
-    <footer className="bg-primary-dark text-tint-warm pt-16 pb-8 border-t-[8px] border-accent-warm">
+    <footer className="bg-primary-dark text-tint-warm pt-16 pb-8 border-t-8 border-accent-warm">
       <div className="container">
         {/* Top Section: Main columns */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-12 lg:gap-8 mb-16">
@@ -54,7 +54,7 @@ export async function Footer() {
               {school.address && (
                 <p className="flex items-start gap-3">
                   <MapPin className="mt-1 h-4 w-4 shrink-0 text-accent-warm" aria-hidden="true" />
-                  <span className="leading-relaxed max-w-[200px]">{school.address}</span>
+                  <span className="leading-relaxed max-w-50">{school.address}</span>
                 </p>
               )}
               {school.phone && (
@@ -75,7 +75,7 @@ export async function Footer() {
               )}
               <p className="flex items-start gap-3 pt-2 border-t border-tint-warm/20 mt-4">
                 <Clock className="mt-1 h-4 w-4 shrink-0 text-accent-warm" aria-hidden="true" />
-                <span className="leading-relaxed max-w-[200px]">{school.hours}</span>
+                <span className="leading-relaxed max-w-50">{school.hours}</span>
               </p>
             </div>
           </div>

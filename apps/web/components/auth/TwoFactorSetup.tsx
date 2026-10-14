@@ -145,7 +145,7 @@ export function TwoFactorSetup({ userId }: TwoFactorSetupProps) {
       <CardContent className="space-y-4">
         {error && (
           <div className="p-3 text-sm text-destructive bg-destructive/10 rounded-md flex items-start gap-2">
-            <XCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+            <XCircle className="h-4 w-4 mt-0.5 shrink-0" />
             <span>{error}</span>
           </div>
         )}

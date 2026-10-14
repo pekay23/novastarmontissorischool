@@ -2,13 +2,14 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import {
-  Card, CardContent, CardHeader, CardTitle, Button, Badge,
+  Card, CardContent, CardHeader, CardTitle, Button,
   useToast, useConfirm,
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent,
   DropdownMenuItem, DropdownMenuSeparator,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
   Label, Input, Select, SelectTrigger, SelectValue, SelectContent, SelectItem, Textarea,
 } from '@novastar/shared-ui'
+import { StatusBadge } from '../_components/status-badge'
 import {
   Plus, Search, CreditCard, MoreHorizontal, Trash2,
   RefreshCw,
@@ -282,15 +283,6 @@ export default function FeesPage() {
     }
   }
 
-  const statusColors: Record<string, string> = {
-    PENDING: 'bg-amber-100 text-amber-800',
-    PAID: 'bg-green-100 text-green-800',
-    PARTIAL: 'bg-blue-100 text-blue-800',
-    OVERDUE: 'bg-red-100 text-red-800',
-    CANCELLED: 'bg-gray-100 text-gray-800',
-    DRAFT: 'bg-gray-100 text-gray-800',
-  }
-
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -360,9 +352,7 @@ export default function FeesPage() {
                         {inv.dueDate ? new Date(inv.dueDate).toLocaleDateString() : '-'}
                       </td>
                       <td className="py-2">
-                        <Badge className={statusColors[inv.status] || ''}>
-                          {inv.status}
-                        </Badge>
+                        <StatusBadge status={inv.status} />
                       </td>
                       <td className="py-2 text-sm text-muted-foreground">
                         {new Date(inv.createdAt).toLocaleDateString()}

@@ -53,7 +53,7 @@ export default async function AdmissionsPage() {
 
       {/* Full Bleed Photography */}
       <section className="w-full">
-        <Photo id="learning" ratio="aspect-[21/9] md:aspect-[3/1]" className="w-full rounded-none" />
+        <Photo id="learning" ratio="aspect-21/9 md:aspect-3/1" className="w-full rounded-none" />
       </section>
 
       {open ? (

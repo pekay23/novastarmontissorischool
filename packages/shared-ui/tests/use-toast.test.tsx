@@ -29,7 +29,7 @@
 import { afterEach, describe, expect, jest, test } from "bun:test";
 import { act, cleanup, render, renderHook, screen } from "@testing-library/react";
 import * as React from "react";
-import { PortalToastProvider, useToast } from "../src/components/use-toast";
+import { PortalToastProvider, TOAST_EXIT_MS, useToast } from "../src/components/use-toast";
 
 afterEach(() => {
   cleanup();
@@ -57,14 +57,15 @@ const onScreen = (): number => document.querySelectorAll(".max-w-sm").length;
 
 /**
  * The Toaster wrapper, found by its layout and not by its ARIA attributes.
- * `.fixed.z-50` is the one positioned node a toast produces, so this resolves
- * whether or not the region happens to be announcing anything. Looking it up by
- * `role` instead would let every assertion below pass off some unrelated
- * element claiming to be a live region — the exact failure mode this file
- * exists to prevent.
+ * `.fixed.z-[9999]` is the one positioned node a toast produces, so this
+ * resolves whether or not the region happens to be announcing anything.
+ * Looking it up by `role` instead would let every assertion below pass off
+ * some unrelated element claiming to be a live region — the exact failure
+ * mode this file exists to prevent. The z-class is deliberately high: the
+ * toaster must paint above a dialog overlay, which also sits at `z-50`.
  */
 const region = (): HTMLElement | null =>
-  document.querySelector<HTMLElement>(".fixed.z-50");
+  document.querySelector<HTMLElement>(".fixed.z-\\[9999\\]");
 
 describe("useToast outside a provider", () => {
   test("throws, and names the provider it wanted", () => {
@@ -272,7 +273,17 @@ describe("announcement", () => {
 });
 
 describe("dismissal", () => {
+  /*
+   * Dismissal plays the exit animation first, so removal lands after the
+   * slide-out rather than under it. The delay is a fixed constant, so the
+   * tests drive it with fake timers instead of waiting on the clock.
+   */
+  // A margin past the component's own exit delay, so the assertion fires
+  // after the slide-out rather than racing it.
+  const EXIT_MS = TOAST_EXIT_MS + 50
+
   test("the close button removes its own toast and no other", () => {
+    jest.useFakeTimers();
     function Trigger() {
       const { toast } = useToast();
       React.useEffect(() => {
@@ -295,13 +306,19 @@ describe("dismissal", () => {
     act(() => {
       closes[0]!.click();
     });
+    // Still on screen while the exit animation runs.
+    expect(onScreen()).toBe(2);
 
+    act(() => {
+      jest.advanceTimersByTime(EXIT_MS);
+    });
     expect(onScreen()).toBe(1);
     expect(screen.queryByText("keep")).toBeNull();
     expect(screen.queryByText("dismiss")).toBeTruthy();
   });
 
   test("the action fires and takes its toast with it", () => {
+    jest.useFakeTimers();
     let fired = 0;
     function Trigger() {
       const { toast } = useToast();
@@ -329,6 +346,12 @@ describe("dismissal", () => {
     });
 
     expect(fired).toBe(1);
+    // The toast animates out first, so the count only drops once it has.
+    expect(onScreen()).toBe(1);
+
+    act(() => {
+      jest.advanceTimersByTime(EXIT_MS);
+    });
     expect(onScreen()).toBe(0);
   });
 });

@@ -84,11 +84,11 @@ export default async function PrimarySchoolPage() {
       </div>
 
       {/* Split Typographic Hero */}
-      <section className="bg-gradient-to-b from-tint-warm to-background border-b border-border overflow-hidden">
+      <section className="bg-linear-to-b from-tint-warm to-background border-b border-border overflow-hidden">
         <div className="container pt-24 pb-16 lg:pt-36 lg:pb-24">
           <div className="grid lg:grid-cols-2 gap-12 lg:gap-16 items-center">
             <div className="flex flex-col gap-6 lg:max-w-xl relative z-10">
-              <div className="text-secondary/60 text-[11px] font-bold tracking-[0.3em] uppercase mb-[-1rem]">
+              <div className="text-secondary/60 text-[11px] font-bold tracking-[0.3em] uppercase -mb-4">
                 — Primary School · Ages 6 to 11
               </div>
               <h1 className="type-display font-serif text-secondary-dark leading-[1.1] mt-4">
@@ -146,7 +146,7 @@ export default async function PrimarySchoolPage() {
             alt="Primary students in class" 
             className="object-cover object-center w-full h-full opacity-30 mix-blend-luminosity scale-105"
           />
-          <div className="absolute inset-0 bg-gradient-to-r from-background via-background/80 to-background/30"></div>
+          <div className="absolute inset-0 bg-linear-to-r from-background via-background/80 to-background/30"></div>
         </div>
 
         <div className="container relative z-10">
@@ -422,7 +422,7 @@ export default async function PrimarySchoolPage() {
            </p>
          </div>
 <ScrollableCardGrid 
-              minCardWidth="min-w-[300px] sm:min-w-[340px]" 
+              minCardWidth="min-w-75 sm:min-w-85" 
               gap="gap-6" 
               className="md:hidden"
             >
@@ -445,7 +445,7 @@ export default async function PrimarySchoolPage() {
             
             {/* Horizontal scroll version for desktop */}
             <ScrollableCardGrid 
-              minCardWidth="min-w-[300px] sm:min-w-[340px]" 
+              minCardWidth="min-w-75 sm:min-w-85" 
               gap="gap-6" 
               className="hidden md:block"
             >
@@ -468,14 +468,14 @@ export default async function PrimarySchoolPage() {
        </section>
 
       {/* Visuals */}
-      <section className="relative w-full h-[600px] md:h-[800px] overflow-hidden my-16">
+      <section className="relative w-full h-150 md:h-200 overflow-hidden my-16">
         <div className="absolute inset-0 z-0">
            {/* eslint-disable-next-line @next/next/no-img-element */}
            <img src="/images/photo_2_2026-10-05_11-06-55%20for%20primary%20school.jpg" alt="Primary students working" className="w-full h-full object-cover animate-ken-burns" />
         </div>
         
         <div className="absolute inset-0 bg-black/20 mix-blend-multiply z-10"></div>
-        <div className="absolute bottom-0 w-full h-1/2 bg-gradient-to-t from-background to-transparent z-10"></div>
+        <div className="absolute bottom-0 w-full h-1/2 bg-linear-to-t from-background to-transparent z-10"></div>
 
         <div className="container relative z-20 h-full flex items-end pb-16">
           <div className="grid md:grid-cols-12 gap-8 w-full">

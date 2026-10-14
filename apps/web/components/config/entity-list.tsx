@@ -104,8 +104,8 @@ export function EntityList({ entityType }: EntityListProps) {
   })
   const [loading, setLoading] = useState(false)
   const [search, setSearch] = useState('')
-  const [sort, setSort] = useState<string | null>(null)
-  const [order, setOrder] = useState<'asc' | 'desc'>('desc')
+  const [sort, setSort] = useState<string>('name')
+  const [order, setOrder] = useState<'asc' | 'desc'>('asc')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [showForm, setShowForm] = useState(false)
   const [editMode, setEditMode] = useState(false)
@@ -122,7 +122,7 @@ export function EntityList({ entityType }: EntityListProps) {
         page: String(meta.page),
         limit: String(meta.limit),
       })
-      if (sort) params.set('sort', sort)
+      params.set('sort', sort)
       params.set('order', order)
       if (search) params.set('search', search)
 
@@ -191,7 +191,7 @@ export function EntityList({ entityType }: EntityListProps) {
       const res = await fetch(`/portal/api/config/${entityType}/${id}`, { method: 'DELETE' })
       if (res.ok) {
         setError(null)
-        fetchData()
+        void fetchData()
       } else {
         setError(await describeFailure(res))
       }
@@ -237,7 +237,7 @@ export function EntityList({ entityType }: EntityListProps) {
 
       if (res.ok) {
         handleFormClose()
-        fetchData()
+        void fetchData()
       } else {
         // The dialog stays open with the reason on it. Closing it, or swallowing
         // the refusal, is what let a head teacher save a grading scale and be told

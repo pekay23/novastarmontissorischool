@@ -27,9 +27,31 @@ const SelectTrigger = React.forwardRef<
 ))
 SelectTrigger.displayName = SelectPrimitive.Trigger.displayName
 
-// ... other Select components
 const SelectValue = SelectPrimitive.SelectValue
-const SelectContent = SelectPrimitive.Content
+
+const SelectContent = React.forwardRef<
+  React.ElementRef<typeof SelectPrimitive.Content>,
+  React.ComponentPropsWithoutRef<typeof SelectPrimitive.Content>
+>(({ className, children, ...props }, ref) => (
+  <SelectPrimitive.Portal>
+    <SelectPrimitive.Content
+      ref={ref}
+      className={cn(
+        // The height cap reads Radix's own CSS variable, so the list never
+        // runs past the viewport; the v4 shorthand wraps it in `var()` —
+        // the bracket form `max-h-[--radix-…]` would emit the bare variable
+        // name as a length, which the browser drops.
+        'z-9999 max-h-(--radix-select-content-available-height) overflow-hidden rounded-md border bg-popover text-popover-foreground shadow-md data-[state=open]:animate-dropdown-in',
+        className
+      )}
+      {...props}
+    >
+      {children}
+    </SelectPrimitive.Content>
+  </SelectPrimitive.Portal>
+))
+SelectContent.displayName = SelectPrimitive.Content.displayName
+
 const SelectItem = SelectPrimitive.Item
 
 export {

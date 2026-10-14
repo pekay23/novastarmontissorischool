@@ -120,7 +120,7 @@ export default async function PreschoolPage() {
             alt="Preschool materials" 
             className="object-cover object-center w-full h-full opacity-30 mix-blend-luminosity scale-105"
           />
-          <div className="absolute inset-0 bg-gradient-to-r from-background via-background/90 to-background/30"></div>
+          <div className="absolute inset-0 bg-linear-to-r from-background via-background/90 to-background/30"></div>
         </div>
         
         <div className="container relative z-10">

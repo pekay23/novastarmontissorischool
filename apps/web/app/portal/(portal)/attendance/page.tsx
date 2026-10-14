@@ -79,7 +79,7 @@ export default function AttendancePage() {
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {classes.map((cls) => (
-                <Card key={cls.id} className="hover:bg-accent transition-colors">
+                <Card key={cls.id} className="hover:bg-muted transition-colors">
                   <CardContent className="pt-4">
                     <CardTitle className="text-lg">{cls.name}</CardTitle>
                     <p className="text-sm text-muted-foreground">
@@ -90,7 +90,7 @@ export default function AttendancePage() {
                       size="sm"
                       onClick={() => {
                         const today = new Date().toISOString().split('T')[0]
-                        router.push(`/attendance/mark?class=${cls.id}&date=${today}`)
+                         router.push(`/portal/attendance/mark?class=${cls.id}&date=${today}`)
                       }}
                     >
                       Mark Attendance

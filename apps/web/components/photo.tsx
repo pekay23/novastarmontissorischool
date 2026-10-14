@@ -30,7 +30,7 @@ export function Photo({
   className,
   sizes = '(min-width: 1024px) 60vw, 100vw',
   priority = false,
-  ratio = 'aspect-[3/2]',
+  ratio = 'aspect-3/2',
 }: {
   id: PhotoId
   /** Overrides the stored description. Only for a genuinely different view. */

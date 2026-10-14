@@ -26,6 +26,7 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from '@novastar/shared-ui'
+import { StatusBadge } from '../_components/status-badge'
 import { LoanStatus } from '@novastar/database'
 import {
   Plus,
@@ -76,13 +77,6 @@ interface BookForm {
   edition: string
   description: string
   totalCopies: string
-}
-
-const LOAN_STATUS_COLORS: Record<LoanStatus, string> = {
-  ACTIVE: 'bg-blue-100 text-blue-800',
-  RETURNED: 'bg-green-100 text-green-800',
-  OVERDUE: 'bg-red-100 text-red-800',
-  LOST: 'bg-gray-100 text-gray-800',
 }
 
 export default function LibraryPage() {
@@ -471,14 +465,7 @@ export default function LibraryPage() {
                             </div>
                           </td>
                           <td className="py-2 text-center">
-                            <Badge
-                              variant={
-                                isOverdue ? 'destructive' : 'default'
-                              }
-                              className={LOAN_STATUS_COLORS[status]}
-                            >
-                              {status}
-                            </Badge>
+                            <StatusBadge status={status} />
                           </td>
                         </tr>
                       )

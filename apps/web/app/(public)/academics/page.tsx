@@ -263,7 +263,7 @@ export default async function AcademicsPage() {
         so the strip carries the GES and NaCCA alignment that the existing page
         already asserted and that the programme data backs.
       */}
-      <section className="border-b border-border bg-gradient-to-b from-tint-warm to-background">
+      <section className="border-b border-border bg-linear-to-b from-tint-warm to-background">
         <div className="container pt-28 pb-16 lg:pt-36 lg:pb-20">
           <div className="mb-10 flex flex-wrap items-center justify-between gap-4 rounded-md border border-border bg-surface-container-lowest p-4 shadow-hairline">
             <p className="flex items-center gap-3">
@@ -444,7 +444,7 @@ export default async function AcademicsPage() {
       <section className="w-full">
         <Photo
           id="environment"
-          ratio="aspect-[21/9] md:aspect-[3/1]"
+          ratio="aspect-21/9 md:aspect-3/1"
           className="w-full rounded-none"
         />
       </section>
@@ -536,7 +536,7 @@ export default async function AcademicsPage() {
           className="mt-12 overflow-x-auto rounded-md border border-border bg-surface shadow-raised"
         >
           <p className="sr-only">Scroll horizontally to see all three environments.</p>
-          <table className="w-full min-w-[52rem] border-collapse text-left">
+          <table className="w-full min-w-208 border-collapse text-left">
             {/*
               Without a caption the table is announced only as "table" and the
               reader has to infer what the columns mean. This one names it.

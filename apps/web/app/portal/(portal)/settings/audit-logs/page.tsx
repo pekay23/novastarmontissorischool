@@ -182,7 +182,7 @@ export default async function AuditLogsPage({
         )}
       </div>
 
-      <Suspense key={JSON.stringify(params)} fallback={<Skeleton className="h-[400px] w-full" />}>
+      <Suspense key={JSON.stringify(params)} fallback={<Skeleton className="h-100 w-full" />}>
         <AuditLogTable logs={logs} />
       </Suspense>
 

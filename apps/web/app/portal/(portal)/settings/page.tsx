@@ -14,13 +14,13 @@ const SETTINGS_SECTIONS = [
   {
     id: 'academic',
     label: 'Academic',
-    icon: 'graduation-cap',
+    icon: '🎓',
     entities: ['academic_year', 'term', 'class_level', 'subject', 'grading_scale'] as EntityType[],
   },
   {
     id: 'fees',
     label: 'Fees & Payments',
-    icon: 'credit-card',
+    icon: '💳',
     entities: ['fee_category', 'payment_method'] as EntityType[],
   },
   {
@@ -156,7 +156,7 @@ export default function SettingsPage() {
                 <CardContent>
                   <nav className="flex flex-col gap-2">
                     <Button asChild variant="ghost" className="justify-start">
-                      <Link href="/portal/settings/admissions">Admissions Status</Link>
+                      <Link href="/portal/admissions">Admissions Status</Link>
                     </Button>
                   </nav>
                 </CardContent>

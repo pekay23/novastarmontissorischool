@@ -98,11 +98,10 @@ export const PORTAL_SECTIONS_BY_ROLE: Readonly<Record<string, readonly string[]>
   // staffer; the admissions surface it needs is exempted by prefix below.
   ADMIN_STAFF: ['dashboard', 'announcements'],
   PARENT: ['dashboard', 'announcements', 'students'],
-  // Absent from this map until now, which meant `perms` was `undefined` and the
-  // role was redirected to `/login` for every path — the admissions pages and API
-  // it exists to serve included. `students` because an application becomes a
-  // student record; `announcements` because intake notices go out the same way as
-  // any other school communication.
+  // `ADMISSIONS_OFFICER` was absent from this map, which meant `perms` was
+  // `undefined` and the role was redirected to `/login` for every path —
+  // including the admissions pages and API it exists to serve. It is listed
+  // here so those surfaces reach their own server-side gate instead.
   ADMISSIONS_OFFICER: ['dashboard', 'students', 'announcements'],
 }
 
@@ -116,9 +115,9 @@ export const PORTAL_SECTIONS_BY_ROLE: Readonly<Record<string, readonly string[]>
  * request reaches that gate rather than bouncing off the proxy.
  */
 export const PATH_EXEMPT_PREFIXES_BY_ROLE: Readonly<Record<string, readonly string[]>> = {
-  ADMIN_STAFF: ['/portal/settings/admissions', '/portal/api/admissions'],
-  ADMISSIONS_OFFICER: ['/portal/settings/admissions', '/portal/api/admissions'],
-}
+   ADMIN_STAFF: ['/portal/admissions', '/portal/api/admissions'],
+   ADMISSIONS_OFFICER: ['/portal/admissions', '/portal/api/admissions'],
+ }
 
 /**
  * What the proxy does with a path.

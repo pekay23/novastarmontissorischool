@@ -26,10 +26,10 @@ export function ProgrammeHighlight({
 }: ProgrammeHighlightProps) {
   return (
     <Link href={href} className={cn("group block h-full", className)}>
-      <Card tone="flat" interactive className="relative overflow-hidden p-0 h-[400px] md:h-[500px] flex flex-col justify-end transition-all duration-700 hover:shadow-floating hover:-translate-y-1 bg-surface-container-low border-transparent">
+      <Card tone="flat" interactive className="relative overflow-hidden p-0 h-100 md:h-125 flex flex-col justify-end transition-all duration-700 hover:shadow-floating hover:-translate-y-1 bg-surface-container-low border-transparent">
         <div className="absolute inset-0 z-0">
           <div className="absolute inset-0 bg-primary/20 z-10 opacity-0 transition-opacity duration-500 group-hover:opacity-100 mix-blend-multiply" />
-          <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent z-10 opacity-80 group-hover:opacity-100 transition-opacity duration-500" />
+          <div className="absolute inset-0 bg-linear-to-t from-black/90 via-black/30 to-transparent z-10 opacity-80 group-hover:opacity-100 transition-opacity duration-500" />
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img 
             src={imageSrc} 

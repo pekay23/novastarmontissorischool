@@ -8,7 +8,9 @@ const Card = React.forwardRef<
   <div
     ref={ref}
     className={cn(
-      'rounded-xl border bg-card text-card-foreground shadow-sm',
+      // rounds-lg (16px), not rounded-xl (24px): content cards sit on the
+      // md/lg step of the radius scale — 24px corners read as a template.
+      'rounded-lg border bg-card text-card-foreground shadow-sm',
       className
     )}
     {...props}

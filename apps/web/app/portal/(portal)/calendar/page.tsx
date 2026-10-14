@@ -7,7 +7,6 @@ import {
   CardHeader,
   CardTitle,
   Button,
-  Badge,
   useToast,
   useConfirm,
   Dialog,
@@ -29,7 +28,9 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
+  Calendar as CalendarPicker,
 } from '@novastar/shared-ui'
+import { StatusBadge } from '../_components/status-badge'
 import { ContentStatus } from '@novastar/database'
 import { Plus, Search, MoreHorizontal, Edit2, Trash2, Save, X } from 'lucide-react'
 
@@ -65,6 +66,26 @@ const STATUS_OPTIONS: { value: ContentStatus; label: string }[] = [
   { value: 'ARCHIVED', label: 'Archived' },
 ]
 
+/**
+ * Local-calendar date key (`YYYY-MM-DD`) for an ISO string. Dates are read
+ * through the local timezone, so the key is the day a user in this timezone
+ * sees — correct for the school's UTC+offset, and the same key is used for
+ * both the month-grid markers and the day filter, so the two stay
+ * consistent with each other. Returns null for a missing or unparseable
+ * date.
+ */
+function localDateKey(value: string | null | undefined): string | null {
+  if (!value) return null
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return null
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+/** The same key for a Date the picker produced. */
+function dateKeyOf(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
 export default function CalendarPage() {
   const { toast } = useToast()
   const confirm = useConfirm()
@@ -73,6 +94,7 @@ export default function CalendarPage() {
   const [search, setSearch] = useState('')
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null)
+  const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined)
   const [form, setForm] = useState<EventForm>({
     title: '',
     description: '',
@@ -225,16 +247,25 @@ export default function CalendarPage() {
   }
 
   const today = new Date()
-  const upcoming = events.filter(
-    (e) => e.startDate && new Date(e.startDate) >= today,
-  )
-  const past = events.filter((e) => e.startDate && new Date(e.startDate) < today)
-
-  const statusColors: Record<ContentStatus, string> = {
-    DRAFT: 'bg-muted text-muted-foreground',
-    PUBLISHED: 'bg-green-100 text-green-800',
-    ARCHIVED: 'bg-blue-100 text-blue-800',
+  // Days that carry at least one event, so the month grid can mark them.
+  const eventDays = events
+    .map((e) => localDateKey(e.startDate))
+    .filter((k): k is string => k !== null)
+    .map((k) => {
+      const [y, m, d] = k.split('-').map(Number)
+      return new Date(y, m - 1, d)
+    })
+  const matchesDay = (e: CalendarEvent) => {
+    if (!selectedDate) return true
+    return localDateKey(e.startDate) === dateKeyOf(selectedDate)
   }
+  const upcoming = events.filter(
+    (e) => e.startDate && new Date(e.startDate) >= today && matchesDay(e),
+  )
+  const past = events.filter(
+    (e) => e.startDate && new Date(e.startDate) < today && matchesDay(e),
+  )
+  const dayEventCount = events.filter(matchesDay).length
 
   return (
     <div className="space-y-4">
@@ -264,6 +295,41 @@ export default function CalendarPage() {
 
       <Card>
         <CardHeader>
+          <CardTitle>School Calendar</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {/*
+            The month grid, above the lists. A day with events carries a
+            secondary-tinted dot; picking a day filters the lists below to
+            that date until the filter is cleared.
+          */}
+          <CalendarPicker
+            mode="single"
+            selected={selectedDate}
+            onSelect={setSelectedDate}
+            modifiers={{ hasEvents: eventDays }}
+            modifiersClassNames={{
+              hasEvents:
+                'relative after:absolute after:bottom-0.5 after:left-1/2 after:h-1 after:w-1 after:-translate-x-1/2 after:rounded-full after:bg-secondary',
+            }}
+            className="rounded-md border"
+          />
+          {selectedDate && (
+            <div className="mt-3 flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">
+                {dayEventCount} event{dayEventCount === 1 ? '' : 's'} on{' '}
+                {selectedDate.toLocaleDateString()}
+              </span>
+              <Button variant="ghost" size="sm" onClick={() => setSelectedDate(undefined)}>
+                Clear filter
+              </Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
           <CardTitle>Upcoming Events ({upcoming.length})</CardTitle>
         </CardHeader>
         <CardContent>
@@ -285,12 +351,7 @@ export default function CalendarPage() {
                   <div>
                     <div className="flex items-center gap-2">
                       <p className="font-medium">{e.title}</p>
-                      <Badge
-                        variant="outline"
-                        className={statusColors[e.status] ?? 'bg-muted text-muted-foreground'}
-                      >
-                        {e.status}
-                      </Badge>
+                      <StatusBadge status={e.status} />
                     </div>
                     <p className="text-sm text-muted-foreground">
                       {e.startDate
@@ -340,12 +401,7 @@ export default function CalendarPage() {
                 <li key={e.id} className="border-l-2 border-muted pl-3">
                   <div className="flex items-center gap-2">
                     <p className="font-medium">{e.title}</p>
-                    <Badge
-                      variant="outline"
-                      className={statusColors[e.status] ?? 'bg-muted text-muted-foreground'}
-                    >
-                      {e.status}
-                    </Badge>
+                    <StatusBadge status={e.status} />
                   </div>
                   <p className="text-sm text-muted-foreground">
                     {e.startDate

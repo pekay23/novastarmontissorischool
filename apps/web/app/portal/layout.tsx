@@ -1,3 +1,4 @@
+import '../portal.css'
 import { Providers } from './providers'
 
 /**
@@ -23,6 +24,12 @@ import { Providers } from './providers'
  *   refuses mutating requests that lack the header, so every portal
  *   write — attendance, grades, enrolment — fails without it.
  * - `next-themes`' `ThemeProvider`.
+ *
+ * The '../portal.css' import restores the portal's HSL design tokens
+ * via tailwind.config.mts @config mapping, the .dark variant that
+ * next-themes toggles, and the Tailwind v4 border-color base fix.
+ * Section stylesheets load after the root layout's globals.css so
+ * portal tokens win.
  */
 export default function PortalLayout({
   children,

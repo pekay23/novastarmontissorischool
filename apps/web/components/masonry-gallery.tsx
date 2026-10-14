@@ -19,8 +19,8 @@ return (
         {images.map((image, i) => {
           let aspectClass = 'aspect-square'
           if (image.aspect === 'video') aspectClass = 'aspect-video col-span-2'
-          if (image.aspect === 'portrait') aspectClass = 'aspect-[3/4] row-span-2'
-          if (image.aspect === 'wide') aspectClass = 'aspect-[21/9] col-span-2'
+          if (image.aspect === 'portrait') aspectClass = 'aspect-3/4 row-span-2'
+          if (image.aspect === 'wide') aspectClass = 'aspect-21/9 col-span-2'
 
           return (
             <div 

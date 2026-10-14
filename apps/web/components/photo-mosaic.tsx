@@ -25,7 +25,7 @@ export function PhotoMosaic({
   className
 }: PhotoMosaicProps) {
   return (
-    <div className={cn("grid grid-cols-1 md:grid-cols-12 gap-4 md:h-[500px]", className)}>
+    <div className={cn("grid grid-cols-1 md:grid-cols-12 gap-4 md:h-125", className)}>
       {/* Small image left */}
       <div className="hidden md:block md:col-span-3 h-full overflow-hidden rounded-sm shadow-floating relative group">
         {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -34,7 +34,7 @@ export function PhotoMosaic({
       </div>
       
       {/* Large central image (video placeholder) */}
-      <div className="relative col-span-1 md:col-span-6 h-[300px] md:h-full overflow-hidden rounded-sm shadow-floating group cursor-pointer">
+      <div className="relative col-span-1 md:col-span-6 h-75 md:h-full overflow-hidden rounded-sm shadow-floating group cursor-pointer">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={primaryImage} alt={primaryAlt} className="h-full w-full object-cover transition-transform duration-[2s] group-hover:scale-105" loading="lazy" />
         <div className="absolute inset-0 border border-black/10 rounded-sm z-10 pointer-events-none"></div>

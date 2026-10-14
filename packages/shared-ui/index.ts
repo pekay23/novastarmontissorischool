@@ -34,6 +34,7 @@ export { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbP
 export { Popover, PopoverContent, PopoverTrigger } from './src/components/popover'
 export { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from './src/components/accordion'
 export { DatePicker } from './src/components/date-picker'
+export { Calendar } from './src/components/calendar'
 export { DataTabled } from './src/components/data-table'
 export { NotFound, notFoundActionClasses, type NotFoundProps } from './src/components/not-found'
 export {

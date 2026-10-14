@@ -175,7 +175,7 @@ export default function ErrorsPage() {
         <div className="flex items-center justify-between">
           <h1 className="text-3xl font-heading font-bold">System Errors</h1>
         </div>
-        <Skeleton className="h-[400px] w-full" />
+        <Skeleton className="h-100 w-full" />
       </div>
     )
   }

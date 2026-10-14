@@ -8,8 +8,9 @@
  * console consume their HSL design tokens through utilities such as
  * `bg-primary` and `text-foreground` — `hsl(var(--token))`, which
  * is what `@novastar/shared-ui` expects. The marketing stylesheet
- * (app/globals.css) deliberately does NOT load this file: it defines
- * its own tokens in `@theme` and has no use for the HSL layer.
+ * (app/globals.css) defines its own tokens in `@theme` and does not
+ * load this file. The portal and admin stylesheets DO load it via
+ * `@config`, so this file is not dead code for those sections.
  *
  * The `content` globs are vestigial in v4 (the `@source` directives
  * in each stylesheet do that work) but are kept accurate so the file
@@ -49,6 +50,7 @@ const config = {
       fontFamily: {
         sans: 'var(--font-sans), ui-sans-serif, system-ui, sans-serif',
         heading: 'var(--font-heading), ui-serif, Georgia, serif',
+        display: 'var(--font-display), ui-sans-serif, system-ui, sans-serif',
         mono: 'var(--font-mono), ui-monospace, Menlo, Monaco, monospace',
       },
     },
