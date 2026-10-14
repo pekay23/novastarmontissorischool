@@ -1,0 +1,13 @@
+[
+  { "url": "/contact", "title": "Contact Us - Hero", "type": "page", "category": "Contact", "text": "Contact Us. We'd love to hear from you. Call, message, or visit our campus in Kumasi." },
+  { "url": "/contact", "title": "Contact - Address", "type": "contact", "category": "Contact", "text": "Address: Ayeduase New Site, K-5 Junction, Ayeduase Road, Kumasi, Ashanti Region, Ghana" },
+  { "url": "/contact", "title": "Contact - Phone", "type": "contact", "category": "Contact", "text": "Phone: +233 24 493 5251" },
+  { "url": "/contact", "title": "Contact - Email", "type": "contact", "category": "Contact", "text": "Email: info@novastarmontissorischool.com" },
+  { "url": "/contact", "title": "Contact - Office Hours", "type": "contact", "category": "Contact", "text": "Office Hours: Monday – Friday 7:00 AM – 4:00 PM" },
+  { "url": "/contact", "title": "Complaints Policy", "type": "policy", "category": "Contact", "text": "Parents and guardians are to channel all their grievances directly to the school administrator or the proprietress. Please do not lodge a complaint with a teacher or any other member of staff." },
+  { "url": "/contact", "title": "Contact - WhatsApp", "type": "contact", "category": "Contact", "text": "Message us on WhatsApp. WhatsApp is the quickest way to reach us during office hours." },
+  { "url": "/contact", "title": "Contact - Call", "type": "contact", "category": "Contact", "text": "Call +233 24 493 5251" },
+  { "url": "/contact", "title": "Contact - Email School", "type": "contact", "category": "Contact", "text": "Email the school" },
+  { "url": "/contact", "title": "Admissions Enquiry", "type": "page", "category": "Contact", "text": "If you would rather apply straight away, the online form takes about five minutes. Admissions are not open at the moment, so there is no form to fill in yet — an enquiry now is how you hear about the next intake." },
+  { "url": "/contact", "title": "Google Maps Directions", "type": "contact", "category": "Contact", "text": "Get directions on Google Maps. Map showing Novastar Montessori School in Kumasi." }
+]

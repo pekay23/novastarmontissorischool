@@ -9,10 +9,11 @@ import { cn } from '@novastar/shared-ui'
 interface SearchResult {
   url: string
   title: string
-  description: string
+  text: string
   type: string
   category: string
   score: number
+  matches: number
 }
 
 const getCategoryColor = (category: string) => {
@@ -40,6 +41,7 @@ export default function SearchPageClient() {
 
   const [query, setQuery] = useState(searchParams.get('q') || '')
   const [results, setResults] = useState<SearchResult[]>([])
+  const [terms, setTerms] = useState<string[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [showResults, setShowResults] = useState(false)
   const [selectedIndex, setSelectedIndex] = useState(-1)
@@ -63,6 +65,7 @@ export default function SearchPageClient() {
     const handler = setTimeout(async () => {
       if (!query.trim()) {
         setResults([])
+        setTerms([])
         setShowResults(false)
         return
       }
@@ -72,9 +75,11 @@ export default function SearchPageClient() {
         const response = await fetch(`/api/search?q=${encodeURIComponent(query)}&limit=20`)
         const data = await response.json()
         setResults(data.results || [])
+        setTerms(data.terms || [])
         setShowResults(true)
       } catch {
         setResults([])
+        setTerms([])
         setShowResults(true)
       } finally {
         setIsLoading(false)
@@ -178,6 +183,7 @@ export default function SearchPageClient() {
                 <SearchResultCard
                   key={`${result.url}-${index}`}
                   result={result}
+                  terms={terms}
                   isSelected={index === selectedIndex}
                   onClick={() => navigateToResult(result)}
                 />
@@ -288,14 +294,15 @@ function SearchHero({
 
 function SearchResultCard({
   result,
+  terms,
   isSelected,
   onClick,
 }: {
   result: SearchResult
+  terms: string[]
   isSelected: boolean
   onClick: () => void
 }) {
-
   return (
     <article
       role="listitem"
@@ -325,12 +332,17 @@ function SearchResultCard({
               {result.type}
             </span>
           )}
+          {result.matches > 1 && (
+            <span className="type-eyebrow uppercase text-muted-foreground/70">
+              +{result.matches - 1} more on this page
+            </span>
+          )}
         </div>
         <h3 className="font-serif text-lg text-foreground group-hover:text-primary transition-colors duration-fast">
-          {result.title}
+          <Highlight text={result.title} terms={terms} />
         </h3>
         <p className="mt-1 text-sm text-muted-foreground line-clamp-2">
-          {result.description}
+          <Highlight text={result.text} terms={terms} />
         </p>
         <div className="mt-2 flex items-center gap-1 text-xs text-muted-foreground">
           <span className="font-mono">{result.url}</span>
@@ -346,6 +358,64 @@ function SearchResultCard({
         aria-hidden="true"
       />
     </article>
+  )
+}
+
+/**
+ * Marks the visitor's own words inside a result, so the reason a row matched is
+ * visible without re-reading the whole snippet.
+ *
+ * Folding matches the API's own stem rule, so "fees" marks "Fee" and
+ * "programmes" marks "programme" — a highlight that is stricter than the
+ * matcher would show a row the visitor cannot explain.
+ */
+function highlightTerms(terms: string[]): string[] {
+  const out = new Set<string>()
+  for (const term of terms.filter((t) => t.length >= 2)) {
+    out.add(term)
+    if (!term.endsWith('s')) out.add(`${term}s`)
+    if (term.endsWith('ies') && term.length > 5) out.add(`${term.slice(0, -3)}y`)
+    // "fees" must mark "Fee", so de-pluralising down to three letters is
+    // allowed; two-letter stems are not, because "fees" would then mark
+    // every word beginning "fe". "class" never loses its s.
+    if (term.endsWith('es')) {
+      const stem = term.slice(0, -2)
+      if (stem.length >= 3) out.add(stem)
+    }
+    if (term.endsWith('s') && !term.endsWith('ss')) {
+      const stem = term.slice(0, -1)
+      if (stem.length >= 3) out.add(stem)
+    }
+  }
+  return [...out]
+}
+
+function Highlight({ text, terms }: { text: string; terms: string[] }) {
+  const usableTerms = highlightTerms(terms)
+  if (usableTerms.length === 0) return <>{text}</>
+
+  const escaped = usableTerms
+    .sort((a, b) => b.length - a.length)
+    .map((term) => term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+  // The capture group must span the WHOLE match, including the trailing word
+  // characters. A group covering only the term itself makes `split` discard
+  // the rest of the word — "kindergar" would swallow the "ten" in
+  // "kindergarten".
+  const pattern = new RegExp(`((?:${escaped.join('|')})[\\p{L}\\p{N}]*)`, 'giu')
+  const parts = text.split(pattern).filter((part) => part !== undefined && part !== '')
+
+  return (
+    <>
+      {parts.map((part, index) =>
+        usableTerms.some((term) => part.toLowerCase().startsWith(term)) ? (
+          <mark key={index} className="rounded-xs bg-primary/20 text-foreground">
+            {part}
+          </mark>
+        ) : (
+          <span key={index}>{part}</span>
+        ),
+      )}
+    </>
   )
 }
 

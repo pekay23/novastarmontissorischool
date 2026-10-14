@@ -1,0 +1,19 @@
+[
+  { "url": "/about", "title": "About page hero heading", "type": "page", "category": "About", "text": "About Novastar Montessori School" },
+  { "url": "/about", "title": "About page hero description", "type": "feature", "category": "About", "text": "Bringing quality care and experience to learning through authentic Montessori education that nurtures each child's natural curiosity, independence, and love for discovery." },
+  { "url": "/about", "title": "Our Purpose section label", "type": "section", "category": "About", "text": "Our Purpose" },
+  { "url": "/about", "title": "Mission sentence 1", "type": "feature", "category": "About", "text": "Novastar exists to provide a safe, developmentally appropriate environment for preschool and school age children." },
+  { "url": "/about", "title": "Mission sentence 2", "type": "feature", "category": "About", "text": "Our focus is to provide a stimulating early care and education experience which promotes each child's social/emotional, physical and cognitive development." },
+  { "url": "/about", "title": "Mission sentence 3", "type": "feature", "category": "About", "text": "Our goal is to support children's desire to be life‐long learners." },
+  { "url": "/about", "title": "Vision statement", "type": "feature", "category": "About", "text": "To provide a world‐class Montessori education to children and prepare them to become responsible citizens capable of leading meaningful and morally sound adult life." },
+  { "url": "/about", "title": "Our History section heading", "type": "section", "category": "About", "text": "Our History" },
+  { "url": "/about", "title": "History paragraph 1", "type": "feature", "category": "About", "text": "Founded in 2016, Novastar Montessori School began as a small creche with a vision to bring authentic Montessori education to Kumasi." },
+  { "url": "/about", "title": "History paragraph 2", "type": "feature", "category": "About", "text": "Over the years, we have grown into a full-fledged school offering programs from Creche through Junior High School, serving families across the Ashanti Region." },
+  { "url": "/about", "title": "History paragraph 3", "type": "feature", "category": "About", "text": "Our approach combines the Montessori Method with the Ghana Education Service curriculum, creating a unique environment where inquiry and standard-aligned rigor coexist." },
+  { "url": "/about", "title": "Campus gallery heading", "type": "section", "category": "About", "text": "Our Campus A glimpse into our environments" },
+  { "url": "/about", "title": "Gallery image: Classroom", "type": "feature", "category": "Community", "text": "Classroom" },
+  { "url": "/about", "title": "Gallery image: Children working", "type": "feature", "category": "Community", "text": "Children working" },
+  { "url": "/about", "title": "Gallery image: Montessori materials", "type": "feature", "category": "Academics", "text": "Montessori materials" },
+  { "url": "/about", "title": "Gallery image: Learning", "type": "feature", "category": "Academics", "text": "Learning" },
+  { "url": "/about", "title": "Gallery image: Activity", "type": "feature", "category": "Community", "text": "Activity" }
+]

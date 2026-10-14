@@ -1,0 +1,10 @@
+[
+  { "url": "/news", "title": "Latest News", "type": "page", "category": "Community", "text": "Latest News" },
+  { "url": "/news", "title": "News hero lead", "type": "page", "category": "Community", "text": "Stay updated with the latest happenings at Novastar Montessori School." },
+  { "url": "/news", "title": "No news posted yet", "type": "section", "category": "Community", "text": "No news posted yet" },
+  { "url": "/news", "title": "Empty state body", "type": "section", "category": "Community", "text": "We publish school news and term dates here as they happen. In the meantime, call or message the school office for anything you need." },
+  { "url": "/news", "title": "News page title", "type": "page", "category": "Community", "text": "News & Updates" },
+  { "url": "/news", "title": "News page description", "type": "page", "category": "Community", "text": "Latest news, announcements, and updates from Novastar Montessori School. Term dates, events, and school achievements." },
+  { "url": "/news", "title": "News card fields", "type": "section", "category": "Community", "text": "News card shows: title, published date, category, excerpt" },
+  { "url": "/news", "title": "News category separator", "type": "section", "category": "Community", "text": "•" }
+]

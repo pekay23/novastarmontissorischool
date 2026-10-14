@@ -1,0 +1,9 @@
+[
+  { "url": "/events", "title": "Events Calendar", "type": "page", "category": "Community", "text": "Events Calendar" },
+  { "url": "/events", "title": "Events hero lead", "type": "page", "category": "Community", "text": "Stay updated with upcoming events and important dates at Novastar Montessori School." },
+  { "url": "/events", "title": "No events scheduled yet", "type": "section", "category": "Community", "text": "No events scheduled yet" },
+  { "url": "/events", "title": "Empty state body", "type": "section", "category": "Community", "text": "Term dates and events are published here once confirmed. Call the school office if you need dates before then." },
+  { "url": "/events", "title": "Events page title", "type": "page", "category": "Community", "text": "Events & Calendar" },
+  { "url": "/events", "title": "Events page description", "type": "page", "category": "Community", "text": "Upcoming events at Novastar Montessori: open mornings, parent workshops, school performances, and academic calendar dates." },
+  { "url": "/events", "title": "Event card fields", "type": "section", "category": "Community", "text": "Event card shows: title, date range, description, location" }
+]
