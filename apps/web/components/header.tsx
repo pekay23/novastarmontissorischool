@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import Image from 'next/image'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useState, useCallback } from 'react'
 import { Clock, Menu, Phone, X, Search, User, ChevronDown } from 'lucide-react'
 import { cn } from '@novastar/shared-ui'
@@ -40,6 +40,7 @@ export default function Header({ navigation, siteName: _siteName, contact }: Hea
    * state is silently lost on every page. Both sides are normalised instead.
    */
   const pathname = usePathname().replace(/\/+$/, '') || '/'
+  const router = useRouter()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({})
 
@@ -114,9 +115,9 @@ export default function Header({ navigation, siteName: _siteName, contact }: Hea
   const handleGlobalSearch = useCallback((event: KeyboardEvent) => {
     if ((event.metaKey || event.ctrlKey) && event.key === 'k') {
       event.preventDefault()
-      window.location.href = '/search'
+      router.push('/search')
     }
-  }, [])
+  }, [router])
 
   useEffect(() => {
     document.addEventListener('keydown', handleGlobalSearch)

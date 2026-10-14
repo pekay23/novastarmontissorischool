@@ -5,7 +5,6 @@ import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Search as SearchIcon, X, ArrowRight, ExternalLink } from 'lucide-react'
 import { cn } from '@novastar/shared-ui'
-import { MarketingButton } from '@/components/marketing-button'
 
 interface SearchResult {
   url: string
@@ -14,6 +13,24 @@ interface SearchResult {
   type: string
   category: string
   score: number
+}
+
+const getCategoryColor = (category: string) => {
+  switch (category) {
+    case 'Home': return 'bg-primary/10 text-primary'
+    case 'About': return 'bg-secondary/10 text-secondary'
+    case 'Academics': return 'bg-accent-warm/20 text-accent-warm-dark'
+    case 'Preschool':
+    case 'Primary': return 'bg-tint-warm text-primary'
+    case 'Admissions':
+    case 'Fees': return 'bg-primary/10 text-primary'
+    case 'Community':
+    case 'News':
+    case 'Events': return 'bg-secondary/10 text-secondary'
+    case 'Contact': return 'bg-accent-warm/20 text-accent-warm-dark'
+    case 'Legal': return 'bg-muted text-muted-foreground'
+    default: return 'bg-muted text-muted-foreground'
+  }
 }
 
 export default function SearchPageClient() {
@@ -26,6 +43,15 @@ export default function SearchPageClient() {
   const [isLoading, setIsLoading] = useState(false)
   const [showResults, setShowResults] = useState(false)
   const [selectedIndex, setSelectedIndex] = useState(-1)
+
+  const navigateToResult = useCallback((result: SearchResult) => {
+    if (result.url.startsWith('/')) {
+      router.push(result.url)
+    } else {
+      window.open(result.url, '_blank')
+    }
+    setShowResults(false)
+  }, [router])
 
   // Focus input on mount
   useEffect(() => {
@@ -98,16 +124,7 @@ export default function SearchPageClient() {
 
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [showResults, results, selectedIndex])
-
-  const navigateToResult = (result: SearchResult) => {
-    if (result.url.startsWith('/')) {
-      router.push(result.url)
-    } else {
-      window.open(result.url, '_blank')
-    }
-    setShowResults(false)
-  }
+  }, [showResults, results, selectedIndex, navigateToResult])
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -121,24 +138,6 @@ export default function SearchPageClient() {
     setResults([])
     setShowResults(false)
     inputRef.current?.focus()
-  }
-
-  const getCategoryColor = (category: string) => {
-    switch (category) {
-      case 'Home': return 'bg-primary/10 text-primary'
-      case 'About': return 'bg-secondary/10 text-secondary'
-      case 'Academics': return 'bg-accent-warm/20 text-accent-warm-dark'
-      case 'Preschool':
-      case 'Primary': return 'bg-tint-warm text-primary'
-      case 'Admissions':
-      case 'Fees': return 'bg-primary/10 text-primary'
-      case 'Community':
-      case 'News':
-      case 'Events': return 'bg-secondary/10 text-secondary'
-      case 'Contact': return 'bg-accent-warm/20 text-accent-warm-dark'
-      case 'Legal': return 'bg-muted text-muted-foreground'
-      default: return 'bg-muted text-muted-foreground'
-    }
   }
 
   return (
@@ -296,23 +295,6 @@ function SearchResultCard({
   isSelected: boolean
   onClick: () => void
 }) {
-  const getCategoryColor = (category: string) => {
-    switch (category) {
-      case 'Home': return 'bg-primary/10 text-primary'
-      case 'About': return 'bg-secondary/10 text-secondary'
-      case 'Academics': return 'bg-accent-warm/20 text-accent-warm-dark'
-      case 'Preschool':
-      case 'Primary': return 'bg-tint-warm text-primary'
-      case 'Admissions':
-      case 'Fees': return 'bg-primary/10 text-primary'
-      case 'Community':
-      case 'News':
-      case 'Events': return 'bg-secondary/10 text-secondary'
-      case 'Contact': return 'bg-accent-warm/20 text-accent-warm-dark'
-      case 'Legal': return 'bg-muted text-muted-foreground'
-      default: return 'bg-muted text-muted-foreground'
-    }
-  }
 
   return (
     <article
