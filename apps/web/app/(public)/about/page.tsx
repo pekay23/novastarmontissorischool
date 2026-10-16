@@ -158,9 +158,9 @@ export default function AboutPage() {
           images={[
             { src: '/images/photo_2_2026-10-05_11-06-55%20for%20primary%20school.jpg', alt: 'Classroom', aspect: 'wide' },
             { src: '/images/photo_3_2026-10-05_11-06-55%20for%20primary%20school.jpg', alt: 'Children working', aspect: 'portrait' },
-            { src: '/images/photo_4_2026-10-05_11-06-55%20for%20primary%20school.jpg', alt: 'Montessori materials', aspect: 'square' },
-            { src: '/images/photo_7_2026-10-05_11-06-55.jpg', alt: 'Learning', aspect: 'square' },
-            { src: '/images/photo_6_2026-10-05_11-06-55.jpg', alt: 'Activity', aspect: 'video' },
+            { src: '/images/photo_4_2026-10-05_11-06-55%20for%20preschool.jpg', alt: 'Montessori materials', aspect: 'square' },
+            { src: '/images/placeholders/learning.jpg', alt: 'Learning', aspect: 'square' },
+            { src: '/images/placeholders/classroom.jpg', alt: 'Activity', aspect: 'video' },
           ]}
           className="max-w-5xl mx-auto"
         />
