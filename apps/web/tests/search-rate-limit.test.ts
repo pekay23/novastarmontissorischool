@@ -5,6 +5,7 @@ import { NextRequest } from 'next/server'
 // automatically, and shared Upstash state cannot be reset by unit tests.
 process.env.UPSTASH_REDIS_REST_URL = ''
 process.env.UPSTASH_REDIS_REST_TOKEN = ''
+process.env.DATABASE_URL = ''
 
 const { GET } = await import('@/app/api/search/route')
 
