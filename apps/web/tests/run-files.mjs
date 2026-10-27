@@ -45,7 +45,13 @@ for (const file of files) {
   const result = spawnSync(
     'bun',
     ['test', '--preload', './tests/preload.ts', `tests/${file}`],
-    { cwd: join(here, '..'), encoding: 'utf8' }
+    {
+      cwd: join(here, '..'),
+      encoding: 'utf8',
+      // A CI host may export NODE_ENV=production for other jobs. These are
+      // unit tests and must use the local test doubles/fallbacks consistently.
+      env: { ...process.env, NODE_ENV: 'test' },
+    }
   )
 
   const output = `${result.stdout ?? ''}${result.stderr ?? ''}`
