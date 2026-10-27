@@ -24,7 +24,7 @@ test.describe('Fees and payments', () => {
 
   test.beforeEach(async ({ page }) => {
     await loginAs(page);
-    await page.goto(`${PORTAL_PREFIX}/fees`);
+    await page.goto(`${PORTAL_PREFIX}/fees`, { waitUntil: 'domcontentloaded' });
   });
 
   test('should render the invoices surface', async ({ page }) => {

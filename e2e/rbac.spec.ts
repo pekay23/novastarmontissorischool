@@ -33,7 +33,7 @@ test.describe('Portal navigation', () => {
       const failures: string[] = [];
       page.on('pageerror', (err) => failures.push(err.message));
 
-      await page.goto(`${PORTAL_PREFIX}${route}`);
+      await page.goto(`${PORTAL_PREFIX}${route}`, { waitUntil: 'domcontentloaded' });
       await expect(page).toHaveURL(new RegExp(route));
       // A heading marks the page as actually rendered rather than an empty
       // shell or a 404 that still returns HTTP 200.
@@ -49,7 +49,7 @@ test.describe('Route protection', () => {
 
   for (const route of PROTECTED) {
     test(`should redirect ${route} to login when signed out`, async ({ page }) => {
-      await page.goto(`${PORTAL_PREFIX}${route}`);
+      await page.goto(`${PORTAL_PREFIX}${route}`, { waitUntil: 'domcontentloaded' });
       await expect(page).toHaveURL(new RegExp(`${PORTAL_PREFIX}/login`));
     });
   }

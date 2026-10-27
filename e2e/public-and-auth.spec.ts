@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test'
 test.describe('Public website and authentication entry points', () => {
   test('desktop navigation exposes its dropdown when reached by keyboard', async ({ page }, testInfo) => {
     await page.setViewportSize({ width: 1440, height: 1000 })
-    await page.goto('/')
+    await page.goto('/', { waitUntil: 'domcontentloaded' })
     await page.screenshot({ path: testInfo.outputPath('marketing-desktop.png'), fullPage: true })
     const navigation = page.getByRole('navigation', { name: 'Main', exact: true })
     await navigation.getByRole('link', { name: 'Discover', exact: true }).focus()
@@ -15,7 +15,7 @@ test.describe('Public website and authentication entry points', () => {
 
   test('mobile navigation keeps closed submenu links out of keyboard focus', async ({ page }, testInfo) => {
     await page.setViewportSize({ width: 390, height: 844 })
-    await page.goto('/')
+    await page.goto('/', { waitUntil: 'domcontentloaded' })
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true)
     await page.screenshot({ path: testInfo.outputPath('marketing-mobile.png'), fullPage: true })
     await page.getByRole('button', { name: 'Open menu', exact: true }).click()
@@ -31,7 +31,7 @@ test.describe('Public website and authentication entry points', () => {
   })
 
   test('footer calendar opens a real public page and unfinished social links stay hidden', async ({ page }) => {
-    await page.goto('/')
+    await page.goto('/', { waitUntil: 'domcontentloaded' })
     const footer = page.getByRole('contentinfo')
     await footer.getByRole('link', { name: 'Events & Calendar' }).click()
     await expect(page.getByRole('heading', { name: 'Events Calendar', exact: true })).toBeVisible()
@@ -39,7 +39,7 @@ test.describe('Public website and authentication entry points', () => {
   })
 
   test('password recovery opens without a session', async ({ page }) => {
-    await page.goto('/portal/forgot-password/')
+    await page.goto('/portal/forgot-password/', { waitUntil: 'domcontentloaded' })
     await expect(page).toHaveURL(/\/portal\/forgot-password\/?$/)
     await expect(page.getByRole('textbox', { name: /email/i })).toBeVisible()
   })
@@ -50,7 +50,7 @@ test.describe('Public website and authentication entry points', () => {
       sentToken = route.request().headers()['x-csrf-token']
       await route.fulfill({ status: 401, contentType: 'application/json', body: JSON.stringify({ error: 'Credentials were rejected for this test.' }) })
     })
-    const response = await page.goto('/admin/login/')
+    const response = await page.goto('/admin/login/', { waitUntil: 'domcontentloaded' })
     if (process.env.E2E_SERVER_MODE === 'production') {
       const csp = response?.headers()['content-security-policy'] ?? ''
       const nonce = csp.match(/'nonce-([^']+)'/)?.[1]

@@ -51,7 +51,7 @@ test.describe('Authentication', () => {
   });
 
   test('should protect routes from unauthenticated access', async ({ page }) => {
-    await page.goto(`${PORTAL_PREFIX}/dashboard`);
+    await page.goto(`${PORTAL_PREFIX}/dashboard`, { waitUntil: 'domcontentloaded' });
     await expect(page).toHaveURL(/\/login/);
   });
 
@@ -60,7 +60,7 @@ test.describe('Authentication', () => {
     await page.route('**/portal/api/auth/forgot-password', route => route.fulfill({
       status: 200, contentType: 'application/json', body: JSON.stringify({ message }),
     }));
-    await page.goto(`${PORTAL_PREFIX}/forgot-password/`);
+    await page.goto(`${PORTAL_PREFIX}/forgot-password/`, { waitUntil: 'domcontentloaded' });
     await page.getByLabel('Email', { exact: true }).fill('parent@example.test');
     await page.getByRole('button', { name: 'Send Reset Link' }).click();
     await expect(page.getByRole('status').filter({ hasText: message })).toBeVisible();
