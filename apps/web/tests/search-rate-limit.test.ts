@@ -6,17 +6,24 @@ import { resetRateLimit } from '@/lib/rate-limit'
 /**
  * Cover for `GET /api/search` anti-scraping rate limiting.
  *
- * The limiter is the real one (`apps/web/lib/rate-limit.ts`, in-memory
- * fallback — no Upstash in tests). With no trusted proxy hops configured,
-   * every client resolves to the same identifier, so the bucket is shared
-   * across calls in this file.
+ * The limiter is the real one (`apps/web/lib/rate-limit.ts`). Each test gets
+ * a distinct client identifier so shared Redis state cannot leak across runs.
  */
+let testClientIp = ''
+
 beforeEach(() => {
   resetRateLimit()
+  // Give each test its own bucket. CI environments can provide a shared Redis
+  // limiter, which resetRateLimit() cannot clear; a unique client key keeps
+  // this integration test independent of earlier runs and other workers.
+  process.env.TRUSTED_PROXY_HOPS = '1'
+  testClientIp = crypto.randomUUID()
 })
 
 function request(q: string): NextRequest {
-  return new NextRequest(`http://localhost:3000/api/search?q=${encodeURIComponent(q)}`)
+  return new NextRequest(`http://localhost:3000/api/search?q=${encodeURIComponent(q)}`, {
+    headers: { 'x-real-ip': testClientIp },
+  })
 }
 
 describe('GET /api/search rate limiting', () => {
