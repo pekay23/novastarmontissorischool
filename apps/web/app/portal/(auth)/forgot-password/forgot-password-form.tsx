@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Input } from '@novastar/shared-ui'
 
@@ -14,9 +14,14 @@ import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Inpu
  */
 export function ForgotPasswordForm() {
   const router = useRouter()
+  const [clientReady, setClientReady] = useState(false)
   const [email, setEmail] = useState('')
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    setClientReady(true)
+  }, [])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -65,7 +70,7 @@ export function ForgotPasswordForm() {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4" data-client-ready={clientReady}>
           <div>
             <label htmlFor="email" className="block text-sm font-medium mb-1">
               Email

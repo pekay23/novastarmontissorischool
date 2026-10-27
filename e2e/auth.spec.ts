@@ -57,10 +57,11 @@ test.describe('Authentication', () => {
 
   test('should request password reset', async ({ page }) => {
     const message = 'If that address has an account, a reset link is on its way.';
-    await page.route('**/portal/api/auth/forgot-password', route => route.fulfill({
+    await page.route(/\/portal\/api\/auth\/forgot-password\/?$/, route => route.fulfill({
       status: 200, contentType: 'application/json', body: JSON.stringify({ message }),
     }));
     await page.goto(`${PORTAL_PREFIX}/forgot-password/`, { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('form[data-client-ready="true"]')).toBeVisible();
     await page.getByLabel('Email', { exact: true }).fill('parent@example.test');
     await page.getByRole('button', { name: 'Send Reset Link' }).click();
     await expect(page.getByRole('status').filter({ hasText: message })).toBeVisible();

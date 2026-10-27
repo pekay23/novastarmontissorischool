@@ -58,6 +58,7 @@ test.describe('Public website and authentication entry points', () => {
       const scriptNonce = await page.locator('script[nonce]').first().evaluate(element => element instanceof HTMLScriptElement ? element.nonce : null)
       expect(scriptNonce).toBe(nonce)
     }
+    await expect(page.locator('form[data-client-ready="true"]')).toBeVisible()
     const identifier = page.getByRole('textbox', { name: 'Username or email' })
     await expect(identifier).toBeEnabled()
     await identifier.fill('test-operator')

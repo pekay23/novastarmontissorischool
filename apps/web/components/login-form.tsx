@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Alert, AlertDescription, AlertTitle } from '@novastar/shared-ui'
 
@@ -41,6 +41,11 @@ export function LoginForm({
     : '/admin/tenants'
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
+  const [clientReady, setClientReady] = useState(false)
+
+  useEffect(() => {
+    setClientReady(true)
+  }, [])
 
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -89,7 +94,7 @@ export function LoginForm({
   }
 
   return (
-    <form onSubmit={onSubmit} className="space-y-4">
+    <form onSubmit={onSubmit} className="space-y-4" data-client-ready={clientReady}>
       {error ? (
         <Alert variant="destructive">
           <AlertTitle>Sign-in refused</AlertTitle>
