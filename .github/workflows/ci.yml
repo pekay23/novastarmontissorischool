@@ -220,6 +220,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
+      - name: Install Bun download utility
+        run: apt-get update -qq && apt-get install --no-install-recommends -y unzip
+
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
