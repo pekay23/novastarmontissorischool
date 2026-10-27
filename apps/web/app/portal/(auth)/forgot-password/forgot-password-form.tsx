@@ -1,8 +1,12 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Input } from '@novastar/shared-ui'
+
+function markClientReady(form: HTMLFormElement | null) {
+  if (form) form.dataset.clientReady = 'true'
+}
 
 /**
  * Asks for an email address and reports the same sentence for every outcome.
@@ -14,14 +18,9 @@ import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Inpu
  */
 export function ForgotPasswordForm() {
   const router = useRouter()
-  const [clientReady, setClientReady] = useState(false)
   const [email, setEmail] = useState('')
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
-
-  useEffect(() => {
-    setClientReady(true)
-  }, [])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -70,7 +69,7 @@ export function ForgotPasswordForm() {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <form onSubmit={handleSubmit} className="space-y-4" data-client-ready={clientReady}>
+        <form ref={markClientReady} onSubmit={handleSubmit} className="space-y-4" data-client-ready="false">
           <div>
             <label htmlFor="email" className="block text-sm font-medium mb-1">
               Email
