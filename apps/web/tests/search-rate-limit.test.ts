@@ -1,7 +1,15 @@
 import { describe, it, expect, beforeEach } from 'bun:test'
 import { NextRequest } from 'next/server'
-import { GET } from '@/app/api/search/route'
-import { resetRateLimit } from '@/lib/rate-limit'
+
+// Keep this route test on the local limiter. Bun loads developer `.env*` files
+// automatically, and shared Upstash state cannot be reset by unit tests.
+process.env.UPSTASH_REDIS_REST_URL = ''
+process.env.UPSTASH_REDIS_REST_TOKEN = ''
+
+const [{ GET }, { resetRateLimit }] = await Promise.all([
+  import('@/app/api/search/route'),
+  import('@/lib/rate-limit'),
+])
 
 /**
  * Cover for `GET /api/search` anti-scraping rate limiting.
