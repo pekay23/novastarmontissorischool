@@ -201,6 +201,10 @@ jobs:
       E2E_EMAIL: ${{ vars.E2E_EMAIL }}
       E2E_PASSWORD: ${{ vars.E2E_PASSWORD }}
       E2E_SCHOOL_CODE: ${{ vars.E2E_SCHOOL_CODE }}
+      # Let the admin login render its enabled form in E2E. This is only a
+      # disposable signing key for the test server; it cannot authenticate to
+      # the production console.
+      PLATFORM_SESSION_SECRET: ci-only-admin-session-placeholder-not-for-production
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       # The suite serves the app on the pinned e2e port (3100 — the default in
       # scripts/ci/e2e.ts and playwright.config.ts); the global env's
