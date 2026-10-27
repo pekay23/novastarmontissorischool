@@ -242,6 +242,8 @@ jobs:
 
       - name: Run E2E tests
         run: bun run test:e2e
+        env:
+          HOME: /root
 
 # The Neon -> Supabase mirror moved to .github/workflows/db-mirror.yml.
 # The job that used to live here passed NEON_DATABASE_URL while the tool reads
