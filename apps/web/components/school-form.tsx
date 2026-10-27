@@ -1,30 +1,30 @@
-'use client'
+"use client";
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { Button } from '@novastar/shared-ui'
+import { useId, useState } from "react";
+import { useRouter } from "next/navigation";
+import { Button } from "@novastar/shared-ui";
 
 type SchoolFormData = {
-  name: string
-  code: string
-  address: string
-  phone: string
-  email: string
-  established: string
-  motto: string | null | undefined
-  logoUrl: string | null | undefined
-}
+  name: string;
+  code: string;
+  address: string;
+  phone: string;
+  email: string;
+  established: string;
+  motto: string | null | undefined;
+  logoUrl: string | null | undefined;
+};
 
 const emptyForm: SchoolFormData = {
-  name: '',
-  code: '',
-  address: '',
-  phone: '',
-  email: '',
-  established: new Date().toISOString().split('T')[0],
-  motto: '',
-  logoUrl: '',
-}
+  name: "",
+  code: "",
+  address: "",
+  phone: "",
+  email: "",
+  established: new Date().toISOString().split("T")[0],
+  motto: "",
+  logoUrl: "",
+};
 
 export function SchoolForm({
   tenantId,
@@ -32,26 +32,31 @@ export function SchoolForm({
   initial,
   onSuccess,
 }: {
-  tenantId: string
-  editId?: string
-  initial?: Partial<SchoolFormData>
-  onSuccess?: () => void
+  tenantId: string;
+  editId?: string;
+  initial?: Partial<SchoolFormData>;
+  onSuccess?: () => void;
 }) {
-  const router = useRouter()
-  const [form, setForm] = useState<SchoolFormData>({ ...emptyForm, ...initial })
-  const [pending, setPending] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const router = useRouter();
+  const formId = useId();
+  const [form, setForm] = useState<SchoolFormData>({
+    ...emptyForm,
+    ...initial,
+    established: (initial?.established ?? emptyForm.established).slice(0, 10),
+  });
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const isEditing = Boolean(editId)
+  const isEditing = Boolean(editId);
 
   async function submit() {
-    setPending(true)
-    setError(null)
+    setPending(true);
+    setError(null);
     try {
       const url = isEditing
         ? `/admin/api/tenants/${encodeURIComponent(tenantId)}/schools/${encodeURIComponent(editId!)}`
-        : `/admin/api/tenants/${encodeURIComponent(tenantId)}/schools`
-      const method = isEditing ? 'PATCH' : 'POST'
+        : `/admin/api/tenants/${encodeURIComponent(tenantId)}/schools`;
+      const method = isEditing ? "PATCH" : "POST";
 
       const body: Record<string, unknown> = {
         name: form.name,
@@ -60,39 +65,48 @@ export function SchoolForm({
         phone: form.phone,
         email: form.email,
         established: form.established,
-        motto: (form.motto ?? '').length > 0 ? form.motto : null,
-        logoUrl: (form.logoUrl ?? '').length > 0 ? form.logoUrl : null,
-      }
+        motto: (form.motto ?? "").length > 0 ? form.motto : null,
+        logoUrl: (form.logoUrl ?? "").length > 0 ? form.logoUrl : null,
+      };
 
       const response = await fetch(url, {
         method,
-        headers: { 'content-type': 'application/json' },
+        headers: { "content-type": "application/json" },
         body: JSON.stringify(body),
-      })
+      });
 
-      const parsed: unknown = await response.json().catch(() => null)
-      const body_ = (parsed ?? {}) as { error?: string }
+      const parsed: unknown = await response.json().catch(() => null);
+      const body_ = (parsed ?? {}) as { error?: string };
 
       if (!response.ok) {
-        setError(body_.error ?? 'Operation failed.')
-        return
+        setError(body_.error ?? "Operation failed.");
+        return;
       }
 
-      onSuccess?.()
-      router.refresh()
+      onSuccess?.();
+      router.refresh();
     } catch {
-      setError('Could not reach the server.')
+      setError("Could not reach the server.");
     } finally {
-      setPending(false)
+      setPending(false);
     }
   }
 
   return (
-    <div className="space-y-3">
-      <div className="grid grid-cols-2 gap-2">
+    <form
+      className="space-y-3"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (!pending) void submit();
+      }}
+    >
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         <div>
-          <label className="text-xs font-medium">Name</label>
+          <label htmlFor={formId + "-name"} className="text-xs font-medium">
+            Name
+          </label>
           <input
+            id={formId + "-name"}
             value={form.name}
             onChange={(e) => setForm({ ...form, name: e.target.value })}
             className="h-9 w-full rounded-md border border-input bg-background px-2 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -100,8 +114,11 @@ export function SchoolForm({
           />
         </div>
         <div>
-          <label className="text-xs font-medium">Code</label>
+          <label htmlFor={formId + "-code"} className="text-xs font-medium">
+            Code
+          </label>
           <input
+            id={formId + "-code"}
             value={form.code}
             onChange={(e) => setForm({ ...form, code: e.target.value })}
             className="h-9 w-full rounded-md border border-input bg-background px-2 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -111,8 +128,11 @@ export function SchoolForm({
       </div>
       <div className="grid grid-cols-2 gap-2">
         <div>
-          <label className="text-xs font-medium">Email</label>
+          <label htmlFor={formId + "-email"} className="text-xs font-medium">
+            Email
+          </label>
           <input
+            id={formId + "-email"}
             type="email"
             value={form.email}
             onChange={(e) => setForm({ ...form, email: e.target.value })}
@@ -121,8 +141,11 @@ export function SchoolForm({
           />
         </div>
         <div>
-          <label className="text-xs font-medium">Phone</label>
+          <label htmlFor={formId + "-phone"} className="text-xs font-medium">
+            Phone
+          </label>
           <input
+            id={formId + "-phone"}
             value={form.phone}
             onChange={(e) => setForm({ ...form, phone: e.target.value })}
             className="h-9 w-full rounded-md border border-input bg-background px-2 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -131,8 +154,11 @@ export function SchoolForm({
         </div>
       </div>
       <div>
-        <label className="text-xs font-medium">Address</label>
+        <label htmlFor={formId + "-address"} className="text-xs font-medium">
+          Address
+        </label>
         <input
+          id={formId + "-address"}
           value={form.address}
           onChange={(e) => setForm({ ...form, address: e.target.value })}
           className="h-9 w-full rounded-md border border-input bg-background px-2 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -141,8 +167,14 @@ export function SchoolForm({
       </div>
       <div className="grid grid-cols-2 gap-2">
         <div>
-          <label className="text-xs font-medium">Established</label>
+          <label
+            htmlFor={formId + "-established"}
+            className="text-xs font-medium"
+          >
+            Established
+          </label>
           <input
+            id={formId + "-established"}
             type="date"
             value={form.established}
             onChange={(e) => setForm({ ...form, established: e.target.value })}
@@ -151,33 +183,56 @@ export function SchoolForm({
           />
         </div>
         <div>
-          <label className="text-xs font-medium">Motto (optional)</label>
+          <label htmlFor={formId + "-motto"} className="text-xs font-medium">
+            Motto (optional)
+          </label>
           <input
-            value={form.motto ?? ''}
+            id={formId + "-motto"}
+            value={form.motto ?? ""}
             onChange={(e) => setForm({ ...form, motto: e.target.value })}
             className="h-9 w-full rounded-md border border-input bg-background px-2 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
           />
         </div>
       </div>
       <div>
-        <label className="text-xs font-medium">Logo URL (optional)</label>
+        <label htmlFor={formId + "-logo"} className="text-xs font-medium">
+          Logo URL (optional)
+        </label>
         <input
-          value={form.logoUrl ?? ''}
+          id={formId + "-logo"}
+          value={form.logoUrl ?? ""}
           onChange={(e) => setForm({ ...form, logoUrl: e.target.value })}
           className="h-9 w-full rounded-md border border-input bg-background px-2 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
         />
       </div>
 
-      {error ? <p className="text-xs text-destructive">{error}</p> : null}
+      {error ? (
+        <p role="alert" className="text-xs text-destructive">
+          {error}
+        </p>
+      ) : null}
 
       <div className="flex gap-2">
         <Button
-          type="button"
-          disabled={pending || !form.name || !form.code || !form.email || !form.phone || !form.address || !form.established}
-          onClick={submit}
+          type="submit"
+          disabled={
+            pending ||
+            !form.name ||
+            !form.code ||
+            !form.email ||
+            !form.phone ||
+            !form.address ||
+            !form.established
+          }
           className="h-9"
         >
-          {pending ? (isEditing ? 'Saving…' : 'Creating…') : isEditing ? 'Save changes' : 'Create school'}
+          {pending
+            ? isEditing
+              ? "Saving…"
+              : "Creating…"
+            : isEditing
+              ? "Save changes"
+              : "Create school"}
         </Button>
         <Button
           type="button"
@@ -188,6 +243,6 @@ export function SchoolForm({
           Cancel
         </Button>
       </div>
-    </div>
-  )
+    </form>
+  );
 }

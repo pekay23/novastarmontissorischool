@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@novastar/database'
 
+import { clientIdentifier, rateLimitAsync } from '@/lib/rate-limit'
 import { searchCandidates, type SearchCandidate } from '@/lib/search-match'
 import { SEARCH_INDEX } from '@/lib/search-index'
 
@@ -14,6 +15,17 @@ import { SEARCH_INDEX } from '@/lib/search-index'
  * generated from the public pages' own copy.
  */
 export async function GET(request: NextRequest) {
+  // Anti-scraping limit for the public read endpoint: 30 requests per minute
+  // per client, keyed by the rate-limit client identifier.
+  const identifier = clientIdentifier(request)
+  const limited = await rateLimitAsync(identifier, 30, 60_000)
+  if (!limited.success) {
+    return NextResponse.json(
+      { error: 'Too many requests. Please try again later.' },
+      { status: 429, headers: { 'retry-after': String(Math.ceil((limited.reset - Date.now()) / 1000)) } }
+    )
+  }
+
   const { searchParams } = new URL(request.url)
   const query = (searchParams.get('q') || '').trim()
 

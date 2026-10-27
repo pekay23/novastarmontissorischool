@@ -1,24 +1,11 @@
 import { expect, hasCredentials, loginAs, PORTAL_PREFIX, PORTAL_ROUTES, test } from './fixtures';
 
-/**
- * Navigation coverage for the portal shell.
- *
- * This file used to be "role-based access control" and asserted against
- * /admin/users, /admin/teacher/*, /parent/*, /student/* and a cross-tenant
- * isolation check. None of those routes exist. The portal serves exactly the
- * routes in PORTAL_ROUTES, and its only access control is a client-side
- * redirect in (portal)/layout.tsx: there is no middleware.ts, so no server
- * ever rejects an unauthenticated request to a protected page.
- *
- * The role-specific and tenant-isolation tests are kept as test.fixme with
- * their requirements spelled out, so the intended coverage stays visible
- * instead of being silently deleted.
- */
+/** Portal navigation, server route protection, and role-fixture requirements. */
 
 test.describe('Portal navigation', () => {
   test.skip(
     !hasCredentials(),
-    'Set E2E_EMAIL and E2E_PASSWORD, then run `bun run db:seed` to provision the account.',
+    'Set E2E_EMAIL and E2E_PASSWORD for an existing isolated test account.',
   );
 
   test.beforeEach(async ({ page }) => {
@@ -36,9 +23,6 @@ test.describe('Portal navigation', () => {
   });
 
   test('should show Settings to a privileged role', async ({ page }) => {
-    // The seed assigns every portal user the HEADMASTER role, but the layout
-    // gated Settings on 'admin'/'super_admin' -- a role name no seed creates.
-    // HEADMASTER is documented as having full access, so it must see Settings.
     await expect(
       page.getByRole('navigation').getByRole('link', { name: 'Settings' }),
     ).toBeVisible();
@@ -70,51 +54,34 @@ test.describe('Route protection', () => {
     });
   }
 
-  // Written as `test(name, fn)` + an inner `test.fixme(reason)` on purpose — see
-  // the note in auth.spec.ts for why the two-string form is destructive.
-  test('should enforce route protection on the server', async () => {
-    // Protection is currently a client-side redirect in (portal)/layout.tsx.
-    // There is no middleware.ts, so the protected page payload is served to an
-    // unauthenticated client and only hidden after hydration.
-    test.fixme(
-      'Protection is currently a client-side redirect in (portal)/layout.tsx. There is no middleware.ts, so the protected page payload is served to an unauthenticated client and only hidden after hydration. Needs middleware that gates the request before render.',
-    );
+  test('should enforce route protection on the server', async ({ request }) => {
+    const response = await request.get(PORTAL_PREFIX + '/students/', { maxRedirects: 0 });
+    expect([301, 302, 303, 307, 308]).toContain(response.status());
+    expect(response.headers().location).toContain(PORTAL_PREFIX + '/login');
   });
 });
 
 test.describe('Role-Based Access Control', () => {
-  // See the note in auth.spec.ts for why these are not `test.fixme(title, details)`.
   test('admin role: should access all admin routes', async () => {
-    // No /admin/* routes exist. Needs an admin surface (users, roles, billing,
-    // audit logs, tenants) and an admin role assigned by the seed.
-    test.fixme(
-      'No /admin/* routes exist. Needs an admin surface (users, roles, billing, audit logs, tenants) and an admin role assigned by the seed.',
-    );
+    test.fixme('Requires isolated accounts with the relevant role and known scoped records.');
   });
 
   test('teacher role: should access teacher routes and be denied admin routes', async () => {
-    // No /teacher/* routes exist. Needs role-scoped routes plus per-route
-    // server-side authorization; navigation visibility alone is not access control.
-    test.fixme(
-      'No /teacher/* routes exist. Needs role-scoped routes plus per-route server-side authorization; navigation visibility alone is not access control.',
-    );
+    test.fixme('Requires isolated accounts with the relevant role and known scoped records.');
   });
 
   test('parent role: should view child grades and pay invoices', async () => {
-    // No /parent/* routes exist. Needs the parent portal surface and per-child
-    // scoping on every query.
-    test.fixme('No /parent/* routes exist. Needs the parent portal surface and per-child scoping on every query.');
+    test.fixme('Requires isolated accounts with the relevant role and known scoped records.');
   });
 
   test('student role: should be denied parent, teacher and admin routes', async () => {
-    // No /student/* routes exist. Needs the student surface and server-side role checks.
-    test.fixme('No /student/* routes exist. Needs the student surface and server-side role checks.');
+    test.fixme('Requires isolated accounts with the relevant role and known scoped records.');
   });
 
   test('cross-tenant isolation: should not see data from other tenants', async () => {
     // Requires two seeded tenants and per-query tenant scoping.
     test.fixme(
-      "Requires two seeded tenants and per-query tenant scoping. The previous version compared two row counts, which does not demonstrate isolation; it needs one tenant to attempt a fetch of the other tenant's resource ID and be refused.",
+      "Requires isolated tenants and known resource IDs to verify a cross-tenant request is refused.",
     );
   });
 });

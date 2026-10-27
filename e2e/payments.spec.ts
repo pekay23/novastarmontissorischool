@@ -19,7 +19,7 @@ import { expect, hasCredentials, loginAs, PORTAL_PREFIX, test } from './fixtures
 test.describe('Fees and payments', () => {
   test.skip(
     !hasCredentials(),
-    'Set E2E_EMAIL and E2E_PASSWORD, then run `bun run db:seed` to provision the account.',
+    'Set E2E_EMAIL and E2E_PASSWORD for an existing isolated test account.',
   );
 
   test.beforeEach(async ({ page }) => {

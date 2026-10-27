@@ -187,7 +187,7 @@ function FeeCategoryCard({ group }: { group: FeeScheduleGroup }) {
         <caption> is not decorative here: a screen reader user landing on one of
         several tables needs to know which programme it belongs to.
       */}
-      <table className="w-full text-sm">
+      <div className="overflow-x-auto"><table className="w-full text-sm">
         <caption className="sr-only">Fees for {group.title}</caption>
         <thead>
           {/*
@@ -219,7 +219,7 @@ function FeeCategoryCard({ group }: { group: FeeScheduleGroup }) {
             </tr>
           ))}
         </tbody>
-      </table>
+      </table></div>
     </Card>
   )
 }

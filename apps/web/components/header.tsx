@@ -244,7 +244,7 @@ export default function Header({ navigation, siteName: _siteName, contact }: Hea
                 <Link
                   href={category.href}
                   className={cn(
-                    'inline-flex min-h-11 items-center gap-1 rounded-sm px-3 text-sm font-medium transition-colors duration-fast',
+                    'inline-flex min-h-11 items-center gap-1 rounded-sm px-3 text-sm font-medium transition-colors duration-fast focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary',
                     pathname.startsWith(category.href) || (category.href === '/about' && pathname === '/')
                       ? 'text-primary'
                       : 'text-foreground hover:bg-surface-container hover:text-primary'
@@ -255,14 +255,15 @@ export default function Header({ navigation, siteName: _siteName, contact }: Hea
                 </Link>
 
                 {/* Dropdown Menu */}
-                <div className="absolute top-15 left-1/2 -translate-x-1/2 w-72 pt-4 opacity-0 invisible translate-y-2 group-hover:opacity-100 group-hover:visible group-hover:translate-y-0 transition-all duration-200 z-50">
+                <div className="absolute top-15 left-1/2 z-50 w-72 -translate-x-1/2 translate-y-2 pt-4 opacity-0 invisible transition-all duration-200 group-hover:translate-y-0 group-hover:opacity-100 group-hover:visible group-focus-within:translate-y-0 group-focus-within:opacity-100 group-focus-within:visible">
                   <div className="bg-background rounded-xl shadow-floating border border-border/60 overflow-hidden p-2 flex flex-col gap-1 backdrop-blur-xl">
                     {category.items.map((item) => (
                       <Link
                         key={item.href}
                         href={item.href}
+                        tabIndex={0}
                         className={cn(
-                          'block rounded-lg p-3 transition-colors duration-fast hover:bg-surface-container/80',
+                          'block rounded-lg p-3 transition-colors duration-fast hover:bg-surface-container/80 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary',
                           pathname === item.href ? 'bg-tint-warm text-primary' : 'text-foreground'
                         )}
                       >
@@ -336,12 +337,15 @@ export default function Header({ navigation, siteName: _siteName, contact }: Hea
                     </button>
                     <div
                       id={`mobile-menu-${category.label}`}
+                      inert={!isExpanded}
+                      aria-hidden={!isExpanded}
                       className={`overflow-hidden transition-all duration-200 ${isExpanded ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'}`}
                     >
                       {category.items.map((item) => (
                         <Link
                           key={item.href}
                           href={item.href}
+                        tabIndex={0}
                           aria-current={pathname === item.href ? 'page' : undefined}
                           className={cn(
                             'inline-flex min-h-11 items-center rounded-sm px-3 text-sm font-medium transition-colors duration-fast pl-6',

@@ -1,5 +1,8 @@
 import type { Metadata } from 'next'
+import { CsrfProvider } from '@/components/csrf-provider'
 import '../admin.css'
+
+export const dynamic = 'force-dynamic'
 
 /**
  * The console section layout (ADR-024).
@@ -33,5 +36,5 @@ export const metadata: Metadata = {
 }
 
 export default function ConsoleLayout({ children }: { children: React.ReactNode }) {
-  return <>{children}</>
+  return <CsrfProvider>{children}</CsrfProvider>
 }

@@ -392,9 +392,9 @@ jobs:
           # VERCEL_PROJECT_ID".
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID_WEB }}
         run: |
-          npx --yes vercel@latest pull --yes --environment=production --token="$VERCEL_TOKEN"
-          npx --yes vercel@latest build --prod --token="$VERCEL_TOKEN"
-          npx --yes vercel@latest deploy --prebuilt --prod --yes --token="$VERCEL_TOKEN"
+          npx --yes vercel@59.15.1 pull --yes --environment=production --token="$VERCEL_TOKEN"
+          npx --yes vercel@59.15.1 build --prod --token="$VERCEL_TOKEN"
+          npx --yes vercel@59.15.1 deploy --prebuilt --prod --yes --token="$VERCEL_TOKEN"
 
       - name: Summary
         run: |

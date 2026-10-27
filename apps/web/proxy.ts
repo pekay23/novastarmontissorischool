@@ -16,6 +16,7 @@ import { withAuth } from 'next-auth/middleware'
 import { NextResponse, type NextFetchEvent, type NextRequest } from 'next/server'
 import { rateLimitAsync, clientIdentifier } from '@/lib/rate-limit'
 import { decidePortalPath } from '@/lib/portal-sections'
+import { sectionContentSecurityPolicy } from '@/lib/security/csp'
 import {
   ADMIN_SESSION_COOKIE,
   verifySessionToken,
@@ -26,6 +27,7 @@ import {
   csrfCookieOptions,
   evaluateCsrf,
   generateCsrfToken,
+  validateCsrfToken,
 } from '@/lib/security/csrf'
 
 // Paths that don't require authentication (portal). Exempted from SESSION
@@ -43,6 +45,8 @@ const portalPublicPaths = [
 // Admin paths that don't require authentication
 const adminPublicPaths = [
   '/admin/login',
+  '/admin/api/auth/login',
+  '/admin/api/auth/logout',
   '/admin/api/health',
 ]
 
@@ -68,51 +72,16 @@ const portalAuthedProxy = withAuth(
     const token = (req as any).nextauth?.token
     const { pathname } = req.nextUrl
 
-    // --- CSRF token issuance ---
-    const existingToken = req.cookies.get(CSRF_COOKIE_NAME)?.value
-    const issuedToken = existingToken ? null : generateCsrfToken()
-    const finalize = (res: NextResponse) => {
-      if (issuedToken) {
-        res.cookies.set(
-          CSRF_COOKIE_NAME,
-          issuedToken,
-          csrfCookieOptions(process.env.NODE_ENV === 'production')
-        )
-      }
-      return res
-    }
-
-    // --- CSRF (double-submit) ---
-    const cookieToken = existingToken
-    const csrf = evaluateCsrf({
-      method: req.method,
-      pathname,
-      cookieToken,
-      headerToken: req.headers.get(CSRF_HEADER_NAME),
-    })
-
-    if (!csrf.allow) {
-      return finalize(
-        NextResponse.json(
-          { error: 'Invalid CSRF token', reason: csrf.reason },
-          { status: 403 }
-        )
-      )
-    }
-
-    // Allow public paths after limiting, so "public" means "no session needed"
-    if (portalPublicPaths.some((p) => pathname.startsWith(p))) return finalize(NextResponse.next())
-
     if (!token) {
       const url = req.nextUrl.clone()
       url.pathname = '/portal/login'
       url.searchParams.set('callbackUrl', pathname)
-      return finalize(NextResponse.redirect(url))
+      return NextResponse.redirect(url)
     }
 
     // A session that still owes a password change reaches nothing else.
     if (token.mustChangePassword) {
-      return finalize(NextResponse.redirect(new URL('/portal/set-password', req.url)))
+      return NextResponse.redirect(new URL('/portal/set-password', req.url))
     }
 
     // Role-based authorization — decidePortalPath strips /portal prefix internally
@@ -120,19 +89,19 @@ const portalAuthedProxy = withAuth(
     const decision = decidePortalPath(role, pathname)
 
     if (decision.outcome === 'unknown-role') {
-      return finalize(NextResponse.redirect(new URL('/portal/login', req.url)))
+      return NextResponse.redirect(new URL('/portal/login', req.url))
     }
     if (decision.outcome === 'denied') {
-      return finalize(NextResponse.redirect(new URL('/portal/dashboard/unauthorized', req.url)))
+      return NextResponse.redirect(new URL('/portal/dashboard/unauthorized', req.url))
     }
 
     // Check school access (multi-tenant isolation)
     const requestedSchoolId = req.nextUrl.searchParams.get('schoolId')
     if (requestedSchoolId && requestedSchoolId !== token.schoolId) {
-      return finalize(NextResponse.redirect(new URL('/portal/dashboard', req.url)))
+      return NextResponse.redirect(new URL('/portal/dashboard', req.url))
     }
 
-    return finalize(NextResponse.next())
+    return NextResponse.next()
   },
   {
     pages: {
@@ -158,66 +127,30 @@ const portalAuthedProxy = withAuth(
 async function adminProxy(req: NextRequest): Promise<NextResponse> {
   const { pathname } = req.nextUrl
 
-  // --- CSRF token issuance ---
-  const existingToken = req.cookies.get(CSRF_COOKIE_NAME)?.value
-  const issuedToken = existingToken ? null : generateCsrfToken()
-  const finalize = (res: NextResponse) => {
-    if (issuedToken) {
-      res.cookies.set(
-        CSRF_COOKIE_NAME,
-        issuedToken,
-        csrfCookieOptions(process.env.NODE_ENV === 'production')
-      )
-    }
-    return res
-  }
-
-  // Allow public paths without auth
-  if (adminPublicPaths.some((p) => pathname.startsWith(p))) return finalize(NextResponse.next())
-
   // --- Session verification ---
   const sessionCookie = req.cookies.get(ADMIN_SESSION_COOKIE)?.value
   if (!sessionCookie) {
     const url = req.nextUrl.clone()
     url.pathname = '/admin/login'
     url.searchParams.set('returnTo', pathname)
-    return finalize(NextResponse.redirect(url))
+    return NextResponse.redirect(url)
   }
 
   let session
   try {
     session = verifySessionToken(sessionCookie)
+    if (!session) return NextResponse.redirect(new URL('/admin/login', req.url))
   } catch {
     const url = req.nextUrl.clone()
     url.pathname = '/admin/login'
     url.searchParams.set('returnTo', pathname)
-    return finalize(NextResponse.redirect(url))
-  }
-
-  // --- CSRF (double-submit) for mutating requests ---
-  if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
-    const cookieToken = existingToken
-    const csrf = evaluateCsrf({
-      method: req.method,
-      pathname,
-      cookieToken,
-      headerToken: req.headers.get(CSRF_HEADER_NAME),
-    })
-
-    if (!csrf.allow) {
-      return finalize(
-        NextResponse.json(
-          { error: 'Invalid CSRF token', reason: csrf.reason },
-          { status: 403 }
-        )
-      )
-    }
+    return NextResponse.redirect(url)
   }
 
   // Session valid — attach operator info to headers for downstream use
-  const res = finalize(NextResponse.next())
-  res.headers.set('x-operator-id', session!.id)
-  res.headers.set('x-operator-username', session!.username)
+  const res = NextResponse.next()
+  res.headers.set('x-operator-id', session.id)
+  res.headers.set('x-operator-username', session.username)
   return res
 }
 
@@ -235,38 +168,20 @@ async function adminProxy(req: NextRequest): Promise<NextResponse> {
  */
 export default async function proxy(req: NextRequest, event: NextFetchEvent) {
   const { pathname } = req.nextUrl
-  const isPortal = pathname.startsWith('/portal')
-  const isAdmin = pathname.startsWith('/admin')
+  const isPortal = isWithinPath(pathname, '/portal')
+  const isAdmin = isWithinPath(pathname, '/admin')
 
   if (!isPortal && !isAdmin) {
     // Public site paths — no proxy logic needed (headers in next.config.ts)
     return NextResponse.next()
   }
 
-  if (isPortal) {
-    const isApi = pathname.startsWith('/portal/api/')
-    const isAuthApi = pathname.startsWith('/portal/api/auth')
-    const max = isAuthApi ? AUTH_RATE_LIMIT : isApi ? API_RATE_LIMIT : PAGE_RATE_LIMIT
-    const { success, reset } = await rateLimitAsync(clientIdentifier(req), max, RATE_LIMIT_WINDOW_MS)
-
-    if (!success) {
-      const retryAfterSeconds = Math.max(1, Math.ceil((reset - Date.now()) / 1000))
-      const headers = { 'Retry-After': String(retryAfterSeconds) }
-      if (isApi) {
-        return NextResponse.json({ error: 'Rate limit exceeded', retryAfter: retryAfterSeconds }, { status: 429, headers })
-      }
-      return new NextResponse('Too Many Requests', { status: 429, headers })
-    }
-
-    // `withAuth` narrows its request to `NextRequestWithAuth`
-    return portalAuthedProxy(req as Parameters<typeof portalAuthedProxy>[0], event)
-  }
-
-  // Admin paths — super_admin_session auth, rate limiting, CSRF
-  const isApi = pathname.startsWith('/admin/api/')
-  const isAuthApi = pathname.startsWith('/admin/api/auth')
+  const section = isPortal ? '/portal' : '/admin'
+  const isApi = isWithinPath(pathname, `${section}/api`)
+  const isAuthApi = isWithinPath(pathname, `${section}/api/auth`)
   const max = isAuthApi ? AUTH_RATE_LIMIT : isApi ? API_RATE_LIMIT : PAGE_RATE_LIMIT
-  const { success, reset } = await rateLimitAsync(clientIdentifier(req), max, RATE_LIMIT_WINDOW_MS)
+  const budget = isAuthApi ? 'auth' : isApi ? 'api' : 'page'
+  const { success, reset } = await rateLimitAsync(`proxy:${section}:${budget}:${clientIdentifier(req)}`, max, RATE_LIMIT_WINDOW_MS)
 
   if (!success) {
     const retryAfterSeconds = Math.max(1, Math.ceil((reset - Date.now()) / 1000))
@@ -277,5 +192,53 @@ export default async function proxy(req: NextRequest, event: NextFetchEvent) {
     return new NextResponse('Too Many Requests', { status: 429, headers })
   }
 
-  return adminProxy(req)
+  const existingToken = req.cookies.get(CSRF_COOKIE_NAME)?.value
+  const validExistingToken = existingToken && validateCsrfToken(existingToken, existingToken)
+  const issuedToken = validExistingToken ? null : generateCsrfToken()
+  const nonce = !isApi && process.env.NODE_ENV === 'production' ? generateCsrfToken() : null
+  const csp = nonce ? sectionContentSecurityPolicy(section, nonce, req.nextUrl) : null
+  const finalize = (response: Response): NextResponse => {
+    const result = response instanceof NextResponse ? response : new NextResponse(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers: response.headers,
+    })
+    if (nonce && csp) {
+      result.headers.set('Content-Security-Policy', csp)
+      if (result.headers.get('x-middleware-next') === '1') {
+        const requestHeaders = new Headers(req.headers)
+        requestHeaders.set('x-nonce', nonce)
+        requestHeaders.set('Content-Security-Policy', csp)
+        const forwarded = NextResponse.next({ request: { headers: requestHeaders } })
+        forwarded.headers.forEach((value, key) => {
+          if (key === 'x-middleware-override-headers' || key.startsWith('x-middleware-request-')) result.headers.set(key, value)
+        })
+      }
+    }
+    if (issuedToken) result.cookies.set(CSRF_COOKIE_NAME, issuedToken, csrfCookieOptions(process.env.NODE_ENV === 'production', req.nextUrl))
+    return result
+  }
+  const csrf = evaluateCsrf({
+    method: req.method,
+    pathname,
+    cookieToken: validExistingToken ? existingToken : undefined,
+    headerToken: req.headers.get(CSRF_HEADER_NAME),
+  })
+  if (!csrf.allow) {
+    return finalize(NextResponse.json({ error: 'Invalid CSRF token', reason: csrf.reason }, { status: 403 }))
+  }
+
+  // These session exemptions must be outside withAuth, which otherwise redirects
+  // recovery pages or skips the wrapped handler for NextAuth's entire auth path.
+  if (isPortal && portalPublicPaths.some((path) => isWithinPath(pathname, path))) return finalize(NextResponse.next())
+  if (isAdmin && adminPublicPaths.some((path) => isWithinPath(pathname, path))) return finalize(NextResponse.next())
+
+  const response = isPortal
+    ? await portalAuthedProxy(req as Parameters<typeof portalAuthedProxy>[0], event)
+    : await adminProxy(req)
+  return finalize(response ?? NextResponse.next())
+}
+
+function isWithinPath(pathname: string, prefix: string): boolean {
+  return pathname === prefix || pathname.startsWith(`${prefix}/`)
 }

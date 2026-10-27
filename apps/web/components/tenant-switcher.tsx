@@ -1,6 +1,7 @@
-'use client'
+"use client";
 
-import { useRouter } from 'next/navigation'
+import { usePathname, useRouter } from "next/navigation";
+import { tenantIdFromPathname } from "@/lib/admin-navigation";
 
 /**
  * Picks the tenant every page below it is about.
@@ -18,33 +19,33 @@ import { useRouter } from 'next/navigation'
  */
 export function TenantSwitcher({
   tenants,
-  selectedTenantId,
 }: {
-  tenants: ReadonlyArray<{ id: string; name: string; code: string }>
-  selectedTenantId: string | null
+  tenants: ReadonlyArray<{ id: string; name: string; code: string }>;
 }) {
-  const router = useRouter()
+  const router = useRouter();
+  const selectedTenantId = tenantIdFromPathname(usePathname());
 
   function onChange(event: React.ChangeEvent<HTMLSelectElement>) {
-    const next = event.target.value
-    if (next === '') {
-      document.cookie = 'super_admin_tenant=; Path=/admin; Max-Age=0; SameSite=Lax'
-      router.push('/tenants')
-      router.refresh()
-      return
+    const next = event.target.value;
+    if (next === "") {
+      document.cookie =
+        "super_admin_tenant=; Path=/admin; Max-Age=0; SameSite=Lax";
+      router.push("/admin/tenants");
+      router.refresh();
+      return;
     }
     document.cookie =
       `super_admin_tenant=${encodeURIComponent(next)}; Path=/admin; Max-Age=86400; SameSite=Lax` +
-      (window.location.protocol === 'https:' ? '; Secure' : '')
-    router.push(`/tenants/${encodeURIComponent(next)}`)
-    router.refresh()
+      (window.location.protocol === "https:" ? "; Secure" : "");
+    router.push(`/admin/tenants/${encodeURIComponent(next)}`);
+    router.refresh();
   }
 
   return (
     <label className="flex items-center gap-2 text-xs text-muted-foreground">
       <span className="font-medium">Tenant</span>
       <select
-        value={selectedTenantId ?? ''}
+        value={selectedTenantId ?? ""}
         onChange={onChange}
         className="h-9 min-w-56 rounded-md border border-input bg-background px-2 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
@@ -56,5 +57,5 @@ export function TenantSwitcher({
         ))}
       </select>
     </label>
-  )
+  );
 }

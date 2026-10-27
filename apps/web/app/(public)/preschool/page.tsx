@@ -79,11 +79,11 @@ export default async function PreschoolPage() {
           </p>
           <p className="flex items-center gap-5 text-sm text-muted-foreground">
             <span className="inline-flex items-center gap-1.5">
-              <ShieldCheck className="h-4 w-4 text-secondary" aria-hidden="true" />
+              <ShieldCheck className="h-4 w-4 text-secondary-dark" aria-hidden="true" />
               Aligned to GES standards
             </span>
             <span className="hidden items-center gap-1.5 sm:inline-flex">
-              <Users className="h-4 w-4 text-secondary" aria-hidden="true" />
+              <Users className="h-4 w-4 text-secondary-dark" aria-hidden="true" />
               Mixed-age classrooms
             </span>
           </p>
@@ -178,7 +178,7 @@ export default async function PreschoolPage() {
             <IconTile icon={Puzzle} tone="secondary" />
             <div>
               <CardTitle as="h3" className="font-serif text-2xl">Nursery</CardTitle>
-              <p className="text-[10px] font-bold tracking-[0.2em] uppercase text-secondary mt-2">18 months to 3 years</p>
+              <p className="text-[10px] font-bold tracking-[0.2em] uppercase text-secondary-dark mt-2">18 months to 3 years</p>
               <p className="mt-4 text-[0.9375rem] text-muted-foreground leading-relaxed">
                 Emphasis on practical life skills, potty training, vocabulary building, and fine motor coordination.
               </p>

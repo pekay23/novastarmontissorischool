@@ -52,6 +52,15 @@ export async function getPublishedNews(limit = 6): Promise<News[]> {
   )
 }
 
+export async function getPublishedNewsItem(id: string): Promise<News | null> {
+  return safeFetch(
+    () => prisma.news.findFirst({
+      where: { id, tenant: { code: 'novastar' }, status: 'PUBLISHED', publishedAt: { lte: new Date() } },
+    }),
+    null,
+  )
+}
+
 // Published Events
 export async function getPublishedEvents(limit = 10): Promise<Event[]> {
   return safeFetch(

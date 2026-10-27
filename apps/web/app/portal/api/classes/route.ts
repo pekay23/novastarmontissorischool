@@ -101,6 +101,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Class level not found' }, { status: 404 })
     }
 
+    if (data.classTeacherId) {
+      const teacher = await prisma.staff.findFirst({ where: { id: data.classTeacherId, tenantId, schoolId }, select: { id: true } })
+      if (!teacher) return NextResponse.json({ error: 'Class teacher not found' }, { status: 404 })
+    }
+
     const cls = await prisma.class.create({
       data: {
         tenantId,

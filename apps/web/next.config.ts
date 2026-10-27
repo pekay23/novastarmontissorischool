@@ -123,6 +123,7 @@ const nextConfig: NextConfig = {
    * site.
    */
   trailingSlash: true,
+  productionBrowserSourceMaps: false,
   allowedDevOrigins: [
     '192.168.8.202',
     '192.168.8.226',
@@ -141,6 +142,7 @@ const nextConfig: NextConfig = {
       bodySizeLimit: '4mb',
       allowedOrigins: [
         'localhost:3000',
+        '192.168.8.202:3000',
         ...(process.env.EXTRA_ALLOWED_ORIGINS?.split(',').filter(Boolean) || []),
       ],
     },
@@ -160,11 +162,9 @@ const nextConfig: NextConfig = {
     '@novastar/tenant-cli',
   ],
   images: {
-    // All three predecessor apps ran unoptimized; the marketing site
-    // because it is statically exported, the portal and the console
-    // because their images are user uploads served from their own
-    // storage. One app keeps that posture.
-    unoptimized: true,
+    // Optimize local marketing photography and public remote assets by default.
+    // Authenticated media should opt out at the component level when needed.
+    unoptimized: false,
     remotePatterns: [
       // Marketing photography (public site)
       { protocol: 'https', hostname: 'images.unsplash.com' },
@@ -180,6 +180,7 @@ const nextConfig: NextConfig = {
     ],
     localPatterns: [
       { pathname: '/images/**' },
+      { pathname: '/logo_nms.png' },
       { pathname: '/logo.svg' },
       { pathname: '/favicon.ico' },
     ],
@@ -240,6 +241,9 @@ const nextConfig: NextConfig = {
         key: 'Permissions-Policy',
         value: 'camera=(), microphone=(), geolocation=(), payment=(self)',
       },
+      { key: 'X-Download-Options', value: 'noopen' },
+      { key: 'X-Permitted-Cross-Domain-Policies', value: 'none' },
+      { key: 'X-DNS-Prefetch-Control', value: 'off' },
     ]
 
     // Production CSP: strict, allowlist-based — no unsafe-inline for
@@ -319,6 +323,13 @@ const nextConfig: NextConfig = {
 
     return [
       {
+        source: '/school-preview/:path*',
+        headers: [
+          { key: 'X-Robots-Tag', value: 'noindex, nofollow, noarchive' },
+          { key: 'Cache-Control', value: 'private, no-store, max-age=0' },
+        ],
+      },
+      {
         source: '/(.*)',
         headers: baseHeaders,
       },
@@ -367,6 +378,78 @@ const nextConfig: NextConfig = {
         headers: [
           { key: 'Cache-Control', value: 'public, max-age=0, must-revalidate' },
           { key: 'Service-Worker-Allowed', value: '/' },
+        ],
+      },
+      {
+        source: '/images/:path*',
+        headers: [
+          { key: 'Cache-Control', value: 'private, no-store, max-age=0' },
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          { key: 'Content-Disposition', value: 'inline' },
+        ],
+      },
+      {
+        source: '/logo.svg',
+        headers: [
+          { key: 'Cache-Control', value: 'private, no-store, max-age=0' },
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          { key: 'Content-Disposition', value: 'inline' },
+        ],
+      },
+      {
+        source: '/favicon.ico',
+        headers: [
+          { key: 'Cache-Control', value: 'private, no-store, max-age=0' },
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          { key: 'Content-Disposition', value: 'inline' },
+        ],
+      },
+      {
+        source: '/favicon-32x32.png',
+        headers: [
+          { key: 'Cache-Control', value: 'private, no-store, max-age=0' },
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          { key: 'Content-Disposition', value: 'inline' },
+        ],
+      },
+      {
+        source: '/favicon-16x16.png',
+        headers: [
+          { key: 'Cache-Control', value: 'private, no-store, max-age=0' },
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          { key: 'Content-Disposition', value: 'inline' },
+        ],
+      },
+      {
+        source: '/apple-touch-icon.png',
+        headers: [
+          { key: 'Cache-Control', value: 'private, no-store, max-age=0' },
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          { key: 'Content-Disposition', value: 'inline' },
+        ],
+      },
+      {
+        source: '/android-chrome-192x192.png',
+        headers: [
+          { key: 'Cache-Control', value: 'private, no-store, max-age=0' },
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          { key: 'Content-Disposition', value: 'inline' },
+        ],
+      },
+      {
+        source: '/android-chrome-512x512.png',
+        headers: [
+          { key: 'Cache-Control', value: 'private, no-store, max-age=0' },
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          { key: 'Content-Disposition', value: 'inline' },
+        ],
+      },
+      {
+        source: '/site.webmanifest',
+        headers: [
+          { key: 'Cache-Control', value: 'private, no-store, max-age=0' },
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          { key: 'Content-Disposition', value: 'inline' },
         ],
       },
     ]

@@ -34,6 +34,11 @@ interface NavigationItem {
 const NAV_ICONS: Readonly<Record<string, LucideIcon>> = {
   Dashboard: LayoutDashboard,
   Students: GraduationCap,
+  Classes: GraduationCap,
+  Enrollment: UserPlus,
+  Syllabus: BookOpen,
+  Promotions: GraduationCap,
+  Inventory: LibraryBig,
   Attendance: ClipboardCheck,
   Grades: BookOpen,
   Fees: DollarSign,
@@ -61,7 +66,7 @@ function buildNavGroups(navigation: readonly NavigationItem[], visibleNav: reado
   const visibleSet = new Set(visibleNav.map(v => v.name))
   const groups: NavGroup[] = [
     { id: 'overview', label: 'Overview', items: navigation.filter(n => visibleSet.has(n.name) && ['Dashboard'].includes(n.name)) },
-    { id: 'academics', label: 'Academics', items: navigation.filter(n => visibleSet.has(n.name) && ['Students', 'Attendance', 'Grades', 'Timetable', 'Syllabus', 'Reports', 'Promotions'].includes(n.name)) },
+    { id: 'academics', label: 'Academics', items: navigation.filter(n => visibleSet.has(n.name) && ['Students', 'Classes', 'Enrollment', 'Attendance', 'Grades', 'Timetable', 'Syllabus', 'Reports', 'Promotions'].includes(n.name)) },
     { id: 'finance', label: 'Finance', items: navigation.filter(n => visibleSet.has(n.name) && ['Fees'].includes(n.name)) },
     { id: 'library-assets', label: 'Library & Assets', items: navigation.filter(n => visibleSet.has(n.name) && ['Library', 'Inventory'].includes(n.name)) },
     { id: 'school-life', label: 'School Life', items: navigation.filter(n => visibleSet.has(n.name) && ['Calendar', 'Announcements'].includes(n.name)) },
@@ -246,9 +251,9 @@ export function PortalShell({
                   aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
                 >
                   {sidebarCollapsed ? (
-                    <ChevronRight className="h-5 w-5" />
+                    <ChevronRight className="h-6 w-6" />
                   ) : (
-                    <ChevronLeft className="h-5 w-5" />
+                    <ChevronLeft className="h-6 w-6" />
                   )}
                 </Button>
               </div>
@@ -278,7 +283,7 @@ export function PortalShell({
                               onClick={() => setSidebarOpen(false)}
                               aria-current={isActive ? 'page' : undefined}
                             >
-                              <Icon className="h-5 w-5 shrink-0" />
+                              <Icon className="h-6 w-6 shrink-0" />
                               <span className="sr-only">{item.name}</span>
                             </Link>
                           </TooltipTrigger>
@@ -305,7 +310,7 @@ export function PortalShell({
                           aria-expanded={!isCollapsed}
                           aria-controls={`${groupId}-content`}
                         >
-                          <GroupIcon className="h-5 w-5 shrink-0" />
+                          <GroupIcon className="h-6 w-6 shrink-0" />
                           <span className="truncate">{group.label}</span>
                           <ChevronDown
                             className={cn(
@@ -349,7 +354,7 @@ export function PortalShell({
                                       onClick={() => setSidebarOpen(false)}
                                       aria-current={isActive ? 'page' : undefined}
                                     >
-                                      <Icon className="h-5 w-5 shrink-0" />
+                                      <Icon className="h-6 w-6 shrink-0" />
                                       <span className="truncate">{item.name}</span>
                                     </Link>
                                   )
@@ -379,7 +384,7 @@ export function PortalShell({
                     className="md:hidden"
                     onClick={() => setSidebarOpen(true)}
                   >
-                    <Menu className="h-5 w-5" />
+                    <Menu className="h-6 w-6" />
                   </Button>
 
                   {/* Breadcrumb */}
@@ -520,7 +525,7 @@ function HeaderActions({
           })
         }
       >
-        <Bell className="h-4 w-4" />
+        <Bell className="h-6 w-6" />
       </Button>
 
       <div ref={searchRef} className="relative flex items-center gap-2">
@@ -556,7 +561,7 @@ function HeaderActions({
             setQuery('')
           }}
         >
-          <Search className="h-4 w-4" />
+          <Search className="h-6 w-6" />
         </Button>
 
         {searchOpen && matches.length > 0 && (

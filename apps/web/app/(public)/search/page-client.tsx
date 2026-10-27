@@ -19,7 +19,7 @@ interface SearchResult {
 const getCategoryColor = (category: string) => {
   switch (category) {
     case 'Home': return 'bg-primary/10 text-primary'
-    case 'About': return 'bg-secondary/10 text-secondary'
+    case 'About': return 'bg-secondary/10 text-secondary-dark'
     case 'Academics': return 'bg-accent-warm/20 text-accent-warm-dark'
     case 'Preschool':
     case 'Primary': return 'bg-tint-warm text-primary'
@@ -27,7 +27,7 @@ const getCategoryColor = (category: string) => {
     case 'Fees': return 'bg-primary/10 text-primary'
     case 'Community':
     case 'News':
-    case 'Events': return 'bg-secondary/10 text-secondary'
+    case 'Events': return 'bg-secondary/10 text-secondary-dark'
     case 'Contact': return 'bg-accent-warm/20 text-accent-warm-dark'
     case 'Legal': return 'bg-muted text-muted-foreground'
     default: return 'bg-muted text-muted-foreground'

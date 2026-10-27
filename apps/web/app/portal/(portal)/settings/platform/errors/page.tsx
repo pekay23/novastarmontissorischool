@@ -374,7 +374,7 @@ export default function ErrorsPage() {
               variant="outline"
               size="sm"
             >
-              <Link href={`/settings/platform/errors?limit=${errors.limit}&offset=${Math.max(0, errors.offset - errors.limit)}`}>
+              <Link href={`/portal/settings/platform/errors?limit=${errors.limit}&offset=${Math.max(0, errors.offset - errors.limit)}`}>
                 Previous
               </Link>
             </Button>
@@ -385,7 +385,7 @@ export default function ErrorsPage() {
               variant="outline"
               size="sm"
             >
-              <Link href={`/settings/platform/errors?limit=${errors.limit}&offset=${errors.offset + errors.limit}`}>
+              <Link href={`/portal/settings/platform/errors?limit=${errors.limit}&offset=${errors.offset + errors.limit}`}>
                 Next
               </Link>
             </Button>

@@ -11,6 +11,17 @@ describe('Rate Limiter', () => {
   })
 
   describe('checkRateLimit - basic behavior', () => {
+    it('fails closed if a process-local limiter is accidentally used in production', () => {
+      const originalNodeEnv = process.env.NODE_ENV
+      Reflect.set(process.env, 'NODE_ENV', 'production')
+      try {
+        expect(checkRateLimit('production-local-fallback', 5, 60000).success).toBe(false)
+      } finally {
+        if (originalNodeEnv === undefined) Reflect.deleteProperty(process.env, 'NODE_ENV')
+        else Reflect.set(process.env, 'NODE_ENV', originalNodeEnv)
+      }
+    })
+
     it('should allow requests under the limit', () => {
       const result = checkRateLimit('192.168.1.1', 5, 60000)
       expect(result.success).toBe(true)

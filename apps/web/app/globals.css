@@ -23,6 +23,7 @@
  * All colors maintained for WCAG AA contrast.
  * */
 @theme {
+  --radius-photo-arch: 46% 46% 1rem 1rem;
   /* Consumed by `Skeleton` in @novastar/shared-ui. Declared per app because
      `@theme` is scoped to the stylesheet that declares it. No public-site
      component imports Skeleton, so nothing here depends on it. */
@@ -70,23 +71,22 @@
   /* ---- Accents: gold, green, light purple ---------------------------
      These are visual accents. Text colors chosen for proper contrast.
   */
-  /* Gold/yellow: 4.56:1 on canvas, 6.26:1 on primary-dark. Use for highlights. */
+  /* Gold is a decorative fill. The dark gold text token clears 4.5:1 on light surfaces. */
   --color-accent-warm:       #f8bf00;
-  --color-accent-warm-dark:  #d49a00;
+  --color-accent-warm-dark:  #876000;
   --color-accent-warm-light: #fff9e6;
 
   /* Light purple: use as accent fill. */
   --color-accent-light: #d903ec;
 
-  /* Green: 6.42:1 on canvas, 7.52:1 with white text. Use for success/positive. */
+  /* Green fill pairs with dark ink at 6.06:1. White text on this fill does not meet AA. */
   --color-success:     #7aa633;
-  --color-success-foreground: #ffffff;
+  --color-success-foreground: #1c1a17;
 
-  /* Sky blue: the one cool note. Carries data, tables and administrative detail.
-     Never a CTA. 6.98:1 on the canvas, 7.49:1 with white text. */
+  /* Sky fills pair with dark ink at 7.18:1. Use secondary-dark for readable teal text. */
   --color-secondary:           #54b6ae;
-  --color-secondary-foreground:#ffffff;
-  --color-secondary-dark:      #3d8a82;   /* 6.98:1 on canvas, 7.49:1 with white text */
+  --color-secondary-foreground:#1c1a17;
+  --color-secondary-dark:      #2d756e;   /* 5.41:1 with white text; 4.76:1 against the neutral surface. */
   --color-secondary-hover:     #2d6b64;   /* hover/active for secondary-dark surfaces */
 
   /* Hero band and quiet badge fills. Replaces the maroon-tinted
@@ -630,4 +630,8 @@
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+@layer components {
+  .photo-arch { border-radius: var(--radius-photo-arch); }
 }

@@ -1,5 +1,5 @@
-import Link from 'next/link'
-import { TenantActions } from '@/components/tenant-actions'
+import Link from "next/link";
+import { TenantActions } from "@/components/tenant-actions";
 
 /**
  * What a drill-down page shows when the tenant it names is suspended.
@@ -32,19 +32,19 @@ export function TenantSuspendedNotice({
   tenantCode,
   canUpdate,
 }: {
-  tenantId: string
-  tenantCode: string
-  canUpdate: boolean
+  tenantId: string;
+  tenantCode: string;
+  canUpdate: boolean;
 }) {
   return (
     <div className="space-y-6">
       <div className="rounded-md border border-border bg-card p-8">
         <h1 className="text-lg font-semibold">This tenant is suspended</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          <code className="font-mono">{tenantCode}</code> has been switched off, so its schools,
-          accounts, settings and audit trail are not readable and cannot be changed from
-          the console. Nothing was deleted and every row is still there. Reactivate it to
-          carry on.
+          <code className="font-mono">{tenantCode}</code> has been switched off,
+          so its schools, accounts, settings and audit trail are not readable
+          and cannot be changed from the console. Nothing was deleted and every
+          row is still there. Reactivate it to carry on.
         </p>
         <div className="mt-4 flex flex-wrap items-center gap-3">
           <TenantActions
@@ -54,7 +54,7 @@ export function TenantSuspendedNotice({
             canUpdate={canUpdate}
           />
           <Link
-            href="/tenants"
+            href="/admin/tenants"
             className="inline-block rounded-md border border-border px-3 py-1.5 text-xs font-medium hover:bg-accent"
           >
             Back to tenants
@@ -62,5 +62,5 @@ export function TenantSuspendedNotice({
         </div>
       </div>
     </div>
-  )
+  );
 }

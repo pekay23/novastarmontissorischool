@@ -1,17 +1,24 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { Prisma } from '@prisma/client'
-import { prisma } from '@/lib/prisma'
-import { getTenantContext } from '@/lib/tenant'
-import { hasPermission } from '@novastar/auth'
-import { resolveVisibility, visibilityDeniesAll } from '@/lib/visibility'
-import { ENTITY_CONFIG_MAP } from '@novastar/shared-types'
-import { z } from 'zod'
-import { logError } from '@/lib/logger'
+import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
+import { getTenantContext } from "@/lib/tenant";
+import { hasPermission } from "@novastar/auth";
+import {
+  resolveVisibility,
+  visibilityDeniesAll,
+  classVisibilityWhere,
+} from "@/lib/visibility";
+import { ENTITY_CONFIG_MAP } from "@novastar/shared-types";
+import { z } from "zod";
+import { logError } from "@/lib/logger";
 // Shared. Both timetable models carry real unique constraints — `Timetable` on
 // `(tenantId, classId, termId, name)` and `TimetableEntry` on
 // `(tenantId, timetableId, dayOfWeek, startTime, classSubjectId)` — so a
 // duplicate POST is an expected client outcome and must be a 409, not a 500.
-import { isUniqueConstraintViolation, duplicateResponse } from '@/lib/prisma-conflict'
+import {
+  isUniqueConstraintViolation,
+  duplicateResponse,
+} from "@/lib/prisma-conflict";
 
 /**
  * The Neon adapter turns every statement into a network round trip, so
@@ -19,7 +26,10 @@ import { isUniqueConstraintViolation, duplicateResponse } from '@/lib/prisma-con
  * this request — open for however long the database feels like answering.
  * Same bounds as the attendance write path.
  */
-const TIMETABLE_TRANSACTION_BOUNDS = { maxWait: 2_000, timeout: 30_000 } as const
+const TIMETABLE_TRANSACTION_BOUNDS = {
+  maxWait: 2_000,
+  timeout: 30_000,
+} as const;
 
 /**
  * `HH:mm` validation, reused rather than restated.
@@ -46,16 +56,20 @@ const TIMETABLE_TRANSACTION_BOUNDS = { maxWait: 2_000, timeout: 30_000 } as cons
  * cannot see, and a wrong value would then have become `undefined` —
  * a Zod field that accepts anything.
  */
-function timetableEntryTimeField(field: 'startTime' | 'endTime'): z.ZodString {
-  const createSchema = ENTITY_CONFIG_MAP.timetable_entry.createSchema
+function timetableEntryTimeField(field: "startTime" | "endTime"): z.ZodString {
+  const createSchema = ENTITY_CONFIG_MAP.timetable_entry.createSchema;
   if (!(createSchema instanceof z.ZodObject)) {
-    throw new Error('ENTITY_CONFIG_MAP.timetable_entry.createSchema is not a ZodObject')
+    throw new Error(
+      "ENTITY_CONFIG_MAP.timetable_entry.createSchema is not a ZodObject",
+    );
   }
-  const found = createSchema.shape[field]
+  const found = createSchema.shape[field];
   if (!(found instanceof z.ZodString)) {
-    throw new Error(`ENTITY_CONFIG_MAP.timetable_entry.createSchema.shape.${field} is not a string schema`)
+    throw new Error(
+      `ENTITY_CONFIG_MAP.timetable_entry.createSchema.shape.${field} is not a string schema`,
+    );
   }
-  return found
+  return found;
 }
 
 /**
@@ -73,14 +87,14 @@ const TimetableEntryInputSchema = z
   .object({
     classSubjectId: z.string().min(1),
     dayOfWeek: z.number().int().min(1).max(7),
-    startTime: timetableEntryTimeField('startTime'),
-    endTime: timetableEntryTimeField('endTime'),
+    startTime: timetableEntryTimeField("startTime"),
+    endTime: timetableEntryTimeField("endTime"),
     room: z.string().nullable().optional(),
   })
   .refine((entry) => entry.endTime > entry.startTime, {
-    message: 'endTime must be after startTime',
-    path: ['endTime'],
-  })
+    message: "endTime must be after startTime",
+    path: ["endTime"],
+  });
 
 const CreateTimetableSchema = z.object({
   classId: z.string().min(1),
@@ -88,9 +102,9 @@ const CreateTimetableSchema = z.object({
   name: z.string().trim().min(1),
   isPublished: z.boolean().default(false),
   entries: z.array(TimetableEntryInputSchema).default([]),
-})
+});
 
-export type CreateTimetableInput = z.infer<typeof CreateTimetableSchema>
+export type CreateTimetableInput = z.infer<typeof CreateTimetableSchema>;
 
 /**
  * Validate a timetable-create payload without touching the database.
@@ -99,7 +113,7 @@ export type CreateTimetableInput = z.infer<typeof CreateTimetableSchema>
  * grammar, `endTime > startTime`) are provable without a Prisma client.
  */
 export function validateCreateTimetable(body: unknown) {
-  return CreateTimetableSchema.safeParse(body)
+  return CreateTimetableSchema.safeParse(body);
 }
 
 /**
@@ -111,7 +125,7 @@ export function validateCreateTimetable(body: unknown) {
  * making the client resolve `classSubjectId` itself.
  */
 const entriesInclude = {
-  orderBy: [{ dayOfWeek: 'asc' }, { startTime: 'asc' }],
+  orderBy: [{ dayOfWeek: "asc" }, { startTime: "asc" }],
   include: {
     classSubject: {
       select: {
@@ -124,7 +138,7 @@ const entriesInclude = {
   // type `'asc'` for Prisma, but `as const` also makes `orderBy` a
   // `readonly` tuple, and the generated args demand a mutable array. This
   // checks the shape against the real type without freezing it.
-} satisfies Prisma.Timetable$entriesArgs
+} satisfies Prisma.Timetable$entriesArgs;
 
 /**
  * The relations the read shape of GET and POST select alongside
@@ -140,30 +154,75 @@ const timetableInclude = {
   class: { select: { id: true, name: true } },
   term: { select: { id: true, name: true } },
   entries: entriesInclude,
-} satisfies Prisma.TimetableInclude
+} satisfies Prisma.TimetableInclude;
 
 export async function GET(req: NextRequest) {
   try {
-    const ctx = await getTenantContext()
-    const { schoolId, tenantId, userId } = ctx
-    if (!schoolId) return NextResponse.json({ error: 'No school assigned' }, { status: 400 })
+    const ctx = await getTenantContext();
+    const { schoolId, tenantId, userId } = ctx;
+    if (!schoolId)
+      return NextResponse.json(
+        { error: "No school assigned" },
+        { status: 400 },
+      );
 
     // RBAC
-    if (!(await hasPermission(userId, 'timetable:read', tenantId, schoolId))) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    if (!(await hasPermission(userId, "timetable:read", tenantId, schoolId))) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     // Row scope. The permission gate answers "may they read timetables
     // at all"; this answers "which classes'". A classroom teacher must
     // see only their own classes' timetables, not the school's.
-    const visibility = await resolveVisibility(ctx, 'timetable:read')
+    const visibility = await resolveVisibility(ctx, "timetable:read");
     if (visibilityDeniesAll(visibility)) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const { searchParams } = new URL(req.url)
-    const classId = searchParams.get('classId')
-    const termId = searchParams.get('termId')
+    const { searchParams } = new URL(req.url);
+    if (searchParams.get("options") === "1") {
+      const classScope: Prisma.ClassWhereInput = {
+        tenantId,
+        schoolId,
+        ...classVisibilityWhere(visibility),
+      };
+      const [classes, terms, classSubjects, canUpdate] = await Promise.all([
+        prisma.class.findMany({
+          where: classScope,
+          select: { id: true, name: true },
+          orderBy: { name: "asc" },
+        }),
+        prisma.term.findMany({
+          where: { tenantId, schoolId },
+          select: { id: true, name: true },
+          orderBy: { startDate: "desc" },
+        }),
+        prisma.classSubject.findMany({
+          where: { tenantId, class: classScope },
+          select: {
+            id: true,
+            classId: true,
+            subject: { select: { name: true } },
+          },
+          orderBy: { subject: { name: "asc" } },
+        }),
+        hasPermission(userId, "timetable:update", tenantId, schoolId),
+      ]);
+      return NextResponse.json({
+        options: {
+          classes,
+          terms,
+          classSubjects: classSubjects.map((item) => ({
+            id: item.id,
+            classId: item.classId,
+            name: item.subject.name,
+          })),
+          canUpdate,
+        },
+      });
+    }
+    const classId = searchParams.get("classId");
+    const termId = searchParams.get("termId");
 
     // `Timetable` has no schoolId column, so school scope arrives through
     // the class relation. The visibility filter composes under `AND`
@@ -175,7 +234,7 @@ export async function GET(req: NextRequest) {
     const where: Prisma.TimetableWhereInput = {
       tenantId,
       class: { schoolId },
-    }
+    };
     // The scope is narrowed on `Timetable.classId`, a plain String column.
     //
     // `classVisibilityWhere` cannot be used here: it builds a
@@ -191,44 +250,57 @@ export async function GET(req: NextRequest) {
     // `all`) and must send no predicate. An empty array is not
     // unrestricted: it is "no classes", and `classId: { in: [] }` matches
     // nothing, which is the correct answer.
-    if (visibility.classIds) where.AND = [{ classId: { in: visibility.classIds } }]
-    if (classId) where.classId = classId
-    if (termId) where.termId = termId
+    if (visibility.classIds)
+      where.AND = [{ classId: { in: visibility.classIds } }];
+    if (classId) where.classId = classId;
+    if (termId) where.termId = termId;
 
     // `(tenantId, classId, termId, name)` is unique, but `classId` +
     // `termId` alone may match several named timetables; the earliest
     // name is picked so the same request always answers the same row.
     const timetable = await prisma.timetable.findFirst({
       where,
-      orderBy: { name: 'asc' },
+      orderBy: { name: "asc" },
       include: timetableInclude,
-    })
+    });
 
     if (!timetable) {
-      return NextResponse.json({ error: 'Timetable not found' }, { status: 404 })
+      return NextResponse.json(
+        { error: "Timetable not found" },
+        { status: 404 },
+      );
     }
-    return NextResponse.json({ data: timetable })
+    return NextResponse.json({ data: timetable });
   } catch (error) {
-    if (error instanceof Error && error.name === 'UnauthorizedError') {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    if (error instanceof Error && error.name === "UnauthorizedError") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    if (error instanceof Error && error.name === 'ForbiddenError') {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    if (error instanceof Error && error.name === "ForbiddenError") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
-    logError('Timetable GET', error)
-    return NextResponse.json({ error: 'Failed to fetch timetable' }, { status: 500 })
+    logError("Timetable GET", error);
+    return NextResponse.json(
+      { error: "Failed to fetch timetable" },
+      { status: 500 },
+    );
   }
 }
 
 export async function POST(req: NextRequest) {
   try {
-    const ctx = await getTenantContext()
-    const { schoolId, tenantId, userId } = ctx
-    if (!schoolId) return NextResponse.json({ error: 'No school assigned' }, { status: 400 })
+    const ctx = await getTenantContext();
+    const { schoolId, tenantId, userId } = ctx;
+    if (!schoolId)
+      return NextResponse.json(
+        { error: "No school assigned" },
+        { status: 400 },
+      );
 
     // RBAC
-    if (!(await hasPermission(userId, 'timetable:update', tenantId, schoolId))) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    if (
+      !(await hasPermission(userId, "timetable:update", tenantId, schoolId))
+    ) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     // Row scope under the write key. `timetable:update` resolves to `class` for a
@@ -236,37 +308,45 @@ export async function POST(req: NextRequest) {
     // body — so without narrowing that id, a teacher could write the schedule of
     // any class in the school. The class lookup below therefore tests membership
     // of the caller's visible classes, not merely existence in this school.
-    const visibility = await resolveVisibility(ctx, 'timetable:update')
+    const visibility = await resolveVisibility(ctx, "timetable:update");
     if (visibilityDeniesAll(visibility)) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const body = await req.json()
-    const parseResult = validateCreateTimetable(body)
+    const body = await req.json();
+    const parseResult = validateCreateTimetable(body);
     if (!parseResult.success) {
-      return NextResponse.json({ error: 'Invalid input', details: parseResult.error.issues }, { status: 400 })
+      return NextResponse.json(
+        { error: "Invalid input", details: parseResult.error.issues },
+        { status: 400 },
+      );
     }
-    const { classId, termId, name, isPublished, entries } = parseResult.data
+    const { classId, termId, name, isPublished, entries } = parseResult.data;
 
     // The class must exist in this tenant and school, or the write would
     // fail on the foreign key as a 500. The two conditions compose: `AND`
     // rather than a spread, so neither can overwrite the other.
-    const classWhere: Prisma.ClassWhereInput = { id: classId, tenantId, schoolId }
-    if (visibility.classIds) classWhere.AND = [{ id: { in: visibility.classIds } }]
+    const classWhere: Prisma.ClassWhereInput = {
+      id: classId,
+      tenantId,
+      schoolId,
+    };
+    if (visibility.classIds)
+      classWhere.AND = [{ id: { in: visibility.classIds } }];
     const classRow = await prisma.class.findFirst({
       where: classWhere,
       select: { id: true },
-    })
+    });
     if (!classRow) {
-      return NextResponse.json({ error: 'Class not found' }, { status: 404 })
+      return NextResponse.json({ error: "Class not found" }, { status: 404 });
     }
 
     const termRow = await prisma.term.findFirst({
       where: { id: termId, tenantId, schoolId },
       select: { id: true },
-    })
+    });
     if (!termRow) {
-      return NextResponse.json({ error: 'Term not found' }, { status: 404 })
+      return NextResponse.json({ error: "Term not found" }, { status: 404 });
     }
 
     // Every entry's classSubject must belong to this class and tenant.
@@ -280,67 +360,165 @@ export async function POST(req: NextRequest) {
           id: { in: entries.map((entry) => entry.classSubjectId) },
         },
         select: { id: true },
-      })
-      const validIds = new Set(valid.map((cs) => cs.id))
+      });
+      const validIds = new Set(valid.map((cs) => cs.id));
       if (entries.some((entry) => !validIds.has(entry.classSubjectId))) {
         return NextResponse.json(
           {
-            error: 'Invalid input',
+            error: "Invalid input",
             details: [
               {
-                code: 'custom',
-                message: 'classSubjectId must belong to this class',
-                path: ['entries', 'classSubjectId'],
+                code: "custom",
+                message: "classSubjectId must belong to this class",
+                path: ["entries", "classSubjectId"],
               },
             ],
           },
           { status: 400 },
-        )
+        );
       }
     }
 
     // Timetable and its entries are written in one transaction: a
     // timetable whose entries partially failed to insert would render
     // as a schedule with silently missing periods.
-    const timetable = await prisma.$transaction(
-      async (tx) => {
-        const created = await tx.timetable.create({
-          data: { tenantId, classId, termId, name, isPublished },
-        })
-        if (entries.length > 0) {
-          await tx.timetableEntry.createMany({
-            data: entries.map((entry) => ({
-              tenantId,
-              timetableId: created.id,
-              classSubjectId: entry.classSubjectId,
-              dayOfWeek: entry.dayOfWeek,
-              startTime: entry.startTime,
-              endTime: entry.endTime,
-              room: entry.room ?? null,
-            })),
-          })
-        }
-        return tx.timetable.findUnique({
-          where: { id: created.id },
-          include: timetableInclude,
-        })
-      },
-      TIMETABLE_TRANSACTION_BOUNDS,
-    )
+    const timetable = await prisma.$transaction(async (tx) => {
+      const created = await tx.timetable.create({
+        data: { tenantId, classId, termId, name, isPublished },
+      });
+      if (entries.length > 0) {
+        await tx.timetableEntry.createMany({
+          data: entries.map((entry) => ({
+            tenantId,
+            timetableId: created.id,
+            classSubjectId: entry.classSubjectId,
+            dayOfWeek: entry.dayOfWeek,
+            startTime: entry.startTime,
+            endTime: entry.endTime,
+            room: entry.room ?? null,
+          })),
+        });
+      }
+      return tx.timetable.findUnique({
+        where: { id: created.id },
+        include: timetableInclude,
+      });
+    }, TIMETABLE_TRANSACTION_BOUNDS);
 
-    return NextResponse.json({ data: timetable }, { status: 201 })
+    return NextResponse.json({ data: timetable }, { status: 201 });
   } catch (error) {
-    if (error instanceof Error && error.name === 'UnauthorizedError') {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    if (error instanceof Error && error.name === "UnauthorizedError") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    if (error instanceof Error && error.name === 'ForbiddenError') {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    if (error instanceof Error && error.name === "ForbiddenError") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
     // Before the generic 500: a duplicate timetable name or a duplicate
     // (day, startTime, classSubject) entry is a client error, and the
     // catch-all would otherwise report it as an outage.
-    if (isUniqueConstraintViolation(error)) return duplicateResponse()
-    logError('Timetable POST', error)
-    return NextResponse.json({ error: 'Failed to create timetable' }, { status: 500 })
+    if (isUniqueConstraintViolation(error)) return duplicateResponse();
+    logError("Timetable POST", error);
+    return NextResponse.json(
+      { error: "Failed to create timetable" },
+      { status: 500 },
+    );
+  }
+}
+
+export async function PATCH(req: NextRequest) {
+  try {
+    const ctx = await getTenantContext();
+    const { tenantId, schoolId, userId } = ctx;
+    if (!schoolId)
+      return NextResponse.json(
+        { error: "No school assigned" },
+        { status: 400 },
+      );
+    if (
+      !(await hasPermission(userId, "timetable:update", tenantId, schoolId))
+    ) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+    const visibility = await resolveVisibility(ctx, "timetable:update");
+    if (visibilityDeniesAll(visibility))
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    const parsed = CreateTimetableSchema.extend({
+      id: z.string().min(1),
+    }).safeParse(await req.json().catch(() => null));
+    if (!parsed.success)
+      return NextResponse.json(
+        { error: "Invalid input", details: parsed.error.issues },
+        { status: 400 },
+      );
+    const { id, classId, termId, name, isPublished, entries } = parsed.data;
+    const where: Prisma.TimetableWhereUniqueInput = {
+      id,
+      tenantId,
+      classId,
+      termId,
+      class: { schoolId },
+    };
+    if (visibility.classIds)
+      where.AND = [{ classId: { in: visibility.classIds } }];
+    const existing = await prisma.timetable.findFirst({
+      where,
+      select: { id: true },
+    });
+    if (!existing)
+      return NextResponse.json(
+        { error: "Timetable not found" },
+        { status: 404 },
+      );
+    const subjects = await prisma.classSubject.findMany({
+      where: {
+        tenantId,
+        classId,
+        id: { in: entries.map((entry) => entry.classSubjectId) },
+      },
+      select: { id: true },
+    });
+    const subjectIds = new Set(subjects.map((subject) => subject.id));
+    if (entries.some((entry) => !subjectIds.has(entry.classSubjectId))) {
+      return NextResponse.json(
+        { error: "Every period subject must belong to this class." },
+        { status: 400 },
+      );
+    }
+    const timetable = await prisma.$transaction(async (tx) => {
+      // The scoped update also locks the timetable row before replacing its periods.
+      await tx.timetable.update({ where, data: { name, isPublished } });
+      await tx.timetableEntry.deleteMany({
+        where: { timetableId: id, tenantId },
+      });
+      if (entries.length > 0) {
+        await tx.timetableEntry.createMany({
+          data: entries.map((entry) => ({
+            tenantId,
+            timetableId: id,
+            classSubjectId: entry.classSubjectId,
+            dayOfWeek: entry.dayOfWeek,
+            startTime: entry.startTime,
+            endTime: entry.endTime,
+            room: entry.room ?? null,
+          })),
+        });
+      }
+      return tx.timetable.findUnique({
+        where: { id },
+        include: timetableInclude,
+      });
+    }, TIMETABLE_TRANSACTION_BOUNDS);
+    return NextResponse.json({ data: timetable });
+  } catch (error) {
+    if (error instanceof Error && error.name === "UnauthorizedError")
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (error instanceof Error && error.name === "ForbiddenError")
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    if (isUniqueConstraintViolation(error)) return duplicateResponse();
+    logError("Timetable PATCH", error);
+    return NextResponse.json(
+      { error: "Failed to update timetable" },
+      { status: 500 },
+    );
   }
 }

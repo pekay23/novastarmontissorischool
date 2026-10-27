@@ -33,6 +33,8 @@ import { logError } from '@/lib/logger'
 const navigation = [
   { name: 'Dashboard', href: '/portal/dashboard' },
   { name: 'Students', href: '/portal/students' },
+  { name: 'Classes', href: '/portal/classes' },
+  { name: 'Enrollment', href: '/portal/enrollment' },
   { name: 'Attendance', href: '/portal/attendance' },
   { name: 'Grades', href: '/portal/grades' },
   { name: 'Fees', href: '/portal/fees' },
@@ -41,6 +43,9 @@ const navigation = [
   { name: 'Announcements', href: '/portal/announcements' },
   { name: 'Teachers', href: '/portal/teachers' },
   { name: 'Timetable', href: '/portal/timetable' },
+  { name: 'Syllabus', href: '/portal/syllabus' },
+  { name: 'Promotions', href: '/portal/promotions' },
+  { name: 'Inventory', href: '/portal/inventory' },
   { name: 'Reports', href: '/portal/reports' },
   { name: 'Settings', href: '/portal/settings' },
    { name: 'Admissions', href: '/portal/admissions' },

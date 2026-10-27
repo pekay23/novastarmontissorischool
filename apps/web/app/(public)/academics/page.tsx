@@ -356,7 +356,7 @@ export default async function AcademicsPage() {
       </section>
 
       {/* Progression Path */}
-      <section className="container pt-20 pb-10">
+      <section className="pt-20 pb-10">
         <div className="text-center mb-10">
           <p className="type-label uppercase text-accent-warm-dark mb-2">The Novastar Journey</p>
           <h2 className="font-serif text-3xl md:text-4xl text-primary">A continuous path to BECE</h2>
@@ -369,8 +369,8 @@ export default async function AcademicsPage() {
             { label: 'Primary', caption: '6 – 12yrs', active: true },
             { label: 'Junior High', caption: '12 – 15yrs', active: true },
           ]}
-          className="mx-auto"
-          containerClassName="px-2 md:px-1"
+          className="mx-auto max-w-none"
+          containerClassName="px-4 md:px-6 lg:px-8 min-w-max"
         />
       </section>
 

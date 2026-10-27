@@ -6,6 +6,7 @@ import { hasPermission } from '@novastar/auth'
 import {
   resolveVisibility,
   studentVisibilityWhere,
+  classVisibilityWhere,
   visibilityDeniesAll,
 } from '@/lib/visibility'
 import { z } from 'zod'
@@ -17,9 +18,9 @@ const StudentSchema = z.object({
   lastName: z.string(),
   otherNames: z.string().optional(),
   gender: z.enum(['MALE', 'FEMALE', 'OTHER']),
-  dateOfBirth: z.string(),
+  dateOfBirth: z.iso.date(),
   admissionNumber: z.string().optional(),
-  admissionDate: z.string().optional(),
+  admissionDate: z.iso.date().optional(),
   classId: z.string().optional(),
   parentId: z.string().optional(),
 })
@@ -76,7 +77,8 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const { schoolId, tenantId, userId } = await getTenantContext()
+    const ctx = await getTenantContext()
+    const { schoolId, tenantId, userId } = ctx
     if (!schoolId) return NextResponse.json({ error: 'No school assigned' }, { status: 400 })
 
     // RBAC
@@ -90,6 +92,28 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid input', details: parseResult.error.issues }, { status: 400 })
     }
     const data = parseResult.data
+
+    const visibility = await resolveVisibility(ctx, 'student:create')
+    if (visibilityDeniesAll(visibility)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    if (visibility.classIds !== null && !data.classId) {
+      return NextResponse.json({ error: 'A class within your assigned scope is required' }, { status: 403 })
+    }
+    if (data.classId) {
+      const cls = await prisma.class.findFirst({
+        where: { id: data.classId, tenantId, schoolId, AND: [classVisibilityWhere(visibility)] },
+        select: { id: true },
+      })
+      if (!cls) return NextResponse.json({ error: 'Class not found' }, { status: 404 })
+    }
+    if (data.parentId) {
+      const parent = await prisma.parent.findFirst({
+        where: { id: data.parentId, tenantId, schoolId },
+        select: { id: true },
+      })
+      if (!parent || (visibility.scope === 'own' && visibility.parentId !== parent.id)) {
+        return NextResponse.json({ error: 'Parent not found' }, { status: 404 })
+      }
+    }
 
     const student = await prisma.student.create({
       data: {

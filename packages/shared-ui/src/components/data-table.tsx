@@ -24,7 +24,7 @@ export function DataTabled<TData>({ columns, data }: DataTabledProps<TData>) {
 
   return (
     <div className="rounded-md border">
-      <table className="w-full">
+      <div className="w-full overflow-auto"><table className="w-full">
         {/* Without this the table renders rows only and every ColumnDef.header is
             discarded — column labels silently never appear. */}
         <thead>
@@ -63,7 +63,7 @@ export function DataTabled<TData>({ columns, data }: DataTabledProps<TData>) {
             </tr>
           )}
         </tbody>
-      </table>
+      </table></div>
     </div>
   )
 }

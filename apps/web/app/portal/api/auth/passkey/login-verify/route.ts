@@ -4,7 +4,7 @@ import { logError } from '@/lib/logger'
 import { prisma } from '@/lib/prisma'
 import { rpConfig } from '@/lib/auth/passkey-config'
 import crypto from 'crypto'
-import { checkRateLimit, clientIdentifier } from '@/lib/rate-limit'
+import { rateLimitAsync, clientIdentifier } from '@/lib/rate-limit'
 import { createAuditLog, AuditLogAction } from '@/lib/audit/logger'
 
 /**
@@ -27,7 +27,7 @@ function canPasskeyLogin(user: { status: string; isActive: boolean }): boolean {
 }
 
 export async function POST(req: Request) {
-  const { success, reset } = checkRateLimit(
+  const { success, reset } = await rateLimitAsync(
     `passkey:login-verify:${clientIdentifier(req)}`,
     PASSKEY_ATTEMPTS,
     PASSKEY_WINDOW_MS,

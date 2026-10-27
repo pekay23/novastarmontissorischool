@@ -376,7 +376,7 @@ export default function AnnouncementsPage() {
       </Card>
 
       <Dialog open={dialogOpen} onOpenChange={handleDialogClose}>
-        <DialogContent className="max-w-3xl max-h-[90vh]">
+        <DialogContent className="sm:max-w-[calc(100vw-2rem)] max-w-lg w-[calc(100vw-1rem)] max-h-[calc(100vh-2rem)] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               {editingAnnouncement ? 'Edit Announcement' : 'New Announcement'}
@@ -413,7 +413,7 @@ export default function AnnouncementsPage() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="targetAudience">Target Audience</Label>
-                <div className="border rounded-md p-2 min-h-[42px] flex flex-wrap gap-1 items-center">
+                <div className="border rounded-md p-2 min-h-10.5 flex flex-wrap gap-1 items-center">
                   {form.targetAudience.map((role) => (
                     <Badge key={role} variant="secondary" className="text-xs">
                       {role}

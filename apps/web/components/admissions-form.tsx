@@ -171,7 +171,7 @@ export function AdmissionsForm() {
         <CardTitle id="admissions-form-title">Online Application Form</CardTitle>
       </CardHeader>
       <CardContent>
-        <ol className="mb-6 flex items-center justify-between">
+        <ol className="mb-6 flex items-center justify-between gap-1 overflow-x-auto pb-2 -mx-1 px-1">
           {STEPS.map((step, i) => (
             <li
               key={step.id}
@@ -197,7 +197,7 @@ export function AdmissionsForm() {
               >
                 {i + 1}
               </span>
-              {step.label}
+              <div className="text-[10px] sm:text-xs truncate px-1">{step.label}</div>
             </li>
           ))}
         </ol>

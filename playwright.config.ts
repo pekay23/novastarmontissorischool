@@ -31,6 +31,7 @@ const PORT = Number(process.env.E2E_PORT ?? 3100);
 const BASE_URL = `http://localhost:${PORT}`;
 /** The app's portal path prefix. Every portal route is reached through this prefix. */
 const BASE_PATH = '/portal';
+const productionServer = process.env.E2E_SERVER_MODE === 'production';
 
 export default defineConfig({
   testDir: './e2e',
@@ -75,7 +76,9 @@ export default defineConfig({
   ],
 
   webServer: {
-    command: `bunx turbo run dev --filter=web -- --port ${PORT}`,
+    command: productionServer
+      ? `bun run --cwd apps/web start --port ${PORT}`
+      : `bunx turbo run dev --filter=web -- --port ${PORT}`,
     url: `${BASE_URL}${BASE_PATH}/login`,
     reuseExistingServer: !process.env.CI,
     // 300s, not the 120s default: a cold Turbopack dev server takes ~51s to

@@ -437,7 +437,7 @@ export default function InventoryPage() {
 
       {/* Inventory Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh]">
+        <DialogContent className="sm:max-w-[calc(100vw-2rem)] max-w-lg w-[calc(100vw-1rem)] max-h-[calc(100vh-2rem)] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               {editingItem ? 'Edit Item' : 'New Item'}

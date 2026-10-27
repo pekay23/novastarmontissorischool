@@ -490,10 +490,10 @@ describe("the reserved key and the history path live in exactly one place", () =
     expect(AMENDMENT_REASON_KEY).toBe("amendmentReason");
   });
   it("builds the history query from the endpoint constant", () => {
-    expect(AMENDMENT_HISTORY_ENDPOINT).toBe("/api/record-amendments");
+    expect(AMENDMENT_HISTORY_ENDPOINT).toBe("/portal/api/record-amendments");
     const query = amendmentHistoryQuery("student", "student-1");
     expect(query).toBe(
-      "/api/record-amendments?entityType=student&entityId=student-1",
+      "/portal/api/record-amendments?entityType=student&entityId=student-1",
     );
   });
   it("escapes an id rather than concatenating it", () => {
@@ -1061,7 +1061,7 @@ describe("the history is read from the endpoint the record selects", () => {
       transport,
     );
     expect(asked).toEqual([
-      "/api/record-amendments?entityType=parent&entityId=rec-42",
+      "/portal/api/record-amendments?entityType=parent&entityId=rec-42",
     ]);
   });
   it("escapes a registry key or id that would otherwise change the query", async () => {
@@ -1078,7 +1078,7 @@ describe("the history is read from the endpoint the record selects", () => {
     // replace a parameter, which for an evidence trail means fetching the wrong
     // record's history and showing it as this record's.
     expect(asked[0]).toBe(
-      "/api/record-amendments?entityType=a%26b%3Dc&entityId=id%2F..%2Fx",
+      "/portal/api/record-amendments?entityType=a%26b%3Dc&entityId=id%2F..%2Fx",
     );
   });
   it("groups the rows it receives, so the read and the display cannot disagree", async () => {
@@ -1087,7 +1087,7 @@ describe("the history is read from the endpoint the record selects", () => {
       status: 200,
       body: THREE_FIELD_EDIT,
     });
-    const read = await loadAmendmentGroups("/api/record-amendments", transport);
+    const read = await loadAmendmentGroups("/portal/api/record-amendments", transport);
     if (read.status !== "ok")
       throw new Error(`expected an ok read, got ${read.status}`);
     expect(read.groups).toHaveLength(1);
@@ -1105,17 +1105,16 @@ describe("the history is read from the endpoint the record selects", () => {
       "Year 1A",
     ]);
   });
-  it("reports a route that does not exist as missing, not as a failed read", async () => {
+  it("reports a missing or inaccessible record as a failed history read", async () => {
     const { transport } = stubTransport({ ok: false, status: 404 });
-    const read = await loadAmendmentGroups("/api/record-amendments", transport);
-    // The distinction is load-bearing: "not built" and "the server broke" call for
-    // different responses, and neither may read as "nothing was ever amended".
-    expect(read.status).toBe("not-implemented");
-    expect(historyReadMessage(read)).toContain("not implemented yet");
+    const read = await loadAmendmentGroups("/portal/api/record-amendments", transport);
+    // A missing record must not look like a successful empty history.
+    expect(read.status).toBe("failed");
+    expect(historyReadMessage(read)).toContain("could not be found");
   });
   it("reports a server error with the status, so the failure is diagnosable", async () => {
     const { transport } = stubTransport({ ok: false, status: 503 });
-    const read = await loadAmendmentGroups("/api/record-amendments", transport);
+    const read = await loadAmendmentGroups("/portal/api/record-amendments", transport);
     expect(read.status).toBe("failed");
     expect(historyReadMessage(read)).toBe(
       "Could not load amendment history (503).",
@@ -1123,19 +1122,19 @@ describe("the history is read from the endpoint the record selects", () => {
   });
   it("reports an unreachable server rather than throwing at the render", async () => {
     const { transport } = stubTransport(new Error("ECONNREFUSED"));
-    const read = await loadAmendmentGroups("/api/record-amendments", transport);
+    const read = await loadAmendmentGroups("/portal/api/record-amendments", transport);
     expect(read.status).toBe("failed");
     expect(historyReadMessage(read)).toContain("Could not reach the server");
   });
   it("reads a body with no data key as an empty trail, not as a crash", async () => {
     const { transport } = stubTransport({ ok: true, status: 200, body: {} });
-    const read = await loadAmendmentGroups("/api/record-amendments", transport);
+    const read = await loadAmendmentGroups("/portal/api/record-amendments", transport);
     if (read.status !== "ok")
       throw new Error(`expected an ok read, got ${read.status}`);
     expect(read.groups).toEqual([]);
   });
   it("has no error to word for a successful read", () => {
-    expect(historyReadMessage({ status: "ok", groups: [] })).toBeNull();
+    expect(historyReadMessage({ status: "ok", groups: [], nextOffset: null })).toBeNull();
   });
 });
 describe("the dialog reads when it opens", () => {

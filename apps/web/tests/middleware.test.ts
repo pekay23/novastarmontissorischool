@@ -378,7 +378,7 @@ describe('Middleware - Rate Limiter', () => {
   })
 
   it('should apply rate limiting in auth callback route', () => {
-    expect(authRoute).toContain('checkRateLimit')
+    expect(authRoute).toContain('rateLimitAsync')
     expect(authRoute).toContain('CREDENTIALS_ATTEMPTS')
   })
 
@@ -631,7 +631,7 @@ describe('Middleware - Unauthenticated credential write paths are closed', () =>
     // The proxy's publicPaths list exempted all of /api/auth/*, so these had no
     // limiter at all until the handlers carried their own.
     for (const src of [loginOptions, loginVerify]) {
-      expect(src).toContain('checkRateLimit')
+      expect(src).toContain('rateLimitAsync')
       expect(src).toContain('clientIdentifier')
       expect(src).toContain('PASSKEY_ATTEMPTS')
       expect(src).toContain('status: 429')
@@ -668,7 +668,8 @@ describe('Middleware - Unauthenticated credential write paths are closed', () =>
 
 it('should give /portal/api/auth its own tighter budget', () => {
     expect(proxySrc).toContain('AUTH_RATE_LIMIT')
-    expect(proxySrc).toContain("pathname.startsWith('/portal/api/auth')")
+    expect(proxySrc).toContain('const isAuthApi = isWithinPath(pathname, `${section}/api/auth`)')
+    expect(proxySrc).toContain('isAuthApi ? AUTH_RATE_LIMIT')
   })
 
   it('should drop the vestigial ADMIN_STAFF section that could never match', () => {

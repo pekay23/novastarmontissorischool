@@ -1,6 +1,7 @@
 import './globals.css'
 
 import { baseMetadata } from '@/lib/metadata'
+import { SecurityShield } from '@/components/security/SecurityShield'
 import { ToastProvider } from '@novastar/shared-ui'
 import { Inter, Outfit, Playfair_Display, JetBrains_Mono } from 'next/font/google'
 
@@ -96,7 +97,10 @@ export default function RootLayout({
         <meta name="theme-color" content="#6a019f" />
       </head>
       <body className="min-h-screen bg-background font-sans text-foreground antialiased">
-        <ToastProvider>{children}</ToastProvider>
+        <ToastProvider>
+          <SecurityShield />
+          {children}
+        </ToastProvider>
       </body>
     </html>
   )

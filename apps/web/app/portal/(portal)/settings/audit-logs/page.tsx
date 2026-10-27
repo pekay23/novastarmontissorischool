@@ -191,14 +191,14 @@ export default async function AuditLogsPage({
         <div className="flex justify-center gap-2">
           {offset > 0 && (
             <Button asChild variant="outline" size="sm">
-              <a href={`/settings/audit-logs?limit=${limit}&offset=${Math.max(0, offset - limit)}`}>
+              <a href={`/portal/settings/audit-logs?limit=${limit}&offset=${Math.max(0, offset - limit)}`}>
                 Previous
               </a>
             </Button>
           )}
           {hasMore && (
             <Button asChild variant="outline" size="sm">
-              <a href={`/settings/audit-logs?limit=${limit}&offset=${offset + limit}`}>
+              <a href={`/portal/settings/audit-logs?limit=${limit}&offset=${offset + limit}`}>
                 Next
               </a>
             </Button>

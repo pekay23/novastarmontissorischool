@@ -28,11 +28,74 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from '@novastar/shared-ui'
-import { Plus, Search, Edit2, Trash2, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Loader2, MoreHorizontal, Eye, Lock } from 'lucide-react'
+import {
+  Plus,
+  Search,
+  Edit2,
+  Trash2,
+  ChevronLeft,
+  ChevronRight,
+  ChevronUp,
+  ChevronDown,
+  Loader2,
+  MoreHorizontal,
+  Eye,
+  Lock,
+  Calendar,
+  CalendarDays,
+  GraduationCap,
+  BookOpen,
+  Scale,
+  Shield,
+  Tag,
+  CreditCard,
+  Palette,
+  Newspaper,
+  CalendarPlus,
+  Building,
+  Trophy,
+  BookMarked,
+  Award,
+  ClipboardCheck,
+  FileText,
+  List,
+  UserCheck,
+  User,
+  Users as UsersIcon,
+} from 'lucide-react'
 import { EntityType, DEFAULT_ENTITY_REGISTRY } from '@novastar/shared-types'
 import { formatDate } from '@novastar/shared-utils'
 import { EntityForm } from './entity-form'
 import { isLockedRecord, withAmendmentReason } from './amendment'
+
+/** Maps Lucide icon name strings to actual Lucide React components. */
+function RegistryIcon({ name, className = 'text-xl' }: { name?: string; className?: string }) {
+  const icons: Record<string, React.ComponentType<{ className?: string }>> = {
+    calendar: Calendar,
+    'calendar-days': CalendarDays,
+    'graduation-cap': GraduationCap,
+    'book-open': BookOpen,
+    scale: Scale,
+    shield: Shield,
+    tag: Tag,
+    'credit-card': CreditCard,
+    palette: Palette,
+    newspaper: Newspaper,
+    'calendar-plus': CalendarPlus,
+    'building-2': Building,
+    trophy: Trophy,
+    'book-mark': BookMarked,
+    users: UsersIcon,
+    award: Award,
+    'clipboard-check': ClipboardCheck,
+    'file-text': FileText,
+    list: List,
+    'user-check': UserCheck,
+    user: User,
+  }
+  const Icon = name ? icons[name] : null
+  return Icon ? <Icon className={className} aria-hidden="true" /> : null
+}
 
 interface EntityListProps {
   entityType: EntityType
@@ -260,7 +323,7 @@ export function EntityList({ entityType }: EntityListProps) {
       <CardHeader className="flex flex-row items-center justify-between">
         <div>
           <CardTitle className="flex items-center gap-2">
-            {registry?.icon && <span className="text-xl">{registry.icon}</span>}
+            {registry?.icon && <RegistryIcon name={registry.icon} />}
             {registry?.namePlural || entityType}
           </CardTitle>
         </div>

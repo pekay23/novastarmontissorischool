@@ -112,7 +112,7 @@ export function HorizontalScroll({
         tabIndex={0}
         onKeyDown={handleKeyDown}
         className={cn(
-          'overflow-x-auto overflow-x-clip pb-4',
+          'overflow-x-auto pb-4 overscroll-x-contain',
           'scroll-smooth',
           'touch-pan-x',
           '-ms-overflow-style-none',

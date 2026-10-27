@@ -329,7 +329,7 @@ export default function LibraryPage() {
                     <th className="text-left py-2">Category</th>
                     <th className="text-center py-2">Copies</th>
                     <th className="text-center py-2">Status</th>
-                    <th className="w-16" />
+                    <th className="w-auto" />
                   </tr>
                 </thead>
                 <tbody>
@@ -434,7 +434,7 @@ export default function LibraryPage() {
               return activeLoans.length === 0 ? (
                 <p className="text-sm text-muted-foreground">No active loans.</p>
               ) : (
-                <table className="w-full text-sm">
+                <div className="overflow-x-auto"><table className="w-full text-sm">
                   <thead>
                     <tr className="border-b">
                       <th className="text-left py-2">Book</th>
@@ -471,7 +471,7 @@ export default function LibraryPage() {
                       )
                     })}
                   </tbody>
-                </table>
+                </table></div>
               )
             })()
           )}
@@ -480,7 +480,7 @@ export default function LibraryPage() {
 
       {/* Book Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh]">
+        <DialogContent className="sm:max-w-[calc(100vw-2rem)] max-w-lg w-[calc(100vw-1rem)] max-h-[calc(100vh-2rem)] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingBook ? 'Edit Book' : 'New Book'}</DialogTitle>
             <DialogDescription>

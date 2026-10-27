@@ -2,7 +2,7 @@ import 'server-only'
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { logError } from '@/lib/logger'
-import { checkRateLimit, clientIdentifier } from '@/lib/rate-limit'
+import { rateLimitAsync, clientIdentifier } from '@/lib/rate-limit'
 import { portalOrigin, resolveSchool } from '@/lib/auth/school-lookup'
 import {
   EMAIL_TOKEN_TTL_HOURS,
@@ -42,7 +42,7 @@ const ACCEPTED = {
 }
 
 export async function POST(req: Request) {
-  const byIp = checkRateLimit(
+  const byIp = await rateLimitAsync(
     `verify-email-resend:ip:${clientIdentifier(req)}`,
     RESEND_IP_ATTEMPTS,
     RESEND_WINDOW_MS,
@@ -64,7 +64,7 @@ export async function POST(req: Request) {
 
   const email = parsed.data.email.trim().toLowerCase()
 
-  const byAddress = checkRateLimit(
+  const byAddress = await rateLimitAsync(
     `verify-email-resend:addr:${email}`,
     RESEND_ADDRESS_ATTEMPTS,
     RESEND_WINDOW_MS,

@@ -1,6 +1,7 @@
 import { cn } from '@novastar/shared-ui'
 import { formatDate } from '@novastar/shared-utils'
 import type { News } from '@prisma/client'
+import Link from 'next/link'
 
 import { CARD_PAD, Card, CardTitle, HeroBand, SectionShell } from '@/components/marketing'
 import { getPublishedNews } from '@/lib/data'
@@ -8,17 +9,6 @@ import { generateNewsMetadata } from '@/lib/metadata'
 
 export const metadata = generateNewsMetadata()
 
-/*
- * Content comes from the database. This page previously rendered three
- * hardcoded items — a "new science lab inaugurated", a "parent workshop", and a
- * 2021 BECE claim — as though they were real news, and each card linked to a
- * `/news/[slug]` route that does not exist, so all three 404'd. On a live
- * school site that is worse than an empty page: a parent could act on an event
- * that was never going to happen.
- *
- * `getPublishedNews` returns `[]` when there is no database at build time, so
- * the empty state below is what ships until real content is published.
- */
 export default async function NewsPage() {
   const news = await getPublishedNews()
 
@@ -57,13 +47,8 @@ export default async function NewsPage() {
 
 function NewsCard({ item }: { item: News }) {
   return (
-    /*
-      Not a link. There is no /news/[slug] route, so wrapping this in <Link>
-      produced a card that navigated to a 404. Add the route before making
-      these clickable again.
-    */
     <Card tone="flat" className={cn(CARD_PAD, 'flex h-full flex-col gap-4 bg-surface-container-low border-transparent transition-all duration-700 hover:-translate-y-1 hover:shadow-floating')}>
-      <CardTitle className="font-serif text-xl">{item.title}</CardTitle>
+      <CardTitle className="font-serif text-xl"><Link href={`/news/${encodeURIComponent(item.id)}`} className="underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary">{item.title}</Link></CardTitle>
       <p className="text-sm text-foreground/70">
         {item.publishedAt ? formatDate(item.publishedAt) : null}
         {item.category ? ` • ${item.category}` : null}

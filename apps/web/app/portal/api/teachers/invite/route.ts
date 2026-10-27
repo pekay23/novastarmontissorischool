@@ -13,7 +13,7 @@ import {
 } from '@novastar/auth/invite'
 import { PLATFORM_ROLE_NAMES } from '@novastar/shared-types'
 import { sendEmail, setPasswordTemplate } from '@novastar/notifications'
-import { checkRateLimit, clientIdentifier } from '@/lib/rate-limit'
+import { rateLimitAsync, clientIdentifier } from '@/lib/rate-limit'
 import { duplicateResponse, isUniqueConstraintViolation } from '@/lib/prisma-conflict'
 import { createAuditLog, AuditLogAction } from '@/lib/audit/logger'
 import { logError } from '@/lib/logger'
@@ -184,7 +184,7 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const { success, reset } = checkRateLimit(
+  const { success, reset } = await rateLimitAsync(
     `teachers-invite:${clientIdentifier(req)}`,
     CREATE_ATTEMPTS,
     CREATE_WINDOW_MS,

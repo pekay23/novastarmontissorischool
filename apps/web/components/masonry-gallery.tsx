@@ -15,7 +15,7 @@ interface MasonryGalleryProps {
 
 export function MasonryGallery({ images, className }: MasonryGalleryProps) {
 return (
-      <div className={cn("grid grid-cols-2 md:grid-cols-3 gap-4 md:gap-6", className)}>
+      <div className={cn("grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 md:gap-6", className)}>
         {images.map((image, i) => {
           let aspectClass = 'aspect-square'
           if (image.aspect === 'video') aspectClass = 'aspect-video col-span-2'
@@ -34,7 +34,7 @@ return (
             <div className="absolute inset-0 bg-primary/20 opacity-0 group-hover:opacity-100 mix-blend-overlay transition-opacity duration-500 z-10 pointer-events-none" />
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={image.src}
+              src={image.src} sizes="(max-width: 640px) 100vw, 50vw"
               alt={image.alt}
               className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 ease-out group-hover:scale-105"
               loading="lazy"

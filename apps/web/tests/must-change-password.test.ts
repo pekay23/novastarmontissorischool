@@ -561,7 +561,9 @@ describe('proxy sends a session that owes a password change to the setup page', 
     // the trailing slash is what makes it that URL rather than a redirect into
     // one — see the `pages.signIn` comment in proxy.ts.
     for (const path of ['/portal/login/', '/portal/api/auth/session']) {
-      expect(`${path}: ${await callProxy(path, '')}`).toBe(`${path}: undefined`)
+      const response = await callProxy(path, '')
+      expect(response?.status).toBe(200)
+      expect(response?.headers.get('location')).toBeNull()
     }
   })
 

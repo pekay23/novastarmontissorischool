@@ -2,7 +2,7 @@ import 'server-only'
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { logError } from '@/lib/logger'
-import { checkRateLimit, clientIdentifier } from '@/lib/rate-limit'
+import { rateLimitAsync, clientIdentifier } from '@/lib/rate-limit'
 import { consumeEmailToken, lookupEmailToken } from '@/lib/auth/email-verification'
 import { createAuditLog, AuditLogAction } from '@/lib/audit/logger'
 
@@ -50,7 +50,7 @@ function invalidTokenResponse(reason: 'invalid' | 'expired') {
 }
 
 export async function POST(req: Request) {
-  const { success, reset } = checkRateLimit(
+  const { success, reset } = await rateLimitAsync(
     `verify-email:${clientIdentifier(req)}`,
     VERIFY_ATTEMPTS,
     VERIFY_WINDOW_MS,

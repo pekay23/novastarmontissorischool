@@ -3,7 +3,6 @@ import Link from 'next/link'
 import {
   ArrowRight,
   Award,
-  BookOpen,
   Compass,
   Mail,
   MessageCircle,
@@ -99,90 +98,101 @@ const whatsapp = whatsappHref(
           </p>
           <p className="flex items-center gap-5 text-muted-foreground text-sm">
             <span className="items-center gap-1.5 inline-flex">
-              <ShieldCheck className="h-4 w-4 text-secondary" aria-hidden="true" />
+              <ShieldCheck className="h-4 w-4 text-secondary-dark" aria-hidden="true" />
               Aligned to GES standards
             </span>
             <span className="hidden items-center gap-1.5 sm:inline-flex">
-              <Users className="h-4 w-4 text-secondary" aria-hidden="true" />
+              <Users className="h-4 w-4 text-secondary-dark" aria-hidden="true" />
               Mixed-age classrooms
             </span>
           </p>
         </div>
       </div>
 
-      {/* Full-Bleed Animated Hero */}
-      <section className="flex relative items-end h-[85vh] min-h-150 w-full overflow-hidden">
-        <div className="absolute inset-0 z-0">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src="/images/photo_3_2026-10-05_11-06-55%20for%20primary%20school.jpg"
-            alt="Novastar Students"
-            className="h-full w-full animate-ken-burns object-center object-cover"
-            loading="eager"
-          />
-          {/* Dark gradient overlay only at bottom for text readability */}
-          <div className="absolute bg-linear-to-t from-background/95 inset-0 pointer-events-none to-transparent via-background/30" />
-        </div>
-
-        <div className="container relative mx-auto pb-24 pt-20 px-4 md:pb-32 text-center z-10">
-          <div className="items-center gap-2 mb-6 px-3 py-1 font-bold text-xs tracking-widest bg-background/80 border border-foreground/10 rounded-full opacity-0 animate-reveal-up backdrop-blur-md inline-flex uppercase" style={{ animationDelay: '0.1s', animationFillMode: 'forwards' }}>
-            <Sprout className="h-4 w-4 text-primary" /> Montessori school · Ayeduase, Kumasi
+      {/* Editorial hero: real campus photography, with room for the school's story. */}
+      <section className="relative overflow-hidden bg-tint-warm">
+        <div className="container grid items-center gap-12 py-14 md:py-20 lg:grid-cols-[0.88fr_1.12fr] lg:gap-16 lg:py-24">
+          <div className="relative z-10 max-w-2xl">
+            <div className="mb-7 flex items-center gap-3 text-primary">
+              <span className="grid h-10 w-10 place-items-center rounded-full bg-accent-warm text-primary-dark">
+                <Sprout className="h-5 w-5" aria-hidden="true" />
+              </span>
+              <span className="type-eyebrow uppercase">Montessori · Ayeduase, Kumasi</span>
+            </div>
+            <h1 className="max-w-[12ch] font-serif text-5xl font-medium leading-[1.04] tracking-[-0.035em] text-primary-dark sm:text-6xl lg:text-7xl">
+              {splitHeadline(heroTitle)}
+            </h1>
+            <p className="mt-6 max-w-[48ch] text-lg leading-relaxed text-foreground/80 md:text-xl">
+              {heroSubtitle}
+            </p>
+            <div className="mt-9 flex flex-wrap items-center gap-3">
+              <MarketingButton href="/contact" size="lg" className="font-semibold tracking-wide">
+                Book a campus visit
+                <ArrowRight className="ml-2 h-4 w-4" aria-hidden="true" />
+              </MarketingButton>
+              {open ? (
+                <MarketingButton href="/admissions" variant="outline" size="lg" className="border-primary/25 bg-background/60 font-semibold tracking-wide">
+                  Apply for admission
+                </MarketingButton>
+              ) : (
+                <MarketingButton href={whatsapp} variant="outline" size="lg" external className="border-primary/25 bg-background/60 font-semibold tracking-wide">
+                  <MessageCircle className="mr-2 h-4 w-4" aria-hidden="true" />
+                  Message us
+                </MarketingButton>
+              )}
+            </div>
+            <p className="mt-8 flex items-center gap-2 text-sm text-muted-foreground">
+              <ShieldCheck className="h-4 w-4 text-secondary-dark" aria-hidden="true" />
+              Crèche to Junior High, with GES-aligned learning
+            </p>
           </div>
-          <h1 className="max-w-4xl mx-auto font-serif leading-[1.1] text-5xl text-foreground lg:text-8xl md:text-7xl opacity-0 animate-reveal-up" style={{ animationDelay: '0.3s', animationFillMode: 'forwards' }}>
-            {splitHeadline(heroTitle)}
-          </h1>
-          <p className="max-w-2xl mt-6 mx-auto font-light text-lg text-muted-foreground md:text-xl opacity-0 animate-reveal-up" style={{ animationDelay: '0.5s', animationFillMode: 'forwards' }}>
-            {heroSubtitle}
-          </p>
-          <div className="flex flex-wrap items-center justify-center gap-4 mt-10 opacity-0 animate-reveal-up" style={{ animationDelay: '0.7s', animationFillMode: 'forwards' }}>
-            <MarketingButton href="/contact" size="lg" className="font-bold text-[11px] text-primary-foreground tracking-[0.25em] bg-primary hover:bg-primary-hover transition uppercase">
-              Book a campus visit
-            </MarketingButton>
-            {open ? (
-              <MarketingButton href="/admissions" variant="outline" size="lg" className="font-bold text-[11px] text-primary tracking-[0.25em] hover:text-primary-foreground bg-transparent border border-primary/30 hover:bg-primary transition uppercase">
-                Apply for admission
-              </MarketingButton>
-            ) : (
-              <MarketingButton href={whatsapp} variant="outline" size="lg" external className="font-bold text-[11px] text-primary tracking-[0.25em] hover:text-primary-foreground bg-transparent border border-primary/30 hover:bg-primary transition uppercase">
-                <MessageCircle className="h-4 w-4 mr-2" aria-hidden="true" />
-                Message us on WhatsApp
-              </MarketingButton>
-            )}
+
+          <div className="relative mx-auto w-full max-w-3xl lg:ml-auto">
+            <div className="absolute -right-5 -top-5 h-28 w-28 rounded-full border-[14px] border-secondary/25 sm:-right-8 sm:-top-8 sm:h-40 sm:w-40" aria-hidden="true" />
+            <div className="relative aspect-[1.12/1] overflow-hidden photo-arch bg-primary/10 shadow-floating md:aspect-[1.2/1]">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="/images/photo_2_2026-10-05_11-06-55%20for%20primary%20school.jpg"
+                alt="A teacher stands with Novastar pupils in their school garden"
+                className="h-full w-full object-cover object-center transition-transform duration-700 ease-out hover:scale-[1.025]"
+                fetchPriority="high"
+              />
+            </div>
+            <div className="absolute -bottom-5 left-4 flex max-w-[calc(100%-2rem)] items-center gap-3 rounded-xl border border-border/70 bg-background/95 px-4 py-3 shadow-raised backdrop-blur-sm sm:bottom-6 sm:-left-8 sm:px-5 sm:py-4">
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-secondary/15 text-secondary-dark">
+                <Users className="h-5 w-5" aria-hidden="true" />
+              </span>
+              <span>
+                <span className="block font-serif text-lg leading-tight text-primary-dark">Room to grow</span>
+                <span className="mt-1 block text-xs text-muted-foreground">A community where every age belongs</span>
+              </span>
+            </div>
+            <span className="absolute -bottom-5 right-4 -z-0 hidden rounded-full bg-accent-warm px-4 py-2 type-eyebrow uppercase text-primary-dark sm:block">
+              Learning, rooted in confidence
+            </span>
           </div>
         </div>
       </section>
 
-{/* Quick Action Icons */}
-      <section className="container relative max-w-5xl mb-20 mx-auto px-4 lg:px-8 -mt-16 z-20">
-        <div className="flex flex-wrap sm:flex-nowrap justify-evenly gap-6 p-6 md:p-8 bg-surface-container-low border border-border/50 rounded-xl shadow-floating opacity-0 animate-reveal-up" style={{ animationDelay: '0.9s', animationFillMode: 'forwards' }}>
-           <Link href="/admissions" className="flex flex-col items-center w-full sm:w-auto text-center group">
-             <div className="flex items-center justify-center h-16 w-16 mb-4 text-primary bg-tint-warm rounded-full group-hover:shadow-raised duration-300 transition-all group-hover:-translate-y-1">
-               <Award className="h-7 w-7" />
-             </div>
-             <h3 className="font-medium font-serif text-foreground text-lg group-hover:text-primary transition-colors">Apply Now</h3>
-             <p className="hidden md:block mt-1 text-muted-foreground text-sm">Start your journey</p>
-           </Link>
-           <Link href="/events" className="flex flex-col items-center w-full sm:w-auto text-center group">
-             <div className="flex items-center justify-center h-16 w-16 mb-4 text-primary bg-tint-warm rounded-full group-hover:shadow-raised duration-300 transition-all group-hover:-translate-y-1">
-               <Compass className="h-7 w-7" />
-             </div>
-             <h3 className="font-medium font-serif text-foreground text-lg group-hover:text-primary transition-colors">Calendar</h3>
-             <p className="hidden md:block mt-1 text-muted-foreground text-sm">Important dates</p>
-           </Link>
-           <Link href="/fees" className="flex flex-col items-center w-full sm:w-auto text-center group">
-             <div className="flex items-center justify-center h-16 w-16 mb-4 text-primary bg-tint-warm rounded-full group-hover:shadow-raised duration-300 transition-all group-hover:-translate-y-1">
-               <BookOpen className="h-7 w-7" />
-             </div>
-             <h3 className="font-medium font-serif text-foreground text-lg group-hover:text-primary transition-colors">Tuition & Fees</h3>
-             <p className="hidden md:block mt-1 text-muted-foreground text-sm">View schedules</p>
-           </Link>
-           <Link href="/portal/login" className="flex flex-col items-center w-full sm:w-auto text-center group">
-             <div className="flex items-center justify-center h-16 w-16 mb-4 text-primary bg-tint-warm rounded-full group-hover:shadow-raised duration-300 transition-all group-hover:-translate-y-1">
-               <Users className="h-7 w-7" />
-             </div>
-             <h3 className="font-medium font-serif text-foreground text-lg group-hover:text-primary transition-colors">Parent Portal</h3>
-             <p className="hidden md:block mt-1 text-muted-foreground text-sm">Access resources</p>
-           </Link>
+      {/* Popular paths */}
+      <section className="container relative z-20 -mt-px border-b border-border/70 bg-background py-0">
+        <div className="grid grid-cols-2 divide-x divide-y divide-border/70 md:grid-cols-4 md:divide-y-0">
+          <Link href="/admissions" className="group flex min-h-20 items-center justify-between gap-3 px-4 py-4 transition-colors hover:bg-tint-warm focus-visible:bg-tint-warm sm:px-6">
+            <span><span className="block type-eyebrow text-accent-warm-dark">01 / Begin</span><span className="mt-1 block font-serif text-lg text-primary-dark group-hover:text-primary">Admissions</span></span>
+            <ArrowRight className="h-4 w-4 shrink-0 text-primary transition-transform duration-200 group-hover:translate-x-1" aria-hidden="true" />
+          </Link>
+          <Link href="/events" className="group flex min-h-20 items-center justify-between gap-3 px-4 py-4 transition-colors hover:bg-tint-warm focus-visible:bg-tint-warm sm:px-6">
+            <span><span className="block type-eyebrow text-accent-warm-dark">02 / Gather</span><span className="mt-1 block font-serif text-lg text-primary-dark group-hover:text-primary">School calendar</span></span>
+            <ArrowRight className="h-4 w-4 shrink-0 text-primary transition-transform duration-200 group-hover:translate-x-1" aria-hidden="true" />
+          </Link>
+          <Link href="/fees" className="group flex min-h-20 items-center justify-between gap-3 px-4 py-4 transition-colors hover:bg-tint-warm focus-visible:bg-tint-warm sm:px-6">
+            <span><span className="block type-eyebrow text-accent-warm-dark">03 / Plan</span><span className="mt-1 block font-serif text-lg text-primary-dark group-hover:text-primary">Tuition & fees</span></span>
+            <ArrowRight className="h-4 w-4 shrink-0 text-primary transition-transform duration-200 group-hover:translate-x-1" aria-hidden="true" />
+          </Link>
+          <Link href="/portal/login" className="group flex min-h-20 items-center justify-between gap-3 px-4 py-4 transition-colors hover:bg-tint-warm focus-visible:bg-tint-warm sm:px-6">
+            <span><span className="block type-eyebrow text-accent-warm-dark">04 / Connect</span><span className="mt-1 block font-serif text-lg text-primary-dark group-hover:text-primary">Family portal</span></span>
+            <ArrowRight className="h-4 w-4 shrink-0 text-primary transition-transform duration-200 group-hover:translate-x-1" aria-hidden="true" />
+          </Link>
         </div>
       </section>
 
@@ -475,7 +485,6 @@ const whatsapp = whatsappHref(
     </>
   )
 }
-
 /**
  * Splits a headline on its first full stop and renders the remainder in italic.
  *
@@ -500,4 +509,3 @@ function splitHeadline(title: string) {
     </>
   )
 }
-

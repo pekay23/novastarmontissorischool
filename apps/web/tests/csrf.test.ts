@@ -86,6 +86,17 @@ describe('evaluateCsrf', () => {
     ).toBe(false)
   })
 
+  it.each(['/portal/api/students', '/admin/api/tenants'])('protects mounted API writes at %s', (pathname) => {
+    const decision = evaluateCsrf({ method: 'POST', pathname, cookieToken: null, headerToken: null })
+    expect(decision.allow).toBe(false)
+    expect(decision.allow === false && decision.reason).toBe('missing-cookie')
+  })
+
+  it('keeps mounted NextAuth sign-in routes exempt', () => {
+    const decision = evaluateCsrf({ method: 'POST', pathname: '/portal/api/auth/callback/google', cookieToken: null, headerToken: null })
+    expect(decision.allow && decision.reason).toBe('exempt-path')
+  })
+
   it('exempts NextAuth routes so sign-in still works', () => {
     for (const pathname of ['/api/auth/signin', '/api/auth/callback/google', '/api/auth/callback/microsoft-entra-id', '/api/auth/session']) {
       const decision = evaluateCsrf({ method: 'POST', pathname, cookieToken: null, headerToken: null })

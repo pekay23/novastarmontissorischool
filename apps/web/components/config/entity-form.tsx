@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import {
   Form,
   FormField,
@@ -34,6 +34,12 @@ import { z } from 'zod'
 import { EntityType, DEFAULT_ENTITY_REGISTRY, EntityField } from '@novastar/shared-types'
 import { isLockedRecord, isUsableReason, MISSING_REASON_MESSAGE } from './amendment'
 import { AmendmentReasonField } from './amendment-reason-field'
+
+interface ClassLevelOption {
+  id: string
+  code: string
+  name: string
+}
 
 /**
  * `onSubmit` is handed the field edits AND, for a locked row, the amendment
@@ -143,10 +149,34 @@ export function EntityForm({
   )
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
+  const [classLevelOptions, setClassLevelOptions] = useState<Array<{ value: string; label: string }>>([])
   // Read from the row the dialog was opened with, so the locked state cannot
   // change under the form between opening it and submitting: the dialog holds
   // `initialData`, not a live refetch.
   const locked = isLockedRecord(initialData)
+
+  // Fetch class levels for appliesToLevels multiselect in grading_scale and assessment_type
+  useEffect(() => {
+    if ((entityType === 'grading_scale' || entityType === 'assessment_type') && classLevelOptions.length === 0) {
+      const fetchClassLevels = async () => {
+        try {
+          const res = await fetch('/portal/api/config/class_level?limit=100')
+          if (res.ok) {
+            const data = await res.json()
+            const levels = (data.data || []) as ClassLevelOption[]
+            const options = levels.map(level => ({
+              value: level.id,
+              label: `${level.code} — ${level.name}`,
+            }))
+            setClassLevelOptions(options)
+          }
+        } catch {
+          // Silently fail; the field will just have no options
+        }
+      }
+      fetchClassLevels()
+    }
+  }, [entityType, classLevelOptions.length])
 
   const form = useForm({
     resolver: schema ? zodResolver(schema) : undefined,
@@ -187,6 +217,10 @@ export function EntityForm({
               .filter(f => !f.isSystem || !readOnly)
               .map(field => {
                 const Component = getFieldComponent(field)
+                // Provide class level options for appliesToLevels multiselect
+                const options = field.key === 'appliesToLevels' && (entityType === 'grading_scale' || entityType === 'assessment_type')
+                  ? classLevelOptions
+                  : field.options
                 return (
                   <FormField
                     key={field.key}
@@ -202,7 +236,7 @@ export function EntityForm({
                           <Component
                             field={formField}
                             disabled={readOnly}
-                            options={field.options}
+                            options={options}
                             placeholder={field.placeholder}
                           />
                         </FormControl>
@@ -327,26 +361,48 @@ function getFieldComponent(field: EntityField) {
       )
       return SelectField
     case 'multiselect':
-      const MultiSelectField = ({ field: formField, disabled, options }: FieldComponentProps) => (
-        <Select
-          value={Array.isArray(formField.value) ? formField.value.join(',') : ''}
-          onValueChange={disabled
-            ? undefined
-            : (value: string) => formField.onChange(value.split(',').filter(Boolean))}
-          disabled={disabled}
-        >
-          <SelectTrigger>
-            <SelectValue placeholder={field.placeholder || 'Select...'} />
-          </SelectTrigger>
-          <SelectContent>
-            {options?.map((opt: { value: string; label: string }) => (
-              <SelectItem key={opt.value} value={opt.value}>
-                {opt.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      )
+      const MultiSelectField = ({ field: formField, disabled, options }: FieldComponentProps) => {
+        // In read-only mode, display labels instead of comma-separated IDs
+        const displayValue = Array.isArray(formField.value)
+          ? formField.value
+              .map(v => options?.find(opt => opt.value === v)?.label ?? v)
+              .join(', ')
+          : typeof formField.value === 'string'
+            ? formField.value
+              .split(',')
+              .map(v => options?.find(opt => opt.value === v)?.label ?? v)
+              .join(', ')
+            : ''
+
+        if (disabled) {
+          return (
+            <Input
+              value={displayValue || '—'}
+              readOnly
+              className="bg-muted text-foreground"
+            />
+          )
+        }
+
+        return (
+          <Select
+            value={Array.isArray(formField.value) ? formField.value.join(',') : ''}
+            onValueChange={(value: string) => formField.onChange(value.split(',').filter(Boolean))}
+            disabled={disabled}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder={field.placeholder || 'Select...'} />
+            </SelectTrigger>
+            <SelectContent>
+              {options?.map((opt: { value: string; label: string }) => (
+                <SelectItem key={opt.value} value={opt.value}>
+                  {opt.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )
+      }
       return MultiSelectField
     case 'color':
       const ColorField = ({ field: formField, disabled }: FieldComponentProps) => (

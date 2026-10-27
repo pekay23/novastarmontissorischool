@@ -11,12 +11,18 @@ const routes = [
   '/',
   '/about/',
   '/academics/',
+  '/preschool/',
+  '/primary-school/',
   '/admissions/',
   '/fees/',
   '/policies/',
   '/news/',
   '/events/',
   '/contact/',
+  '/privacy/',
+  '/terms/',
+  '/accessibility/',
+  '/nondiscrimination/',
 ] as const
 
 export const dynamic = 'force-static'

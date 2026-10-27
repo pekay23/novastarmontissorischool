@@ -3,7 +3,7 @@ import { generateAuthenticationOptions } from '@simplewebauthn/server'
 import { logError } from '@/lib/logger'
 import { prisma } from '@/lib/prisma'
 import { rpConfig } from '@/lib/auth/passkey-config'
-import { checkRateLimit, clientIdentifier } from '@/lib/rate-limit'
+import { rateLimitAsync, clientIdentifier } from '@/lib/rate-limit'
 
 /**
  * Pre-authenticated by design: there is no session yet, and the returned options
@@ -20,7 +20,7 @@ const PASSKEY_ATTEMPTS = 10
 const PASSKEY_WINDOW_MS = 5 * 60 * 1000
 
 export async function POST(req: Request) {
-  const { success, reset } = checkRateLimit(
+  const { success, reset } = await rateLimitAsync(
     `passkey:login-options:${clientIdentifier(req)}`,
     PASSKEY_ATTEMPTS,
     PASSKEY_WINDOW_MS,

@@ -52,7 +52,7 @@ const IMPLEMENTED_REPORT_TYPES = (Object.keys(REPORT_TYPE_LABELS) as ReportType[
 /**
  * Credited attendance days, without a trailing ".00".
  *
- * `presentDays` is fractional by design — one `HALF_DAY` credits 0.5 — so two
+ * `presentDays` is fractional by design � one `HALF_DAY` credits 0.5 � so two
  * fixed decimals would render a whole term as "62.00" and one decimal would
  * render 62 as "62.0". Integers drop the decimal point; fractions keep one.
  */
@@ -437,7 +437,7 @@ export default function ReportsPage() {
                       <CardDescription>
                         Bands: {reportData.grading.name}
                         {reportData.grading.description
-                          ? ` — ${reportData.grading.description}`
+                          ? ` � ${reportData.grading.description}`
                           : ''}
                       </CardDescription>
                     )}

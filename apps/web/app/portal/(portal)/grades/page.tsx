@@ -1,171 +1,309 @@
-'use client'
+"use client";
 
-import { useState, useEffect } from 'react'
+import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { z } from "zod";
 import {
-  Card, CardContent, CardHeader, CardTitle, Button,
-  useToast, useConfirm,
-  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  Button,
+  useToast,
+  useConfirm,
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
   DropdownMenuItem,
-} from '@novastar/shared-ui'
-import { Search, BookOpen, MoreHorizontal, Edit2, Trash2 } from 'lucide-react'
+} from "@novastar/shared-ui";
+import { Search, BookOpen, MoreHorizontal, Edit2, Trash2 } from "lucide-react";
 
 interface Assessment {
-  id: string
-  name: string
-  maxScore: string
-  weight: string
-  assessmentDate: string
-  isPublished: boolean
-  type: { name: string } | null
+  id: string;
+  name: string;
+  maxScore: string;
+  assessmentDate: string;
+  type: { name: string } | null;
   classSubject: {
-    subject: { name: string } | null
-    class: { name: string } | null
-  } | null
+    subject: { name: string } | null;
+    class: { name: string } | null;
+  } | null;
 }
+const permissionsSchema = z.object({
+  options: z.object({
+    permissions: z.object({
+      canCreate: z.boolean(),
+      canUpdate: z.boolean(),
+      canDelete: z.boolean(),
+    }),
+  }),
+});
+const PAGE_SIZE = 20;
 
 export default function GradesPage() {
-  const { toast } = useToast()
-  const confirm = useConfirm()
-  const [assessments, setAssessments] = useState<Assessment[]>([])
-  const [loading, setLoading] = useState(true)
-  const [search, setSearch] = useState('')
+  const { toast } = useToast();
+  const confirm = useConfirm();
+  const router = useRouter();
+  const [assessments, setAssessments] = useState<Assessment[]>([]);
+  const [permissions, setPermissions] = useState({
+    canCreate: false,
+    canUpdate: false,
+    canDelete: false,
+  });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
 
-  const fetchAssessments = async () => {
-    setLoading(true)
+  const fetchAssessments = useCallback(async () => {
+    setLoading(true);
+    setError(null);
     try {
-      const params = new URLSearchParams()
-      if (search) params.set('search', search)
-      const res = await fetch(`/portal/api/assessments?${params}`)
-      if (res.ok) {
-        const data = await res.json()
-        setAssessments(data.data || [])
-      } else {
-        toast.error({ title: 'Error', description: 'Failed to load assessments' })
-      }
-    } catch {
-      toast.error({ title: 'Error', description: 'Failed to load assessments' })
+      const [response, optionResponse] = await Promise.all([
+        fetch("/portal/api/assessments"),
+        fetch("/portal/api/assessments?options=1"),
+      ]);
+      if (!response.ok)
+        throw new Error(
+          "Failed to load assessments. Check your access and try again.",
+        );
+      const payload: { data: Assessment[] } = await response.json();
+      setAssessments(payload.data);
+      if (optionResponse.ok)
+        setPermissions(
+          permissionsSchema.parse(await optionResponse.json()).options
+            .permissions,
+        );
+      else
+        setPermissions({
+          canCreate: false,
+          canUpdate: false,
+          canDelete: false,
+        });
+    } catch (error) {
+      setError(
+        error instanceof Error ? error.message : "Failed to load assessments.",
+      );
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  }, []);
 
   useEffect(() => {
-    const load = async () => {
-      await fetchAssessments()
-    }
-    load()
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+    async function load() { await fetchAssessments() }
+    void load()
+  }, [fetchAssessments]);
 
-  const handleDelete = async (a: Assessment) => {
-    const ok = await confirm({
-      title: 'Delete Assessment?',
-      description: `This will permanently delete "${a.name}". This action cannot be undone.`,
-      confirmText: 'Delete',
-      variant: 'destructive',
-    })
-    if (!ok) return
+  const filtered = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    return assessments.filter((item) =>
+      [
+        item.name,
+        item.classSubject?.subject?.name,
+        item.classSubject?.class?.name,
+        item.type?.name,
+      ].some((value) => value?.toLowerCase().includes(query)),
+    );
+  }, [assessments, search]);
+  const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const currentPage = Math.min(page, pages);
+  const rows = filtered.slice(
+    (currentPage - 1) * PAGE_SIZE,
+    currentPage * PAGE_SIZE,
+  );
 
+  async function handleDelete(assessment: Assessment) {
+    if (
+      !permissions.canDelete ||
+      !(await confirm({
+        title: "Delete assessment?",
+        description:
+          'This will permanently delete "' +
+          assessment.name +
+          '". This cannot be undone.',
+        confirmText: "Delete",
+        variant: "destructive",
+      }))
+    )
+      return;
     try {
-      const res = await fetch(`/portal/api/assessments/${a.id}`, { method: 'DELETE' })
-      if (res.ok) {
-        toast.success({ title: 'Success', description: 'Assessment deleted' })
-        fetchAssessments()
-      } else {
-        const data = await res.json()
-        toast.error({ title: 'Error', description: data.error || 'Failed to delete' })
+      const response = await fetch(
+        "/portal/api/assessments/" + encodeURIComponent(assessment.id),
+        { method: "DELETE" },
+      );
+      if (!response.ok) {
+        const body: unknown = await response.json().catch(() => null);
+        throw new Error(
+          typeof body === "object" &&
+            body !== null &&
+            "error" in body &&
+            typeof body.error === "string"
+            ? body.error
+            : "Assessment could not be deleted.",
+        );
       }
-    } catch {
-      toast.error({ title: 'Error', description: 'Failed to delete' })
+      toast.success({ title: "Assessment deleted" });
+      void fetchAssessments();
+    } catch (error) {
+      toast.error({
+        title: "Delete failed",
+        description:
+          error instanceof Error ? error.message : "Please try again.",
+      });
     }
   }
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-heading font-bold">Grades</h1>
-          <p className="text-sm text-muted-foreground">Manage assessments and score entry</p>
+          <p className="text-sm text-muted-foreground">
+            Manage assessments and score entry
+          </p>
         </div>
+        {permissions.canCreate ? (
+          <Button asChild>
+            <Link href="/portal/grades/new">Create assessment</Link>
+          </Button>
+        ) : null}
       </div>
-
       <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Search
+          className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+          aria-hidden="true"
+        />
         <input
-          type="text"
-          placeholder="Search assessments..."
+          aria-label="Search assessments"
+          placeholder="Search assessments, subjects or classes…"
           value={search}
-          onChange={(e) => {
-            setSearch(e.target.value)
-            if (e.target.value.length >= 2 || e.target.value.length === 0) {
-              fetchAssessments()
-            }
+          onChange={(event) => {
+            setSearch(event.target.value);
+            setPage(1);
           }}
-          className="pl-10 pr-4 py-2 border rounded-md w-full"
+          className="w-full rounded-md border py-2 pl-10 pr-4"
         />
       </div>
-
+      {error ? (
+        <div
+          role="alert"
+          className="flex flex-wrap items-center gap-3 text-sm text-destructive"
+        >
+          <p>{error}</p>
+          <Button variant="outline" onClick={() => void fetchAssessments()}>
+            Try again
+          </Button>
+        </div>
+      ) : null}
       <Card>
         <CardHeader>
-          <CardTitle>Assessments ({assessments.length})</CardTitle>
+          <CardTitle>Assessments ({filtered.length})</CardTitle>
         </CardHeader>
         <CardContent>
           {loading ? (
-            <div className="space-y-2">
-              {[...Array(5)].map((_, i) => (
-                <div key={i} className="h-12 bg-muted animate-pulse rounded" />
-              ))}
-            </div>
-          ) : assessments.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              <BookOpen className="h-12 w-12 mx-auto mb-3 opacity-50" />
+            <p role="status">Loading assessments…</p>
+          ) : !rows.length ? (
+            <div className="py-8 text-center text-muted-foreground">
+              <BookOpen
+                aria-hidden="true"
+                className="mx-auto mb-3 h-12 w-12 opacity-50"
+              />
               <p>No assessments found</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full">
+                <caption className="sr-only">
+                  Assessment name, subject, class, type, maximum score and
+                  assessment date.
+                </caption>
                 <thead>
                   <tr className="border-b">
-                    <th className="text-left py-2">Assessment</th>
-                    <th className="text-left py-2">Subject</th>
-                    <th className="text-left py-2">Class</th>
-                    <th className="text-left py-2">Type</th>
-                    <th className="text-left py-2">Max Score</th>
-                    <th className="text-left py-2">Date</th>
-                    <th className="w-12" />
+                    {[
+                      "Assessment",
+                      "Subject",
+                      "Class",
+                      "Type",
+                      "Max score",
+                      "Date",
+                      "Actions",
+                    ].map((name) => (
+                      <th key={name} scope="col" className="py-2 text-left">
+                        {name}
+                      </th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {assessments.map((a) => (
-                    <tr key={a.id} className="border-t">
-                      <td className="py-2 font-medium">{a.name}</td>
-                      <td className="py-2 text-sm">{a.classSubject?.subject?.name || 'N/A'}</td>
-                      <td className="py-2 text-sm">{a.classSubject?.class?.name || 'N/A'}</td>
-                      <td className="py-2 text-sm">{a.type?.name || 'N/A'}</td>
-                      <td className="py-2 text-sm">{Number(a.maxScore)}</td>
-                      <td className="py-2 text-sm text-muted-foreground">
-                        {a.assessmentDate ? new Date(a.assessmentDate).toLocaleDateString() : '-'}
+                  {rows.map((assessment) => (
+                    <tr key={assessment.id} className="border-t">
+                      <td className="py-2 font-medium">{assessment.name}</td>
+                      <td className="py-2 text-sm">
+                        {assessment.classSubject?.subject?.name ?? "N/A"}
+                      </td>
+                      <td className="py-2 text-sm">
+                        {assessment.classSubject?.class?.name ?? "N/A"}
+                      </td>
+                      <td className="py-2 text-sm">
+                        {assessment.type?.name ?? "N/A"}
+                      </td>
+                      <td className="py-2 text-sm">
+                        {Number(assessment.maxScore)}
+                      </td>
+                      <td className="py-2 text-sm">
+                        {assessment.assessmentDate
+                          ? new Date(
+                              assessment.assessmentDate,
+                            ).toLocaleDateString()
+                          : "—"}
                       </td>
                       <td className="py-2">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-8 w-8">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              aria-label={"Actions for " + assessment.name}
+                            >
                               <MoreHorizontal className="h-4 w-4" />
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem
-                              onClick={() => window.open(`/grades/${a.id}/scores`, '_blank')}
+                              onClick={() =>
+                                router.push(
+                                  "/portal/grades/" +
+                                    encodeURIComponent(assessment.id) +
+                                    "/scores",
+                                )
+                              }
                             >
-                              <Edit2 className="h-4 w-4 mr-2" />
-                              Enter Scores
+                              <Edit2 className="mr-2 h-4 w-4" />
+                              Enter scores
                             </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => handleDelete(a)}
-                              className="text-red-600 focus:text-red-600"
-                            >
-                              <Trash2 className="h-4 w-4 mr-2" />
-                              Delete
-                            </DropdownMenuItem>
+                            {permissions.canUpdate ? (
+                              <DropdownMenuItem
+                                onClick={() =>
+                                  router.push(
+                                    "/portal/grades/" +
+                                      encodeURIComponent(assessment.id) +
+                                      "/edit",
+                                  )
+                                }
+                              >
+                                Edit assessment
+                              </DropdownMenuItem>
+                            ) : null}
+                            {permissions.canDelete ? (
+                              <DropdownMenuItem
+                                onClick={() => void handleDelete(assessment)}
+                                className="text-destructive"
+                              >
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                Delete
+                              </DropdownMenuItem>
+                            ) : null}
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </td>
@@ -175,8 +313,32 @@ export default function GradesPage() {
               </table>
             </div>
           )}
+          {!loading && pages > 1 ? (
+            <nav
+              aria-label="Assessment pages"
+              className="mt-4 flex items-center justify-between gap-3"
+            >
+              <Button
+                variant="outline"
+                disabled={currentPage === 1}
+                onClick={() => setPage(currentPage - 1)}
+              >
+                Previous
+              </Button>
+              <span className="text-sm">
+                Page {currentPage} of {pages}
+              </span>
+              <Button
+                variant="outline"
+                disabled={currentPage === pages}
+                onClick={() => setPage(currentPage + 1)}
+              >
+                Next
+              </Button>
+            </nav>
+          ) : null}
         </CardContent>
       </Card>
     </div>
-  )
+  );
 }

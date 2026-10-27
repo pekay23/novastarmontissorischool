@@ -452,7 +452,7 @@ export default function ReportCardPage({ params }: { params: Promise<{ studentId
                 every label names its unit and range. There is no grade-point
                 average here: this school reports percentages, and the label
                 under each percentage is the school's own band. */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
               <Card>
                 <CardHeader>
                   <CardDescription>Overall % (0&ndash;100)</CardDescription>

@@ -1,6 +1,8 @@
 import '../portal.css'
 import { Providers } from './providers'
 
+export const dynamic = 'force-dynamic'
+
 /**
  * The portal section layout, and the only mount point for the
  * client providers.

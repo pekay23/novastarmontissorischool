@@ -125,7 +125,7 @@ export default function SettingsPage() {
           `grid-cols-N` silently misaligns the moment a section is added or
           removed, and the eighth tab used to wrap onto an orphan row.
         */}
-        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4">
+        <TabsList className="flex w-full flex-row overflow-x-auto scrollbar-hide">
           {SETTINGS_SECTIONS.map(section => (
             <TabsTrigger key={section.id} value={section.id} className="gap-2">
               <span aria-hidden="true">{section.icon}</span>

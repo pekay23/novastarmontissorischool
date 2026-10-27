@@ -1,4 +1,5 @@
 import { cn } from '@novastar/shared-ui'
+import Image from 'next/image'
 import { ReactNode } from 'react'
 
 interface ImageHeroProps {
@@ -39,15 +40,13 @@ export function ImageHero({
     <section className={cn('relative isolate overflow-hidden', className)}>
       {/* Background Image */}
       <div className="absolute inset-0 -z-10">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
+        <Image
           src={imageSrc}
           alt={imageAlt}
+          fill
+          sizes="100vw"
+          preload
           className="h-full w-full object-cover object-center"
-          // We load the hero image eagerly because it's LCP
-          loading="eager"
-          // next/image is disabled site-wide (next.config.ts: images.unoptimized = true),
-          // so <img> with object-cover is the correct choice for full-bleed heroes.
         />
         {/* Overlay for text legibility */}
         <div className={cn('absolute inset-0', overlayMap[overlayDarkness])} />

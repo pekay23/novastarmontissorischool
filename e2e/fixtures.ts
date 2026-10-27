@@ -58,7 +58,7 @@ export async function loginAs(page: Page, overrides: Partial<typeof CREDENTIALS>
   if (!email || !password) {
     throw new Error(
       'loginAs called without credentials. Set E2E_EMAIL and E2E_PASSWORD, ' +
-        'and run the seed (bun run db:seed) to create the account.',
+        'using an existing isolated test account. The seed does not create users.',
     );
   }
 

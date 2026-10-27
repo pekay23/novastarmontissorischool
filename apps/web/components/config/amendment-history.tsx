@@ -130,7 +130,7 @@ export function AmendmentHistoryList({
  *
  * `endpoint` is passed in rather than assembled here so the path the page builds
  * and the path the test reads are the same string, and there is exactly one place
- * in the frontend that names the not-yet-implemented route.
+ * in the frontend that names the history route.
  */
 export function AmendmentHistory({
   open,
@@ -146,6 +146,9 @@ export function AmendmentHistory({
   const [groups, setGroups] = useState<AmendmentGroup[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [nextOffset, setNextOffset] = useState<number | null>(null)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [paginationError, setPaginationError] = useState<string | null>(null)
 
   // No branch of the read lives here: `loadAmendmentGroups` classifies the
   // response and `historyReadMessage` words it, so the untestable part of this
@@ -156,8 +159,24 @@ export function AmendmentHistory({
     const read = await loadAmendmentGroups(endpoint)
     setError(historyReadMessage(read))
     setGroups(read.status === 'ok' ? read.groups : [])
+    setNextOffset(read.status === 'ok' ? read.nextOffset : null)
+    setPaginationError(null)
     setLoading(false)
   }, [endpoint])
+
+  async function loadMore() {
+    if (nextOffset === null || loadingMore) return
+    setLoadingMore(true)
+    setPaginationError(null)
+    const url = new URL(endpoint, window.location.origin)
+    url.searchParams.set('skip', String(nextOffset))
+    const read = await loadAmendmentGroups(url.pathname + url.search)
+    if (read.status === 'ok') {
+      setGroups(previous => [...previous, ...read.groups.filter(group => !previous.some(existing => existing.groupId === group.groupId))])
+      setNextOffset(read.nextOffset)
+    } else setPaginationError(read.message)
+    setLoadingMore(false)
+  }
 
   useEffect(() => {
     if (!open) return
@@ -184,6 +203,8 @@ export function AmendmentHistory({
           error={error}
           entityName={entityName}
         />
+        {paginationError && <p role="alert" className="text-sm text-destructive">{paginationError}</p>}
+        {nextOffset !== null && <Button type="button" variant="outline" disabled={loadingMore} onClick={loadMore}>{loadingMore ? 'Loading…' : 'Load older amendments'}</Button>}
         <DialogFooter>
           <Button type="button" variant="outline" onClick={onClose}>
             Close

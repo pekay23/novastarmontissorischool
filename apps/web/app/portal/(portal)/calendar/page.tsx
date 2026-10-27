@@ -416,7 +416,7 @@ export default function CalendarPage() {
       </Card>
 
       <Dialog open={dialogOpen} onOpenChange={handleDialogClose}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="sm:max-w-[calc(100vw-2rem)] max-w-lg w-[calc(100vw-1rem)] max-h-[calc(100vh-2rem)] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingEvent ? 'Edit Event' : 'New Event'}</DialogTitle>
             <DialogDescription>
@@ -448,7 +448,7 @@ export default function CalendarPage() {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="startDate">Start Date *</Label>
                 <Input

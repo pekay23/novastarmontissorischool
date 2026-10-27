@@ -62,14 +62,9 @@ function withCsrfToken(
   const decision = evaluateCsrf({ method, pathname: url.pathname, cookieToken: token, headerToken: token })
   if (!decision.allow || decision.reason !== 'valid-token') return [input, init]
 
-  if (isRequest) {
-    if (input.headers.has(CSRF_HEADER_NAME)) return [input, init]
-    const headers = new Headers(input.headers)
-    headers.set(CSRF_HEADER_NAME, token)
-    return [new Request(input, { headers }), init]
-  }
-
-  const headers = new Headers(init?.headers)
+  // RequestInit headers override Request headers. Add the token to the effective
+  // header set so fetch(request, { headers }) cannot discard the injected token.
+  const headers = new Headers(init?.headers ?? (isRequest ? input.headers : undefined))
   if (headers.has(CSRF_HEADER_NAME)) return [input, init]
   headers.set(CSRF_HEADER_NAME, token)
   return [input, { ...init, headers }]

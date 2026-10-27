@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import type { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
-import { z } from 'zod'
+import { SyllabusCreateSchema, SYLLABUS_INCLUDE } from '@/lib/syllabus-contract'
 import { hasPermission } from '@novastar/auth'
 import { getTenantContext } from '@/lib/tenant'
 import { toErrorResponse } from '@/lib/api-response'
-import { resolveVisibility, visibilityDeniesAll } from '@/lib/visibility'
+import { resolveVisibility, visibilityDeniesAll, classVisibilityWhere } from '@/lib/visibility'
 import {
   isUniqueConstraintViolation,
   duplicateResponse as sharedDuplicateResponse,
@@ -57,34 +57,19 @@ function duplicateResponse() {
  * syllabus, so the dedicated route is stricter. The generic route is not
  * modified here — it belongs to another owner.
  */
-const SyllabusCreateSchema = z.object({
-  classSubjectId: z.string().trim().min(1),
-  termId: z.string().trim().min(1),
-  title: z.string().trim().min(1),
-  body: z.string().nullable().optional(),
-  topics: z.array(z.string().trim().min(1)).min(1),
-  status: z.enum(['DRAFT', 'PUBLISHED', 'ARCHIVED']).default('DRAFT'),
-})
-
-/** The shared projection for a syllabus row, so GET and POST agree. */
-const SYLLABUS_INCLUDE = {
-  classSubject: {
-    include: {
-      class: { select: { id: true, name: true } },
-      subject: { select: { id: true, name: true, code: true } },
-    },
-  },
-  term: { select: { id: true, name: true, academicYear: { select: { name: true } } } },
-} as const
-
 export async function GET(req: NextRequest) {
   try {
-    const { tenantId, schoolId, userId } = await getTenantContext()
+    const ctx = await getTenantContext()
+    const { tenantId, schoolId, userId } = ctx
     if (!schoolId) return NextResponse.json({ error: 'No school assigned' }, { status: 400 })
 
     if (!(await hasPermission(userId, 'academic:read', tenantId, schoolId))) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
+
+    const visibility = await resolveVisibility(ctx, 'academic:read')
+    if (visibilityDeniesAll(visibility)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    const visibleClasses: Prisma.ClassWhereInput = { tenantId, schoolId, ...classVisibilityWhere(visibility) }
 
     const { searchParams } = new URL(req.url)
     const classSubjectId = searchParams.get('classSubjectId')
@@ -99,7 +84,7 @@ export async function GET(req: NextRequest) {
     if (searchParams.get('lookups') === 'true') {
       const [clsRes, termRes, csRes] = await Promise.all([
         prisma.class.findMany({
-          where: { tenantId, schoolId },
+          where: visibleClasses,
           select: { id: true, name: true },
           orderBy: { name: 'asc' },
         }),
@@ -117,7 +102,7 @@ export async function GET(req: NextRequest) {
           orderBy: { startDate: 'desc' },
         }),
         prisma.classSubject.findMany({
-          where: { tenantId, class: { schoolId } },
+          where: { tenantId, class: visibleClasses },
           include: {
             class: { select: { id: true, name: true } },
             subject: { select: { id: true, name: true, code: true } },
@@ -125,12 +110,13 @@ export async function GET(req: NextRequest) {
           orderBy: [{ class: { name: 'asc' } }, { subject: { name: 'asc' } }],
         }),
       ])
+      const [canCreate, canUpdate, canDelete] = await Promise.all(['academic:create', 'academic:update', 'academic:delete'].map(permission => hasPermission(userId, permission, tenantId, schoolId)))
       return NextResponse.json({
-        data: { classes: clsRes, terms: termRes, classSubjects: csRes },
+        data: { classes: clsRes, terms: termRes, classSubjects: csRes, canCreate, canUpdate, canDelete },
       })
     }
 
-    const where: Prisma.SyllabusWhereInput = { tenantId }
+    const where: Prisma.SyllabusWhereInput = { tenantId, classSubject: { tenantId, class: visibleClasses } }
     // `Syllabus.schoolId` is nullable, so a tenant-scoped filter alone would
     // also surface rows belonging to a sibling school in the same tenant, and
     // dropping the filter entirely would do the same. Match this school plus

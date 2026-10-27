@@ -55,6 +55,7 @@ Every row below points at a file that exists in this directory. Verified
 | ADR-023 | Production DDL must arrive through `migrate deploy`, never `db push` | 0 | Accepted | Production DDL enters via `migrate deploy`; `db push` is dev-only and hard-refused on remotes; CI verify gated on credentials; `apply-schema.ts` neon target guarded; see ADR-023 for full rationale. |
 | ADR-024 | Consolidate public-site, portal and super-admin into `apps/web` | 0 | Accepted | One app, one Vercel project, one domain; `/portal/*` and `/admin/*` are physical route directories; two session systems stay separate; per-section stylesheets carry the three brands; see ADR-024 and the migration plan for the sweep inventory. |
 | ADR-025 | Delete the legacy apps left behind by ADR-024 | 0 | Accepted | Completes ADR-024: the merge kept the three apps, so every root task built 396 files nothing deploys and two deploy paths disagreed; `apps/web` is the single app, e2e/Docker/TeamCity/CI all target it, and the web suite runs per-file to keep load order out of the mocks. |
+| ADR-026 | Mobile adaptation decisions for the Novastar codebase | 1 | Proposed | Shared-ui base changes (button icon size, tabs scroll, dialog viewport guards, data-table overflow wrapper), page-level grid/table/dialog/hero/button fixes, and missing-photo removal; prioritized by 375px overflow/clipping prevention. See ADR-026 for exact class changes. |
 
 ### One ADR is referenced but does not exist here
 

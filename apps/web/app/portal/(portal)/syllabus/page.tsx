@@ -58,6 +58,8 @@ export default function SyllabusPage() {
   const [classSubjects, setClassSubjects] = useState<ClassSubjectOption[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [lookupError, setLookupError] = useState(false)
+  const [capabilities, setCapabilities] = useState({ canCreate: false, canUpdate: false, canDelete: false })
   const [search, setSearch] = useState('')
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<Syllabus | null>(null)
@@ -88,14 +90,17 @@ export default function SyllabusPage() {
         toast.error({ title: 'Error', description: 'Failed to load syllabi' })
       }
 
-      // A failed lookup only costs the create form its dropdowns, so it is
-      // silent here and the New Syllabus button stays usable — it opens with
-      // an empty term and the user picks everything by hand.
+      // Keep write controls unavailable until their options and permissions are loaded.
       if (lookupRes.ok) {
         const lookup = await lookupRes.json()
+        setLookupError(false)
+        setCapabilities({ canCreate: lookup.data?.canCreate === true, canUpdate: lookup.data?.canUpdate === true, canDelete: lookup.data?.canDelete === true })
         setClasses(lookup.data?.classes ?? [])
         setTerms(lookup.data?.terms ?? [])
         setClassSubjects(lookup.data?.classSubjects ?? [])
+      } else {
+        setLookupError(true)
+        setCapabilities({ canCreate: false, canUpdate: false, canDelete: false })
       }
     } catch {
       toast.error({ title: 'Error', description: 'Failed to load syllabi' })
@@ -146,7 +151,7 @@ export default function SyllabusPage() {
     if (!ok) return
 
     try {
-      const res = await fetch(`/portal/api/config/syllabus/${syllabus.id}`, { method: 'DELETE' })
+      const res = await fetch(`/portal/api/syllabi/${encodeURIComponent(syllabus.id)}`, { method: 'DELETE' })
       if (!res.ok) {
         const payload = await res.json().catch(() => null)
         toast.error({
@@ -185,7 +190,7 @@ export default function SyllabusPage() {
         status: form.status,
       }
 
-      const res = await fetch(editing ? `/api/config/syllabus/${editing.id}` : '/api/syllabi', {
+      const res = await fetch(editing ? `/portal/api/syllabi/${encodeURIComponent(editing.id)}` : '/portal/api/syllabi', {
         method: editing ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -246,12 +251,13 @@ export default function SyllabusPage() {
             Structured topic lists per class subject and term
           </p>
         </div>
-        <Button className="gap-2" onClick={handleNew}>
+        {capabilities.canCreate && <Button className="gap-2" onClick={handleNew}>
           <Plus className="h-4 w-4" />
           New Syllabus
-        </Button>
+        </Button>}
       </div>
 
+      {lookupError && <div role="alert" className="text-sm text-destructive">Unable to load syllabus form options. <Button variant="outline" size="sm" onClick={fetchSyllabi}>Retry</Button></div>}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -313,16 +319,16 @@ export default function SyllabusPage() {
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
-                        <Button variant="outline" size="sm" onClick={() => handleEdit(syllabus)}>
+                        {capabilities.canUpdate && <Button variant="outline" size="sm" onClick={() => handleEdit(syllabus)}>
                           Edit
-                        </Button>
-                        <Button
+                        </Button>}
+                        {capabilities.canDelete && <Button
                           variant="outline"
                           size="sm"
                           onClick={() => void handleDelete(syllabus)}
                         >
                           Delete
-                        </Button>
+                        </Button>}
                       </div>
                     </TableCell>
                   </TableRow>

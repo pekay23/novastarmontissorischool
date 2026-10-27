@@ -56,19 +56,7 @@ import { permissionsForRole, type PlatformRoleName } from '@novastar/shared-type
 export const AMENDMENT_REASON_KEY = 'amendmentReason'
 
 /**
- * Where the history is read from. NOT YET IMPLEMENTED.
- *
- * The WRITE side of the trail is implemented and tested
- * (`app/api/config/[entityType]/[id]/route.ts`, `lib/amendments.ts`), and the READ
- * side is not: there is no route under `app/api/` serving it, and the 404 branch
- * of `loadAmendmentGroups` exists because that is the live answer today rather
- * than a prediction.
- *
- * Inferred from two conventions rather than invented: the repo routes pluralise
- * the resource (`/api/announcements`, `/api/audit-logs`), so `RecordAmendment`
- * becomes `/api/record-amendments`; and the record is selected by query string
- * because `RecordAmendment` is entity-agnostic and has no `[entityType]` segment
- * of its own to hang a path on.
+ * Where the history is read from, under the mounted portal API.
  *
  * `entityType` is the config registry's own key (`'student'`, `'parent'`), NOT
  * the Prisma model name `RecordAmendment.entity` stores (`'Student'`). The route
@@ -76,7 +64,7 @@ export const AMENDMENT_REASON_KEY = 'amendmentReason'
  * that mapping exists, and a client guessing model names would break the day an
  * entry is renamed.
  */
-export const AMENDMENT_HISTORY_ENDPOINT = '/api/record-amendments'
+export const AMENDMENT_HISTORY_ENDPOINT = '/portal/api/record-amendments'
 
 /**
  * The longest reason accepted, mirroring `AMENDMENT_REASON_MAX_LENGTH` in
@@ -303,16 +291,10 @@ export function groupAmendments(rows: unknown): AmendmentGroup[] {
 }
 
 /**
- * The three things a history read can be, kept apart.
- *
- * `not-implemented` is NOT an error branch. The route does not exist yet, and
- * conflating a missing route with a failing one would report "could not load" for
- * a feature that is not built, and would make an empty history and an unreachable
- * history look the same to a person deciding whether to trust a register.
+ * An empty history is a successful read. Missing or failing records are errors.
  */
 export type AmendmentHistoryRead =
-  | { status: 'ok'; groups: AmendmentGroup[] }
-  | { status: 'not-implemented' }
+  | { status: 'ok'; groups: AmendmentGroup[]; nextOffset: number | null }
   | { status: 'failed'; message: string }
 
 /** The part of `fetch` this read uses, so a test can supply the transport. */
@@ -343,12 +325,19 @@ export async function loadAmendmentGroups(
   }
   if (!res.ok) {
     if (res.status === 404) {
-      return { status: 'not-implemented' }
+      return { status: 'failed', message: 'The record or its amendment history could not be found.' }
     }
     return { status: 'failed', message: `Could not load amendment history (${res.status}).` }
   }
-  const payload = (await res.json()) as { data?: unknown }
-  return { status: 'ok', groups: groupAmendments(payload.data) }
+  try {
+    const payload: unknown = await res.json()
+    if (typeof payload !== 'object' || payload === null) return { status: 'failed', message: 'The server returned an unreadable amendment history.' }
+    const rows = 'data' in payload ? payload.data : []
+    const next = 'nextOffset' in payload ? payload.nextOffset : null
+    return { status: 'ok', groups: groupAmendments(rows), nextOffset: typeof next === 'number' && Number.isSafeInteger(next) && next >= 0 ? next : null }
+  } catch {
+    return { status: 'failed', message: 'The server returned an unreadable amendment history.' }
+  }
 }
 
 /** The sentence shown for each failure, so the dialog holds no branch of its own. */
@@ -356,8 +345,6 @@ export function historyReadMessage(read: AmendmentHistoryRead): string | null {
   switch (read.status) {
     case 'ok':
       return null
-    case 'not-implemented':
-      return 'The amendment history endpoint is not implemented yet.'
     case 'failed':
       return read.message
   }

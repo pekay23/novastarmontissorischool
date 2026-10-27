@@ -6,16 +6,20 @@ import { hasPermission } from '@novastar/auth'
 import {
   resolveVisibility,
   studentVisibilityWhere,
+  classVisibilityWhere,
   visibilityDeniesAll,
 } from '@/lib/visibility'
 import { z } from 'zod'
 import { logError } from '@/lib/logger'
+import { applyAmendmentWrite, planAmendments, readAmendmentReason } from '@/lib/amendments'
 
 const UpdateStudentSchema = z.object({
   firstName: z.string().min(1).optional(),
   lastName: z.string().optional(),
-  studentId: z.string().optional(),
-  dateOfBirth: z.string().optional(),
+  otherNames: z.string().nullable().optional(),
+  admissionNumber: z.string().min(1).optional(),
+  studentId: z.string().min(1).optional(),
+  dateOfBirth: z.iso.date().optional(),
   gender: z.enum(['MALE', 'FEMALE', 'OTHER']).optional(),
   classId: z.string().nullable().optional(),
 })
@@ -75,7 +79,8 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const { schoolId, tenantId, userId } = await getTenantContext()
+    const ctx = await getTenantContext()
+    const { schoolId, tenantId, userId } = ctx
     if (!schoolId) return NextResponse.json({ error: 'No school assigned' }, { status: 400 })
 
     // RBAC
@@ -90,13 +95,25 @@ export async function PATCH(
       return NextResponse.json({ error: 'Invalid input', details: parseResult.error.issues }, { status: 400 })
     }
 
-    const existing = await prisma.student.findFirst({ where: { id, schoolId, tenantId } })
+    const visibility = await resolveVisibility(ctx, 'student:edit')
+    if (visibilityDeniesAll(visibility)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    const where: Prisma.StudentWhereUniqueInput = { id, schoolId, tenantId, AND: [studentVisibilityWhere(visibility)] }
+    const existing = await prisma.student.findFirst({ where })
     if (!existing) return NextResponse.json({ error: 'Student not found' }, { status: 404 })
 
     const data = parseResult.data
-    const updateData: Record<string, unknown> = {}
+    if (data.classId) {
+      const cls = await prisma.class.findFirst({
+        where: { id: data.classId, tenantId, schoolId, AND: [classVisibilityWhere(visibility)] },
+        select: { id: true },
+      })
+      if (!cls) return NextResponse.json({ error: 'Class not found' }, { status: 404 })
+    }
+    const updateData: Prisma.StudentUncheckedUpdateInput = {}
     if (data.firstName !== undefined) updateData.firstName = data.firstName
     if (data.lastName !== undefined) updateData.lastName = data.lastName
+    if (data.otherNames !== undefined) updateData.otherNames = data.otherNames || null
+    if (data.admissionNumber !== undefined) updateData.admissionNumber = data.admissionNumber
     if (data.studentId !== undefined) updateData.studentId = data.studentId
     if (data.dateOfBirth !== undefined) {
       updateData.dateOfBirth = new Date(data.dateOfBirth)
@@ -104,10 +121,20 @@ export async function PATCH(
     if (data.gender !== undefined) updateData.gender = data.gender
     if (data.classId !== undefined) updateData.classId = data.classId ?? null
 
-    const updated = await prisma.student.update({
-      where: { id, schoolId, tenantId },
-      data: updateData,
+    const plan = planAmendments({
+      reason: readAmendmentReason(body),
+      write: { ...updateData },
+      stored: { ...existing },
+      model: 'student',
+      entityId: id,
+      tenantId,
+      schoolId,
+      userId,
     })
+    if (plan.refusal) return NextResponse.json({ error: 'A valid amendment reason is required', issues: plan.refusal }, { status: 400 })
+    const updated = plan.required
+      ? await applyAmendmentWrite({ model: 'student', where, data: { ...updateData }, rows: plan.rows })
+      : await prisma.student.update({ where, data: updateData })
     return NextResponse.json({ success: true, student: updated })
   } catch (error) {
     if (error instanceof Error && error.name === 'UnauthorizedError') {
@@ -126,7 +153,8 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const { schoolId, tenantId, userId } = await getTenantContext()
+    const ctx = await getTenantContext()
+    const { schoolId, tenantId, userId } = ctx
     if (!schoolId) return NextResponse.json({ error: 'No school assigned' }, { status: 400 })
 
     // RBAC
@@ -135,10 +163,14 @@ export async function DELETE(
     }
 
     const { id } = await params
-    const existing = await prisma.student.findFirst({ where: { id, schoolId, tenantId } })
+    const visibility = await resolveVisibility(ctx, 'student:delete')
+    if (visibilityDeniesAll(visibility)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    const where: Prisma.StudentWhereUniqueInput = { id, schoolId, tenantId, AND: [studentVisibilityWhere(visibility)] }
+    const existing = await prisma.student.findFirst({ where })
     if (!existing) return NextResponse.json({ error: 'Student not found' }, { status: 404 })
+    if (existing.finalizedAt) return NextResponse.json({ error: 'Finalized students cannot be deleted. Use the amendment workflow to record corrections.' }, { status: 409 })
 
-    await prisma.student.delete({ where: { id, schoolId, tenantId } })
+    await prisma.student.delete({ where })
     return NextResponse.json({ success: true })
   } catch (error) {
     if (error instanceof Error && error.name === 'UnauthorizedError') {

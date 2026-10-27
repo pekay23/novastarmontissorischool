@@ -32,7 +32,7 @@ const QUICK_LINKS = [
 const PARENT_LINKS = [
   { href: '/fees', label: 'Fee Structure' },
   { href: '/policies', label: 'Policies & Handbooks' },
-  { href: '/calendar', label: 'Academic Calendar' },
+  { href: '/events', label: 'Events & Calendar' },
   { href: '/contact', label: 'Contact Us' },
 ]
 
@@ -134,6 +134,7 @@ export async function Footer() {
               </div>
             </div>
 
+            {/* Social links: replace each placeholder URL, then remove this JSX comment when the profiles are ready.
             <div className="flex gap-4 mt-4 justify-center">
               <a href="#" className="h-10 w-10 rounded-full bg-tint-warm/10 flex items-center justify-center text-tint-warm/90 transition-all hover:bg-accent-warm hover:text-primary-dark hover:scale-110" aria-label="Facebook">
                 <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -156,6 +157,8 @@ export async function Footer() {
                 </svg>
               </a>
             </div>
+            */}
+
           </div>
 
         </div>

@@ -1,3 +1,5 @@
+import { isLoopbackHttp } from './transport'
+
 /**
  * CSRF token generation, validation, and the double-submit enforcement decision.
  *
@@ -54,8 +56,8 @@ export const CSRF_EXEMPT_PATH_PREFIXES: string[] = []
  *
  * OAuth callbacks are exempt because the redirect comes from an external
  * provider and the client cannot have a CSRF token yet. The credentials
- * callback is NOT exempt — it handles form submissions that must carry a
- * CSRF token.
+ * callback also uses NextAuth's own form-body CSRF token. It must remain
+ * exempt from this header-based guard so native sign-in forms can submit.
  */
 function isNextAuthRoute(pathname: string): boolean {
   if (pathname === '/api/auth/signin') return true
@@ -64,9 +66,7 @@ function isNextAuthRoute(pathname: string): boolean {
   if (pathname === '/api/auth/session') return true
   if (pathname === '/api/auth/providers') return true
   if (pathname === '/api/auth/protected') return true
-  // OAuth provider callbacks only (e.g., /api/auth/callback/google, /api/auth/callback/microsoft-entra-id)
-  // NOT /api/auth/callback/credentials which is a form submission requiring CSRF protection.
-  if (pathname.startsWith('/api/auth/callback/') && !pathname.startsWith('/api/auth/callback/credentials')) return true
+  if (pathname.startsWith('/api/auth/callback/')) return true
   return false
 }
 
@@ -86,8 +86,8 @@ export interface CsrfCookieOptions {
  * read the value to echo it. `sameSite: 'lax'` keeps the cookie off cross-site
  * requests while still riding along on the portal's own navigation.
  */
-export function csrfCookieOptions(isProduction: boolean): CsrfCookieOptions {
-  return { httpOnly: false, sameSite: 'lax', secure: isProduction, path: '/' }
+export function csrfCookieOptions(isProduction: boolean, requestUrl?: Pick<URL, 'protocol' | 'hostname'>): CsrfCookieOptions {
+  return { httpOnly: false, sameSite: 'lax', secure: isProduction && !isLoopbackHttp(requestUrl), path: '/' }
 }
 
 function randomHex(byteLength: number): string {
@@ -181,10 +181,16 @@ export type CsrfDecision =
  */
 export function evaluateCsrf({ method, pathname, cookieToken, headerToken }: CsrfCheckInput): CsrfDecision {
   if (SAFE_METHODS.has(method.toUpperCase())) return { allow: true, reason: 'safe-method' }
-  if (!pathname.startsWith('/api/')) return { allow: true, reason: 'not-api' }
+  const normalizedPath = pathname.replace(/\/+$/, '')
+  const apiPath = normalizedPath === '/portal/api' || normalizedPath.startsWith('/portal/api/')
+    ? normalizedPath.slice('/portal'.length)
+    : normalizedPath === '/admin/api' || normalizedPath.startsWith('/admin/api/')
+      ? normalizedPath.slice('/admin'.length)
+      : normalizedPath
+  if (apiPath !== '/api' && !apiPath.startsWith('/api/')) return { allow: true, reason: 'not-api' }
 
   // NextAuth routes are exempt because sign-in cannot present a CSRF token.
-  if (isNextAuthRoute(pathname)) return { allow: true, reason: 'exempt-path' }
+  if (isNextAuthRoute(apiPath)) return { allow: true, reason: 'exempt-path' }
 
   if (!cookieToken) return { allow: false, reason: 'missing-cookie' }
   if (!headerToken) return { allow: false, reason: 'missing-header' }

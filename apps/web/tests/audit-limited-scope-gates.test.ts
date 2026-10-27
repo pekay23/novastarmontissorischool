@@ -76,7 +76,7 @@ function mutationHandlers(): MutationHandler[] {
       const body = src.slice(m.index, bodyEnd)
       const keys = [
         ...new Set(
-          [...body.matchAll(/hasPermission\(\s*\w+\s*,\s*'([a-z_]+:[a-z_]+)'/g)].map((k) => k[1]!),
+          [...body.matchAll(/hasPermission\(\s*\w+\s*,\s*['"]([a-z_]+:[a-z_]+)['"]/g)].map((k) => k[1]!),
         ),
       ]
       found.push({
@@ -281,6 +281,9 @@ describe('every gate a scope-limited role can reach', () => {
     // None of them holds a permission key with a limited scope, so no row below is a
     // finding; their row boundaries are the token, the caller's session tenant and
     // school, or the stored flag's own version.
-    expect(all.length).toBe(72)
+    expect(all.length).toBeGreaterThanOrEqual(75)
+    const audited = all.map(handler => `${handler.verb} ${handler.route}`)
+    expect(new Set(audited).size).toBe(all.length)
+    for (const route of ['PATCH timetable', 'PATCH syllabi/[id]', 'DELETE syllabi/[id]', 'PATCH students/[id]']) expect(audited).toContain(route)
   })
 })

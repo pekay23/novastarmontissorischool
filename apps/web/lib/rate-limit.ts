@@ -1,5 +1,5 @@
 /**
- * Rate limiting module — Redis-backed (Upstash) with in-memory fallback.
+ * Rate limiting module — Redis-backed (Upstash) with a development-only in-memory fallback.
  *
  * Adopted from Aerojet Academy's `lib/security/rate-limit.ts`,
  * adapted for Novastar's existing in-memory implementation.
@@ -10,7 +10,7 @@ import { Redis } from '@upstash/redis'
 import { logWarn } from '@/lib/logger'
 
 // ---------------------------------------------------------------------------
-// Redis-backed rate limiter (production) with in-memory fallback (dev/CI)
+// Redis-backed rate limiter (production) with in-memory fallback outside production
 // ---------------------------------------------------------------------------
 
 /**
@@ -22,8 +22,8 @@ import { logWarn } from '@/lib/logger'
  * client is constructed at module scope, that throw surfaced as
  * "Failed to collect configuration for /api/newsletter/subscribe" and failed
  * the whole deployment build. Parsing here keeps a misconfigured limiter from
- * taking the app down: the documented in-memory fallback applies, and the
- * misconfiguration is logged rather than crashing the boot.
+ * taking the app down during build. At runtime, production requests fail
+ * closed instead of falling back to a process-local budget.
  */
 function upstashCredentials(): { url: string; token: string } | null {
   const url = process.env.UPSTASH_REDIS_REST_URL
@@ -50,6 +50,9 @@ const redis = (() => {
   const credentials = upstashCredentials()
   return credentials ? new Redis(credentials) : null
 })()
+
+let hasWarnedMissingRedis = false
+let hasWarnedRedisFailure = false
 
 // Pre-configured limiters for common auth operations
 const AUTH_LIMITS = {
@@ -145,7 +148,7 @@ function getUpstashLimiter(limit: number, windowMs: number): Ratelimit {
     limiter = new Ratelimit({
       redis: redis!,
       limiter: Ratelimit.slidingWindow(limit, windowStr),
-      prefix: 'novastar:rl',
+      prefix: `novastar:rl:${cacheKey}`,
     })
     limiterCache.set(cacheKey, limiter)
   }
@@ -162,24 +165,46 @@ export async function rateLimitAsync(
   windowMs: number = 60000
 ): Promise<RateLimitResult> {
   if (!redis) {
-    return inMemoryRateLimit(key, limit, windowMs)
+    if (process.env.NODE_ENV === 'production') {
+      if (!hasWarnedMissingRedis) {
+        hasWarnedMissingRedis = true
+        logWarn('rate-limit', 'Shared Redis is unavailable; rejecting the request instead of using a process-local limit')
+      }
+      return { success: false, remaining: 0, reset: Date.now() + windowMs }
+    }
+    return inMemoryRateLimit(`${limit}:${windowMs}:${key}`, limit, windowMs)
   }
 
-  const limiter = getUpstashLimiter(limit, windowMs)
-  const result = await limiter.limit(key)
-  return {
-    success: result.success,
-    remaining: result.remaining,
-    reset: result.reset,
+  try {
+    const limiter = getUpstashLimiter(limit, windowMs)
+    const result = await limiter.limit(key)
+    return {
+      success: result.success,
+      remaining: result.remaining,
+      reset: result.reset,
+    }
+  } catch (error) {
+    if (!hasWarnedRedisFailure) {
+      hasWarnedRedisFailure = true
+      logWarn('rate-limit', 'Shared Redis request failed', { error })
+    }
+    if (process.env.NODE_ENV === 'production') {
+      return { success: false, remaining: 0, reset: Date.now() + windowMs }
+    }
+    return inMemoryRateLimit(`${limit}:${windowMs}:${key}`, limit, windowMs)
   }
 }
 
-/** Synchronous rate-limit check (uses in-memory map). */
+/** Synchronous local limiter for development only; production fails closed. */
 export function checkRateLimit(
   identifier: string,
   max: number,
   windowMs: number
 ): RateLimitResult {
+  if (process.env.NODE_ENV === 'production') {
+    logWarn('rate-limit', 'Synchronous process-local limiter used in production; rejecting the request')
+    return { success: false, remaining: 0, reset: Date.now() + windowMs }
+  }
   return inMemoryRateLimit(identifier, max, windowMs)
 }
 
@@ -189,17 +214,17 @@ export function rateLimit(options: { windowMs: number; max: number }) {
 }
 
 /** Pre-configured auth rate limits. */
-export function rateLimitAuth(action: AuthLimitKey) {
+export function rateLimitAuth(action: AuthLimitKey): Promise<RateLimitResult> {
   const config = AUTH_LIMITS[action]
-  return inMemoryRateLimit(`auth:${action}`, config.limit, config.windowMs)
+  return rateLimitAsync(`auth:${action}`, config.limit, config.windowMs)
 }
 
-export function rateLimitByIP(ip: string, limit: number = 20, windowMs: number = 60000) {
-  return inMemoryRateLimit(`ip:${ip}`, limit, windowMs)
+export function rateLimitByIP(ip: string, limit: number = 20, windowMs: number = 60000): Promise<RateLimitResult> {
+  return rateLimitAsync(`ip:${ip}`, limit, windowMs)
 }
 
-export function rateLimitByUser(userId: string, limit: number = 30, windowMs: number = 60000) {
-  return inMemoryRateLimit(`user:${userId}`, limit, windowMs)
+export function rateLimitByUser(userId: string, limit: number = 30, windowMs: number = 60000): Promise<RateLimitResult> {
+  return rateLimitAsync(`user:${userId}`, limit, windowMs)
 }
 
 export async function rateLimitByUserAsync(userId: string, limit: number = 30, windowMs: number = 60000) {

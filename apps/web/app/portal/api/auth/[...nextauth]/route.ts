@@ -1,6 +1,6 @@
 import NextAuth from 'next-auth'
 import { authOptions } from '@/lib/auth'
-import { checkRateLimit, clientIdentifier } from '@/lib/rate-limit'
+import { rateLimitAsync, clientIdentifier } from '@/lib/rate-limit'
 
 const handler = NextAuth(authOptions)
 
@@ -118,7 +118,7 @@ export async function GET(request: Request, context: { params: Promise<{ nextaut
 
 export async function POST(request: Request, context: { params: Promise<{ nextauth: string[] }> }) {
   if (isCredentialsSignIn(request)) {
-    const result = checkRateLimit(
+    const result = await rateLimitAsync(
       clientIdentifier(request),
       CREDENTIALS_ATTEMPTS,
       CREDENTIALS_WINDOW_MS

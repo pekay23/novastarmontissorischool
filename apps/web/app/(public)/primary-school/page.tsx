@@ -72,11 +72,11 @@ export default async function PrimarySchoolPage() {
           </p>
           <p className="flex items-center gap-5 text-sm text-muted-foreground">
             <span className="inline-flex items-center gap-1.5">
-              <ShieldCheck className="h-4 w-4 text-secondary" aria-hidden="true" />
+              <ShieldCheck className="h-4 w-4 text-secondary-dark" aria-hidden="true" />
               Aligned to GES standards
             </span>
             <span className="hidden items-center gap-1.5 sm:inline-flex">
-              <Users className="h-4 w-4 text-secondary" aria-hidden="true" />
+              <Users className="h-4 w-4 text-secondary-dark" aria-hidden="true" />
               Mixed-age classrooms
             </span>
           </p>
@@ -88,7 +88,7 @@ export default async function PrimarySchoolPage() {
         <div className="container pt-24 pb-16 lg:pt-36 lg:pb-24">
           <div className="grid lg:grid-cols-2 gap-12 lg:gap-16 items-center">
             <div className="flex flex-col gap-6 lg:max-w-xl relative z-10">
-              <div className="text-secondary/60 text-[11px] font-bold tracking-[0.3em] uppercase -mb-4">
+              <div className="text-secondary-dark text-[11px] font-bold tracking-[0.3em] uppercase -mb-4">
                 — Primary School · Ages 6 to 11
               </div>
               <h1 className="type-display font-serif text-secondary-dark leading-[1.1] mt-4">
@@ -121,13 +121,13 @@ export default async function PrimarySchoolPage() {
                    {/* eslint-disable-next-line @next/next/no-img-element */}
                    <img src="/logo_primaryschool.png" alt="Novastar Primary School Crest" className="h-40 md:h-56 w-auto drop-shadow-sm" />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                    <div className="flex flex-col items-center justify-center p-4 rounded-md bg-secondary/5 border border-secondary/20 transition-all hover:bg-secondary/10">
-                     <span className="font-serif text-2xl text-secondary">Grades 1–6</span>
+                     <span className="font-serif text-2xl text-secondary-dark">Grades 1–6</span>
                      <span className="text-[10px] text-muted-foreground uppercase tracking-[0.2em] mt-1">Lower & Upper</span>
                    </div>
                    <div className="flex flex-col items-center justify-center p-4 rounded-md bg-secondary/5 border border-secondary/20 transition-all hover:bg-secondary/10">
-                     <span className="font-serif text-2xl text-secondary">GES & NaCCA</span>
+                     <span className="font-serif text-2xl text-secondary-dark">GES & NaCCA</span>
                      <span className="text-[10px] text-muted-foreground uppercase tracking-[0.2em] mt-1">Aligned</span>
                    </div>
                 </div>
@@ -152,15 +152,15 @@ export default async function PrimarySchoolPage() {
         <div className="container relative z-10">
           <Card tone="flat" className="overflow-hidden p-8 md:p-12 border-0 bg-surface-container-lowest/80 backdrop-blur-xl shadow-floating max-w-3xl">
             <div className="flex flex-col gap-6">
-              <div className="text-secondary/80 text-[11px] font-bold tracking-[0.3em] uppercase">
+              <div className="text-secondary-dark text-[11px] font-bold tracking-[0.3em] uppercase">
                 — The Second Plane of Development
               </div>
-              <h2 className="text-secondary max-w-2xl font-serif text-3xl leading-[1.2] font-medium sm:text-4xl">
+              <h2 className="text-secondary-dark max-w-2xl font-serif text-3xl leading-[1.2] font-medium sm:text-4xl">
                 Between six and twelve, children move from the absorbent mind to the reasoning mind.
               </h2>
               
               <div className="flex flex-col gap-5 text-lg leading-relaxed text-foreground/85">
-                <p className="first-letter:text-secondary first-letter:float-left first-letter:mr-2 first-letter:font-serif first-letter:text-6xl first-letter:leading-[0.8] first-letter:font-medium">
+                <p className="first-letter:text-secondary-dark first-letter:float-left first-letter:mr-2 first-letter:font-serif first-letter:text-6xl first-letter:leading-[0.8] first-letter:font-medium">
                   While a preschooler asks "what is it?", a primary child asks "why is it?" and "how does it work?". 
                   They are entering a period of enormous intellectual and moral curiosity.
                 </p>
@@ -175,11 +175,11 @@ export default async function PrimarySchoolPage() {
               </div>
 
               <div className="mt-6 flex flex-wrap gap-4 pt-6 border-t border-border/50">
-                <Link href="/preschool" className="text-secondary font-serif italic text-base hover:underline flex items-center gap-1">
+                <Link href="/preschool" className="text-secondary-dark font-serif italic text-base hover:underline flex items-center gap-1">
                   Coming from our nursery?
                 </Link>
                 <span className="text-border hidden sm:block">|</span>
-                <Link href="/academics" className="text-secondary font-serif italic text-base hover:underline flex items-center gap-1">
+                <Link href="/academics" className="text-secondary-dark font-serif italic text-base hover:underline flex items-center gap-1">
                   Review academic progression
                 </Link>
               </div>
@@ -413,7 +413,7 @@ export default async function PrimarySchoolPage() {
       {/* The Five Great Lessons */}
 <section className="container section-y">
          <div className="mb-10 text-center flex flex-col items-center">
-           <div className="text-secondary/80 text-[11px] font-bold tracking-[0.3em] uppercase">
+           <div className="text-secondary-dark text-[11px] font-bold tracking-[0.3em] uppercase">
              Cosmic Education
            </div>
            <h2 className="font-serif text-3xl md:text-4xl font-medium mt-4 max-w-2xl text-secondary-dark">The Five Great Lessons</h2>
@@ -434,7 +434,7 @@ export default async function PrimarySchoolPage() {
                 { title: 'Story of Numbers', desc: 'Mathematics, geometry, trade, and engineering.' }
               ].map((lesson, i) => (
                 <Card key={i} tone="flat" interactive className="h-full p-8 flex flex-col gap-6 bg-surface-container-lowest border-transparent transition-all duration-700 hover:shadow-floating hover:-translate-y-1">
-                  <span className="font-serif text-5xl italic text-secondary/30">0{i + 1}</span>
+                  <span className="font-serif text-5xl italic text-secondary-dark">0{i + 1}</span>
                   <div>
                     <CardTitle as="h3" className="font-serif text-2xl text-secondary-dark">{lesson.title}</CardTitle>
                     <p className="mt-3 text-[0.9375rem] text-muted-foreground leading-relaxed">{lesson.desc}</p>
@@ -457,7 +457,7 @@ export default async function PrimarySchoolPage() {
                 { title: 'Story of Numbers', desc: 'Mathematics, geometry, trade, and engineering.' }
               ].map((lesson, i) => (
                 <Card key={i} tone="flat" interactive className="h-full p-8 flex flex-col gap-6 bg-surface-container-lowest border-transparent transition-all duration-700 hover:shadow-floating hover:-translate-y-1">
-                  <span className="font-serif text-5xl italic text-secondary/30">0{i + 1}</span>
+                  <span className="font-serif text-5xl italic text-secondary-dark">0{i + 1}</span>
                   <div>
                     <CardTitle as="h3" className="font-serif text-2xl text-secondary-dark">{lesson.title}</CardTitle>
                     <p className="mt-3 text-[0.9375rem] text-muted-foreground leading-relaxed">{lesson.desc}</p>
@@ -468,7 +468,7 @@ export default async function PrimarySchoolPage() {
        </section>
 
       {/* Visuals */}
-      <section className="relative w-full h-150 md:h-200 overflow-hidden my-16">
+      <section className="relative w-full min-h-[40vh] sm:h-150 md:h-200 overflow-hidden my-16">
         <div className="absolute inset-0 z-0">
            {/* eslint-disable-next-line @next/next/no-img-element */}
            <img src="/images/photo_2_2026-10-05_11-06-55%20for%20primary%20school.jpg" alt="Primary students working" className="w-full h-full object-cover animate-ken-burns" />
@@ -508,7 +508,7 @@ export default async function PrimarySchoolPage() {
                  </ArrowLink>
                </div>
             </div>
-            <div className="lg:w-2/3 overflow-hidden">
+             <div className="lg:w-2/3 w-full overflow-x-auto md:overflow-x-auto overscroll-x-contain">
                <ProgressionPath steps={BECE_PROGRESSION} />
             </div>
          </div>

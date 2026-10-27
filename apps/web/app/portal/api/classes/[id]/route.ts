@@ -6,6 +6,7 @@ import { hasPermission } from '@novastar/auth'
 import {
   resolveVisibility,
   classVisibilityWhere,
+  studentVisibilityWhere,
   visibilityDeniesAll,
   type Visibility,
 } from '@/lib/visibility'
@@ -73,12 +74,19 @@ export async function GET(
     }
 
     const { id } = await params
+    const canReadStudents = await hasPermission(userId, 'student:read', tenantId, schoolId)
+    const studentVisibility = canReadStudents ? await resolveVisibility(ctx, 'student:read') : null
     const cls = await prisma.class.findFirst({
       where: scopedClassWhere({ id, schoolId, tenantId, visibility }),
       include: {
         _count: { select: { students: true } },
         level: { select: { name: true } },
         classTeacher: { select: { firstName: true, lastName: true } },
+        students: studentVisibility && !visibilityDeniesAll(studentVisibility) ? {
+          where: { tenantId, schoolId, ...studentVisibilityWhere(studentVisibility) },
+          select: { id: true, studentId: true, firstName: true, lastName: true, classId: true },
+          orderBy: { lastName: 'asc' },
+        } : false,
       },
     })
     if (!cls) return NextResponse.json({ error: 'Class not found' }, { status: 404 })
@@ -129,7 +137,15 @@ export async function PATCH(
     if (!existing) return NextResponse.json({ error: 'Class not found' }, { status: 404 })
 
     const data = parseResult.data
-    const updateData: Record<string, unknown> = {}
+    if (data.levelId !== undefined) {
+      const level = await prisma.classLevel.findFirst({ where: { id: data.levelId, tenantId, schoolId }, select: { id: true } })
+      if (!level) return NextResponse.json({ error: 'Class level not found' }, { status: 404 })
+    }
+    if (data.classTeacherId) {
+      const teacher = await prisma.staff.findFirst({ where: { id: data.classTeacherId, tenantId, schoolId }, select: { id: true } })
+      if (!teacher) return NextResponse.json({ error: 'Class teacher not found' }, { status: 404 })
+    }
+    const updateData: Prisma.ClassUncheckedUpdateInput = {}
     if (data.name !== undefined) updateData.name = data.name
     if (data.levelId !== undefined) updateData.levelId = data.levelId
     if (data.stream !== undefined) updateData.stream = data.stream

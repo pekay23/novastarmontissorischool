@@ -12,91 +12,105 @@
  * `next/link` accepts would force a cast on every `href`.
  */
 
-import type { OperatorCapability } from '@/lib/permissions'
+import type { OperatorCapability } from "@/lib/permissions";
 
 export interface NavItem {
-  readonly href: string
-  readonly label: string
-  readonly description: string
-  readonly capability: OperatorCapability
+  readonly href: string;
+  readonly label: string;
+  readonly description: string;
+  readonly capability: OperatorCapability;
 }
 
 export const PLATFORM_NAV: readonly NavItem[] = [
   {
-    href: '/admin/',
-    label: 'Overview',
-    description: 'Tenant, school and user totals for the whole platform.',
-    capability: 'platform:read',
+    href: "/admin/overview",
+    label: "Overview",
+    description: "Tenant, school and user totals for the whole platform.",
+    capability: "platform:read",
   },
   {
-    href: '/admin/tenants',
-    label: 'Tenants',
-    description: 'Every tenant on the platform, and drill-down into one.',
-    capability: 'tenant:read',
+    href: "/admin/tenants",
+    label: "Tenants",
+    description: "Every tenant on the platform, and drill-down into one.",
+    capability: "tenant:read",
   },
   {
-    href: '/admin/newsletter',
-    label: 'Newsletter',
-    description: 'View and copy newsletter subscribers for manual campaigns.',
-    capability: 'tenant:read',
+    href: "/admin/newsletter",
+    label: "Newsletter",
+    description: "View and copy newsletter subscribers for manual campaigns.",
+    capability: "tenant:read",
   },
   {
-    href: '/admin/health',
-    label: 'Health',
-    description: 'Migration status, mirror reachability and audit volume.',
-    capability: 'platform:read',
+    href: "/admin/health",
+    label: "Health",
+    description: "Migration status, mirror reachability and audit volume.",
+    capability: "platform:read",
   },
   {
-    href: '/admin/audit',
-    label: 'Audit',
-    description: 'The cross-tenant audit trail.',
-    capability: 'platform:audit',
+    href: "/admin/audit",
+    label: "Audit",
+    description: "The cross-tenant audit trail.",
+    capability: "platform:audit",
   },
-]
+];
 
 /** The drill-down tabs shown once an operator is inside one tenant. */
 export const TENANT_NAV: readonly NavItem[] = [
   {
-    href: '/admin/tenants',
-    label: 'Back to tenants',
-    description: 'Leave this tenant.',
-    capability: 'tenant:read',
+    href: "/admin/tenants",
+    label: "Back to tenants",
+    description: "Leave this tenant.",
+    capability: "tenant:read",
   },
-]
+];
 
 export function tenantTabs(tenantId: string): readonly NavItem[] {
+  const id = encodeURIComponent(tenantId);
   return [
     {
-      href: `/admin/tenants/${tenantId}`,
-      label: 'Overview',
-      description: 'This tenant in full.',
-      capability: 'tenant:read',
+      href: `/admin/tenants/${id}`,
+      label: "Overview",
+      description: "This tenant in full.",
+      capability: "tenant:read",
     },
     {
-      href: `/admin/tenants/${tenantId}/schools`,
-      label: 'Schools',
-      description: 'Schools belonging to this tenant.',
-      capability: 'tenant:read',
+      href: `/admin/tenants/${id}/schools`,
+      label: "Schools",
+      description: "Schools belonging to this tenant.",
+      capability: "tenant:read",
     },
     {
-      href: `/admin/tenants/${tenantId}/users`,
-      label: 'Users',
-      description: 'User directory for this tenant.',
-      capability: 'tenant:user:read',
+      href: `/admin/tenants/${id}/users`,
+      label: "Users",
+      description: "User directory for this tenant.",
+      capability: "tenant:user:read",
     },
     {
-      href: `/admin/tenants/${tenantId}/settings`,
-      label: 'Settings',
-      description: 'Mutable tenant fields and the settings document.',
-      capability: 'tenant:config',
+      href: `/admin/tenants/${id}/settings`,
+      label: "Settings",
+      description: "Mutable tenant fields and the settings document.",
+      capability: "tenant:config",
     },
-  ]
+  ];
+}
+
+export function tenantIdFromPathname(pathname: string): string | null {
+  const match = /^\/admin\/tenants\/([^/]+)(?:\/|$)/.exec(pathname);
+  if (!match) return null;
+  try {
+    return decodeURIComponent(match[1]);
+  } catch {
+    return null;
+  }
 }
 
 export function visibleNav(
   items: readonly NavItem[],
   granted: readonly string[],
-  isAllowed: (granted: readonly string[], capability: OperatorCapability) => boolean,
+  isAllowed: (
+    granted: readonly string[],
+    capability: OperatorCapability,
+  ) => boolean,
 ): readonly NavItem[] {
-  return items.filter((item) => isAllowed(granted, item.capability))
+  return items.filter((item) => isAllowed(granted, item.capability));
 }

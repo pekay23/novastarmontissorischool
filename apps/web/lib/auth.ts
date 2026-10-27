@@ -1,6 +1,6 @@
 import Credentials from 'next-auth/providers/credentials'
 import { PrismaAdapter } from '@auth/prisma-adapter'
-import type { NextAuthOptions, Session } from 'next-auth'
+import type { NextAuthOptions, Session, DefaultSession } from 'next-auth'
 import type { JWT } from 'next-auth/jwt'
 import { cookies } from 'next/headers'
 import { logError } from '@/lib/logger'
@@ -15,7 +15,7 @@ import { isEmailVerificationExempt, parsePlatformRole } from '@/lib/constants/pl
 import { buildSsoProviders } from '@/lib/auth/sso'
 import { ssoSignIn } from '@/lib/auth/sso-signin'
 
-export interface ExtendedUser {
+export interface ExtendedUser extends NonNullable<DefaultSession['user']> {
   id?: string
   role?: string
   schoolId?: string
