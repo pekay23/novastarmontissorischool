@@ -187,6 +187,9 @@ jobs:
   test-e2e:
     name: E2E Tests
     runs-on: ubuntu-24.04
+    container:
+      image: mcr.microsoft.com/playwright:v1.63.0-noble
+      options: --ipc=host
     needs: [build]
     # A hung suite should burn minutes, not hours. playwright.config.ts sets
     # retries: 0 and a 20s per-test timeout, so the suite is designed to
@@ -233,12 +236,6 @@ jobs:
       # does not fire reliably under bun's isolated node_modules layout.
       - name: Generate Prisma Client
         run: bun run --cwd packages/database db:generate
-
-      # Install browser builds matching the pinned @playwright/test package.
-      # ubuntu-24.04 provides the browser runtime libraries; avoiding Playwright's
-      # apt-based --with-deps step keeps this install independent of apt mirrors.
-      - name: Install Playwright browsers
-        run: bunx playwright install chromium firefox webkit
 
       - name: Run E2E tests
         run: bun run test:e2e
